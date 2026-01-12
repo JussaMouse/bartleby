@@ -42,12 +42,15 @@ Bartleby implements David Allen's GTD methodology.
 **Inline Syntax**
   @context       Assign context (where/how to do it)
   +project       Assign to project
-  due:DATE       Set due date (today, tomorrow, YYYY-MM-DD)
+  due:DATE       Set due date (today, tomorrow, friday, YYYY-MM-DD)
+  (due DATE)     Alternative: "new action: call mom (due tomorrow)"
+  by DATE        Alternative: "add task finish report by friday"
 
 **Examples**
   add task buy milk @errands
   add task review PR @computer +website due:tomorrow
-  add task call Sarah @phone +hiring
+  new action: call Sarah (due 5pm) @phone
+  add task finish report by friday
   capture remember to check on the budget
   done 3
   done buy milk

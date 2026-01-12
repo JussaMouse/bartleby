@@ -63,15 +63,15 @@ export const addTask: Tool = {
 
   routing: {
     patterns: [
-      /^add\s+(task|action|todo)\s+(.+)$/i,
-      /^(new|create)\s+(task|action|todo)\s+(.+)$/i,
+      /^add\s+(task|action|todo)\s*:?\s*(.+)$/i,
+      /^(new|create)\s+(task|action|todo)\s*:?\s*(.+)$/i,
       /^add\s+to\s+(tasks?|actions?|list)\s*:?\s*(.+)$/i,
     ],
     keywords: {
       verbs: ['add', 'create', 'new', 'make'],
       nouns: ['task', 'action', 'todo', 'item'],
     },
-    examples: ['add task buy milk', 'new action call dentist'],
+    examples: ['add task buy milk', 'new action call dentist', 'add task report due:friday', 'new action: drive home (due 5pm)'],
     priority: 90,
   },
 
@@ -101,14 +101,38 @@ export const addTask: Tool = {
       description = description.replace(/\+\w+/, '').trim();
     }
 
-    // Parse due date: due:today, due:tomorrow, due:2026-01-15, due:jan15
-    const dueMatch = description.match(/due:(\S+)/i);
+    // Parse due date - multiple formats supported:
+    // due:today, due:tomorrow, due:2026-01-15
+    // (due today), (due 8pm), (due tomorrow)
+    // by tomorrow, by friday, by 5pm
+    let dueMatch = description.match(/due:(\S+)/i);
+    let dueStr: string | null = null;
+    
     if (dueMatch) {
-      const dueStr = dueMatch[1].toLowerCase();
+      dueStr = dueMatch[1].toLowerCase();
       description = description.replace(/due:\S+/i, '').trim();
-
+    } else {
+      // Try parenthetical format: (due TODAY) or (due 8pm)
+      const parenMatch = description.match(/\(due\s+([^)]+)\)/i);
+      if (parenMatch) {
+        dueStr = parenMatch[1].toLowerCase().trim();
+        description = description.replace(/\(due\s+[^)]+\)/i, '').trim();
+      } else {
+        // Try "by DATE" format
+        const byMatch = description.match(/\bby\s+(today|tomorrow|monday|tuesday|wednesday|thursday|friday|saturday|sunday|\d{1,2}(?:am|pm)?)\b/i);
+        if (byMatch) {
+          dueStr = byMatch[1].toLowerCase();
+          description = description.replace(/\bby\s+(today|tomorrow|monday|tuesday|wednesday|thursday|friday|saturday|sunday|\d{1,2}(?:am|pm)?)\b/i, '').trim();
+        }
+      }
+    }
+    
+    if (dueStr) {
       const today = new Date();
-      if (dueStr === 'today') {
+      
+      // Handle relative dates
+      if (dueStr === 'today' || /^\d{1,2}(?::\d{2})?(?:am|pm)?$/.test(dueStr)) {
+        // Today or a time today (8pm, 8:33pm)
         dueDate = today.toISOString().split('T')[0];
       } else if (dueStr === 'tomorrow') {
         today.setDate(today.getDate() + 1);
@@ -117,10 +141,21 @@ export const addTask: Tool = {
         // ISO date format
         dueDate = dueStr;
       } else {
-        // Try to parse as date string (e.g., "jan15", "15jan")
-        const parsed = new Date(dueStr);
-        if (!isNaN(parsed.getTime())) {
-          dueDate = parsed.toISOString().split('T')[0];
+        // Try day of week
+        const days = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+        const dayIndex = days.indexOf(dueStr);
+        if (dayIndex !== -1) {
+          const currentDay = today.getDay();
+          let daysUntil = dayIndex - currentDay;
+          if (daysUntil <= 0) daysUntil += 7; // Next week if today or past
+          today.setDate(today.getDate() + daysUntil);
+          dueDate = today.toISOString().split('T')[0];
+        } else {
+          // Try to parse as generic date string
+          const parsed = new Date(dueStr);
+          if (!isNaN(parsed.getTime())) {
+            dueDate = parsed.toISOString().split('T')[0];
+          }
         }
       }
     }
