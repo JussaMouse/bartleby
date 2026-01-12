@@ -379,11 +379,13 @@ Bartleby uses a 4-tier model system for different tasks.
 *Other*
   HEALTH_TIMEOUT=35000            Connection timeout (ms)
   AGENT_MAX_ITERATIONS=10         Max steps in agentic loop
+  LOG_LLM_VERBOSE=false           Show LLM chain-of-thought
 
 **Tips**
 • Run "status" to see which tiers are connected
 • Most requests use deterministic routing, not LLM
 • Increase HEALTH_TIMEOUT for slow model cold starts
+• Set LOG_LLM_VERBOSE=true to see Thinking model reasoning
 `.trim();
 
 const HELP_WEATHER = `

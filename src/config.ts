@@ -85,6 +85,7 @@ const ConfigSchema = z.object({
     level: z.enum(['debug', 'info', 'warn', 'error']),
     file: z.string(),
     console: z.boolean(),
+    llmVerbose: z.boolean(),  // Show full LLM reasoning (thinking model chain-of-thought)
   }),
 });
 
@@ -165,6 +166,7 @@ export function loadConfig(): Config {
       level: (process.env.LOG_LEVEL as 'debug' | 'info' | 'warn' | 'error') || 'info',
       file: process.env.LOG_FILE || './logs/bartleby.log',
       console: process.env.LOG_CONSOLE !== 'false',
+      llmVerbose: process.env.LOG_LLM_VERBOSE === 'true',
     },
   });
 

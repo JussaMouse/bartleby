@@ -6,14 +6,18 @@ import { Tool, ToolContext } from '../tools/types.js';
 import { buildSimplePrompt, buildComplexPrompt } from './prompts.js';
 import { debug, warn, info, error } from '../utils/logger.js';
 import { cleanLLMOutput } from '../utils/llm.js';
+import { loadConfig } from '../config.js';
 
 export class Agent {
   private services: ServiceContainer;
   private toolSchemas: OpenAI.ChatCompletionTool[];
+  private llmVerbose: boolean;
 
   constructor(services: ServiceContainer) {
     this.services = services;
     this.toolSchemas = this.buildToolSchemas();
+    const config = loadConfig();
+    this.llmVerbose = config.logging.llmVerbose;
   }
 
   /**
@@ -34,7 +38,7 @@ export class Agent {
       ], { tier: 'fast' });
 
       // Clean thinking tags and special tokens
-      const response = cleanLLMOutput(rawResponse);
+      const response = cleanLLMOutput(rawResponse, this.llmVerbose);
 
       // Parse for tool call (text-based format for simple model)
       const toolMatch = response.match(/TOOL:\s*(\w+)/i);
@@ -144,7 +148,7 @@ export class Agent {
           }
         } else {
           // No tool calls - model is done, return final response
-          const finalResponse = cleanLLMOutput(response.content || "I've completed the task.");
+          const finalResponse = cleanLLMOutput(response.content || "I've completed the task.", this.llmVerbose);
           info('Agentic loop complete', { iterations: iteration + 1 });
           return finalResponse;
         }
