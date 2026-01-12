@@ -184,11 +184,11 @@ export const capture: Tool = {
     patterns: [
       /^capture\s+(.+)$/i,
       /^inbox\s+(.+)$/i,
-      /^remember\s+(.+)$/i,
+      /^remember\s+(?!that\s+i\s)(.+)$/i,  // "remember X" but NOT "remember that i..."
       /^note\s+to\s+self\s*:?\s*(.+)$/i,
     ],
     keywords: {
-      verbs: ['capture', 'remember', 'note', 'jot'],
+      verbs: ['capture', 'note', 'jot'],  // Removed 'remember' - too ambiguous
       nouns: ['inbox', 'self', 'down'],
     },
     examples: ['capture call mom', 'inbox review article'],
