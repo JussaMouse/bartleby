@@ -257,13 +257,26 @@ Your events are preserved unless you explicitly say "yes delete events".
 > find sarah
 ```
 
-### Memory
+### Personal Context
+
+Bartleby learns about you over time from natural conversation.
 
 | Command | Description |
 |---------|-------------|
-| `what did we talk about <topic>` | Search past conversations |
+| `I am a <type> person` | Tell Bartleby about yourself |
 | `I prefer <preference>` | Set a preference |
+| `I like/love/hate <thing>` | Express preferences |
+| `my <relation> <name>` | Share relationships |
 | `what do you know about me` | View your profile |
+| `what did we talk about <topic>` | Search past conversations |
+
+**Examples:**
+```
+> I am a morning person
+> I prefer short meetings
+> my wife Sarah is a doctor
+> what do you know about me
+```
 
 ### Shed (Document Library)
 

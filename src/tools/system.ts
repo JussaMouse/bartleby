@@ -11,7 +11,7 @@ Type \`help <topic>\` for details and .env settings.
 **GTD** — Task management (help gtd)
 **Calendar** — Events & scheduling (help calendar)
 **Contacts** — People you know (help contacts)
-**Memory** — What Bartleby remembers (help memory)
+**Personal Context** — What Bartleby learns about you (help context)
 **Shed** — Document library (help shed)
 **Reminders** — Scheduled notifications (help reminders)
 **Presence** — Proactive behaviors (help presence)
@@ -127,40 +127,48 @@ Store and search contact information.
 • Bartleby learns relationships: "my sister Sarah" → remembers
 `.trim();
 
-const HELP_MEMORY = `
-**Memory — Personal Context**
+const HELP_PERSONAL_CONTEXT = `
+**Personal Context — What Bartleby Learns About You**
 
-Bartleby remembers your conversations and learns about you.
+Bartleby builds a profile of you over time: preferences, habits,
+goals, relationships, and conversation history.
 
 **Commands**
-  what did we talk about <topic>   Search past conversations
-  I prefer <preference>            Tell Bartleby a preference
+  I am a <type> person             Tell Bartleby about yourself
+  I prefer <preference>            Set a preference
+  I like/love/hate <thing>         Express preferences
   what do you know about me        View your profile
+  what did we talk about <topic>   Search past conversations
   done checking <followup>         Clear a pending follow-up
 
-**What's Remembered**
+**What's Tracked**
+• **Preferences** — "I prefer morning meetings", "I'm a morning person"
+• **Habits** — "I wake up at 6am", "I always drink tea"
+• **Goals** — "I want to learn piano", "I'm trying to exercise more"
+• **Relationships** — "my wife Sarah", "my boss Tom"
 • **Episodes** — summaries of past conversations
-• **Facts** — preferences, habits, goals, relationships
 • **Follow-ups** — things you said you'd do
 
 **Examples**
-  what did we talk about the budget
-  I prefer morning meetings
+  I am a morning person
+  I prefer short meetings
   remember that I like tea not coffee
+  my wife Sarah is a doctor
   what do you know about me
+  what did we talk about the budget
 
 **.env Settings**
-  DATABASE_PATH=./database         Memory stored in database/memory/
+  DATABASE_PATH=./database         Context stored in database/memory/
 
 **Related: Presence** (see help presence)
-Memory feeds the Presence system, which surfaces relevant context:
+Personal Context feeds the Presence system, which surfaces relevant info:
   PRESENCE_STARTUP=true            Show follow-ups at startup
   PRESENCE_CONTEXTUAL=true         Surface related context during chat
 
 **Tips**
+• Just talk naturally — "I'm a vegetarian", "I hate mornings"
 • Pending follow-ups appear at startup
-• Say "my wife Sarah" and Bartleby remembers the relationship
-• Preferences affect how Bartleby helps you
+• Say "my sister Sarah" and Bartleby remembers the relationship
 • Your profile grows over time from conversations
 `.trim();
 
@@ -311,10 +319,10 @@ Presence controls when Bartleby speaks unprompted.
 
 **What Gets Surfaced**
 • Today's events (from Calendar)
-• Pending follow-ups (from Memory)
+• Pending follow-ups (from Personal Context)
 • Stale inbox items (from GTD)
 • Overdue tasks (from GTD)
-• Last conversation summary (from Memory)
+• Last conversation summary (from Personal Context)
 `.trim();
 
 const HELP_LLM = `
@@ -392,9 +400,11 @@ const HELP_SECTIONS: Record<string, string> = {
   events: HELP_CALENDAR,
   contacts: HELP_CONTACTS,
   people: HELP_CONTACTS,
-  memory: HELP_MEMORY,
-  remember: HELP_MEMORY,
-  context: HELP_MEMORY,
+  memory: HELP_PERSONAL_CONTEXT,
+  remember: HELP_PERSONAL_CONTEXT,
+  context: HELP_PERSONAL_CONTEXT,
+  'personal context': HELP_PERSONAL_CONTEXT,
+  profile: HELP_PERSONAL_CONTEXT,
   shed: HELP_SHED,
   documents: HELP_SHED,
   docs: HELP_SHED,
@@ -480,7 +490,7 @@ export const status: Tool = {
 **Data**
   Tasks: ${tasks.length} active (${inbox.length} in inbox)
   Events today: ${todayEvents.length}
-  Memory: ${episodes} conversation(s)
+  Personal Context: ${episodes} conversation(s)
   Shed: ${sources.length} document(s)
 
 **LLM**
