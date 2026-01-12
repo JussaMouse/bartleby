@@ -6,7 +6,7 @@ import { Tool } from './types.js';
 const HELP_OVERVIEW = `
 **Bartleby Commands**
 
-Type \`help <topic>\` for details on any section.
+Type \`help <topic>\` for details and .env settings.
 
 **GTD** — Task management (help gtd)
 **Calendar** — Events & scheduling (help calendar)
@@ -14,7 +14,10 @@ Type \`help <topic>\` for details on any section.
 **Memory** — What Bartleby remembers (help memory)
 **Shed** — Document library (help shed)
 **Reminders** — Scheduled notifications (help reminders)
-**Settings** — Configuration (help settings)
+**Presence** — Proactive behaviors (help presence)
+**LLM** — Model configuration (help llm)
+**Weather** — Current conditions (help weather)
+**Settings** — All configuration (help settings)
 **System** — status, quit
 `.trim();
 
@@ -43,6 +46,9 @@ Bartleby implements David Allen's GTD methodology.
   capture remember to check on the budget
   done 3
   done buy milk
+
+**.env Settings**
+  GARDEN_PATH=./garden    Where task markdown files are stored
 
 **Tips**
 • Process your inbox regularly — items waiting > 2 days appear at startup
@@ -78,12 +84,14 @@ Manage your schedule with natural language.
   2pm, 2:30pm, 14:00, noon, midnight
   tomorrow, monday, wed, next friday
 
-**Settings** (via "change calendar settings")
-  • Timezone — detected automatically, confirm or change
-  • Default duration — 30m, 1h, or 90m
-  • Ambiguous times — when you say "3" without am/pm
-  • Week starts — Sunday or Monday
-  • Reminders — Signal notification before events
+**.env Settings**
+  CALENDAR_TIMEZONE=America/Los_Angeles   Your timezone
+  CALENDAR_DEFAULT_DURATION=60            Event length in minutes
+  CALENDAR_AMBIGUOUS_TIME=afternoon       morning|afternoon|ask
+  CALENDAR_WEEK_START=sunday              sunday|monday
+  CALENDAR_REMINDER_MINUTES=15            0=off, or minutes before
+
+Use "change calendar settings" for guided setup, or edit .env directly.
 
 **Tips**
 • Bartleby shows today's events at startup
@@ -109,6 +117,9 @@ Store and search contact information.
   add contact Dr. Smith, phone 555-0123
   find sarah
   find @example.com
+
+**.env Settings**
+  GARDEN_PATH=./garden    Contacts are stored as markdown in garden/
 
 **Tips**
 • Contacts are stored in your Garden as markdown files
@@ -137,6 +148,14 @@ Bartleby remembers your conversations and learns about you.
   I prefer morning meetings
   remember that I like tea not coffee
   what do you know about me
+
+**.env Settings**
+  DATABASE_PATH=./database         Memory stored in database/memory/
+
+**Related: Presence** (see help presence)
+Memory feeds the Presence system, which surfaces relevant context:
+  PRESENCE_STARTUP=true            Show follow-ups at startup
+  PRESENCE_CONTEXTUAL=true         Surface related context during chat
 
 **Tips**
 • Pending follow-ups appear at startup
@@ -171,6 +190,12 @@ Ingest documents and query them with semantic search (RAG).
 3. Your question is matched to relevant chunks
 4. Bartleby synthesizes an answer from the context
 
+**.env Settings**
+  SHED_PATH=./shed                Where documents are stored
+  EMBEDDINGS_MODEL=...            Model for vector embeddings
+  EMBEDDINGS_URL=...              Embedding API endpoint
+  EMBEDDINGS_DIMENSIONS=4096      Vector dimensions
+
 **Tips**
 • Ingest meeting notes, articles, documentation, contracts
 • More specific questions get better answers
@@ -203,14 +228,21 @@ Set one-time or recurring reminders.
   show reminders
   cancel reminder 2
 
-**Notifications**
-• Console: Always shown in terminal
-• Signal: If configured, sends to your phone
+**.env Settings**
+  SCHEDULER_ENABLED=true          Enable/disable reminder system
+  SCHEDULER_CHECK_INTERVAL=60000  How often to check (ms)
+
+**Signal Notifications** (optional)
+  SIGNAL_ENABLED=true             Enable mobile notifications
+  SIGNAL_CLI_PATH=/usr/local/bin/signal-cli
+  SIGNAL_NUMBER=+1234567890       Your Signal number
+  SIGNAL_RECIPIENT=+0987654321    Who receives notifications
 
 **Tips**
+• Console: Reminders always show in terminal
+• Signal: If configured, also sends to your phone
 • Calendar events can auto-schedule reminders (see help calendar)
 • Daily reminders repeat until cancelled
-• Check "show reminders" to see what's pending
 `.trim();
 
 const HELP_SETTINGS = `
@@ -225,25 +257,132 @@ Instead of editing .env directly, talk to Bartleby:
 
 Bartleby asks questions, then outputs the .env values to copy.
 
-**Manual Configuration**
-Edit \`.env\` directly for:
-  • LLM model endpoints
-  • File paths
-  • Signal notifications
-  • Weather API
+**All .env Sections**
 
-**Current Config Sections**
-  LLM — Model URLs for router/fast/thinking/embeddings
-  Paths — garden/, shed/, database/, logs/
-  Calendar — timezone, duration, reminders
-  Presence — startup/shutdown messages, scheduled moments
-  Signal — Mobile notifications
-  Weather — OpenWeatherMap API
+*LLM Models* — see help llm
+  ROUTER_MODEL, ROUTER_URL, ROUTER_MAX_TOKENS
+  FAST_MODEL, FAST_URL, FAST_MAX_TOKENS
+  THINKING_MODEL, THINKING_URL, THINKING_MAX_TOKENS
+  EMBEDDINGS_MODEL, EMBEDDINGS_URL, EMBEDDINGS_DIMENSIONS
+
+*Paths*
+  GARDEN_PATH=./garden
+  SHED_PATH=./shed
+  DATABASE_PATH=./database
+  LOG_DIR=./logs
+
+*Calendar* — see help calendar
+*Presence* — see help presence
+*Reminders/Signal* — see help reminders
+*Weather* — see help weather
 
 **Tips**
 • After editing .env, restart Bartleby to apply changes
 • "status" shows which LLM tiers are connected
-• Calendar/Presence settings have conversational setup
+• Use "help <topic>" for settings specific to each area
+`.trim();
+
+const HELP_PRESENCE = `
+**Presence — Bartleby's Initiative Layer**
+
+Presence controls when Bartleby speaks unprompted.
+
+**Moments**
+• **Startup** — Context shown when you start Bartleby
+• **Shutdown** — Shown before you quit (tomorrow preview)
+• **Morning** — Scheduled morning review
+• **Evening** — Scheduled evening wind-down
+• **Weekly** — Scheduled weekly review
+• **Contextual** — Related info surfaced during conversation
+
+**.env Settings**
+  PRESENCE_STARTUP=true           Show opener at startup
+  PRESENCE_SHUTDOWN=true          Show tomorrow preview at quit
+  PRESENCE_SCHEDULED=true         Enable morning/evening/weekly
+  PRESENCE_CONTEXTUAL=true        Surface related follow-ups
+  PRESENCE_IDLE=false             Nudge after idle period
+  PRESENCE_IDLE_MINUTES=5         How long before idle nudge
+
+**Scheduled Moment Times** (24h format)
+  PRESENCE_MORNING_HOUR=8         Morning review hour
+  PRESENCE_EVENING_HOUR=18        Evening wind-down hour
+  PRESENCE_WEEKLY_DAY=0           Day for weekly (0=Sunday)
+  PRESENCE_WEEKLY_HOUR=9          Weekly review hour
+
+**What Gets Surfaced**
+• Today's events (from Calendar)
+• Pending follow-ups (from Memory)
+• Stale inbox items (from GTD)
+• Overdue tasks (from GTD)
+• Last conversation summary (from Memory)
+`.trim();
+
+const HELP_LLM = `
+**LLM — Language Model Configuration**
+
+Bartleby uses a 4-tier model system for different tasks.
+
+**Tiers**
+  Router    0.5-1B    Classifies SIMPLE vs COMPLEX (~50ms)
+  Fast      7-30B     Simple queries, single tool calls (~500ms)
+  Thinking  30B+      Multi-step reasoning, code (2-10s)
+  Embed     ~1B       Text to vectors for semantic search (~100ms)
+
+**.env Settings**
+
+*Router Tier* — Complexity classification
+  ROUTER_MODEL=mlx-community/Qwen3-0.6B-4bit
+  ROUTER_URL=http://127.0.0.1:8080/v1
+  ROUTER_MAX_TOKENS=100
+
+*Fast Tier* — Simple queries
+  FAST_MODEL=mlx-community/Qwen3-30B-A3B-4bit
+  FAST_URL=http://127.0.0.1:8081/v1
+  FAST_MAX_TOKENS=4096
+
+*Thinking Tier* — Complex reasoning
+  THINKING_MODEL=mlx-community/Qwen3-30B-A3B-Thinking-2507-4bit
+  THINKING_URL=http://127.0.0.1:8083/v1
+  THINKING_MAX_TOKENS=8192
+  THINKING_BUDGET=4096
+
+*Embeddings* — Semantic search
+  EMBEDDINGS_MODEL=Qwen/Qwen3-Embedding-8B
+  EMBEDDINGS_URL=http://127.0.0.1:8084/v1
+  EMBEDDINGS_DIMENSIONS=4096
+
+*Other*
+  HEALTH_TIMEOUT=35000            Connection timeout (ms)
+  AGENT_MAX_ITERATIONS=10         Max steps in agentic loop
+
+**Tips**
+• Run "status" to see which tiers are connected
+• Most requests use deterministic routing, not LLM
+• Increase HEALTH_TIMEOUT for slow model cold starts
+`.trim();
+
+const HELP_WEATHER = `
+**Weather — Current Conditions**
+
+Get weather info (requires OpenWeatherMap API key).
+
+**Commands**
+  weather                 Show current weather
+
+**.env Settings**
+  WEATHER_CITY=Seattle            City name
+  WEATHER_UNITS=F                 C or F
+  OPENWEATHERMAP_API_KEY=...      API key from openweathermap.org
+
+**Setup**
+1. Get free API key at openweathermap.org
+2. Add to .env: OPENWEATHERMAP_API_KEY=your-key
+3. Set WEATHER_CITY=YourCity
+4. Restart Bartleby
+
+**Tips**
+• Weather is optional — Bartleby works without it
+• Free tier allows ~60 requests/minute
 `.trim();
 
 const HELP_SECTIONS: Record<string, string> = {
@@ -263,6 +402,13 @@ const HELP_SECTIONS: Record<string, string> = {
   reminders: HELP_REMINDERS,
   reminder: HELP_REMINDERS,
   schedule: HELP_REMINDERS,
+  presence: HELP_PRESENCE,
+  proactive: HELP_PRESENCE,
+  initiative: HELP_PRESENCE,
+  llm: HELP_LLM,
+  models: HELP_LLM,
+  ai: HELP_LLM,
+  weather: HELP_WEATHER,
   settings: HELP_SETTINGS,
   config: HELP_SETTINGS,
   configuration: HELP_SETTINGS,
