@@ -10,8 +10,8 @@ export const scheduleReminder: Tool = {
       /^remind\s+me\s+(.+?)\s+(at|on|in)\s+(.+)$/i,
       /^set\s+reminder\s+(.+?)\s+(for|at|on|in)\s+(.+)$/i,
       /^schedule\s+reminder\s+(.+)$/i,
-      /^send\s+me\s+a?\s*message\s+in\s+(.+?)\s+['"](.+)['"]$/i,  // "send me a message in 2 minutes 'hey'"
-      /^message\s+me\s+in\s+(.+?)\s+['"]?(.+?)['"]?$/i,  // "message me in 5 min 'test'"
+      /^send\s+me\s+a?\s*(?:message|msg)\s+in\s+(.+?)\s+['"](.+)['"]$/i,  // "send me a message/msg in 2 minutes 'hey'"
+      /^(?:message|msg)\s+me\s+in\s+(.+?)\s+['"]?(.+?)['"]?$/i,  // "message/msg me in 5 min 'test'"
     ],
     keywords: {
       verbs: ['remind', 'schedule', 'set', 'send', 'message'],
@@ -70,9 +70,9 @@ export const scheduleReminder: Tool = {
 
   execute: async (args, context) => {
     // Handle both message/when and text/time (LLM may use either)
-    const rawArgs = args as { message?: string; text?: string; when?: string; time?: string };
-    const message = rawArgs.message || rawArgs.text || '';
-    let when = rawArgs.when || rawArgs.time || '';
+    const rawArgs = args as Record<string, unknown>;
+    const message = (rawArgs.message || rawArgs.text || '') as string;
+    let when = (rawArgs.when || rawArgs.time || '') as string;
 
     if (!message) {
       return 'Please provide a reminder message. Example: remind me to call dentist at 3pm';
@@ -81,6 +81,11 @@ export const scheduleReminder: Tool = {
     // If 'when' is a relative string like "in 2 minutes", parse it
     if (when && !when.includes('T')) {
       when = parseTimeString(when).toISOString();
+    }
+    
+    // If still no when, default to 1 hour
+    if (!when) {
+      when = parseTimeString('in 1 hour').toISOString();
     }
 
     const task = context.services.scheduler.scheduleReminder(message, when);
