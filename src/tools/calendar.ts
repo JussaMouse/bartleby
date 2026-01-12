@@ -457,6 +457,33 @@ When you say "meeting at 3" without am/pm, should I:
     case 4: // Week start
       data.weekStart = (input.includes('mon')) ? 'monday' : 'sunday';
       context.services.memory.setFact('system', 'calendar_setup_data', data, { source: 'explicit' });
+      
+      // Check if Signal is configured
+      const signalConfig = context.services.config.signal;
+      const signalReady = signalConfig.enabled && signalConfig.number && signalConfig.recipient;
+      
+      if (!signalReady) {
+        // Skip reminder step - Signal not configured
+        data.reminder = 'none';
+        context.services.memory.setFact('system', 'calendar_setup_data', data, { source: 'explicit' });
+        return `
+✓ Week starts: ${data.weekStart}
+
+📅 **Calendar Setup** (5/5)
+
+**Event reminders**
+Signal notifications are not configured yet.
+
+To enable reminders, add to .env:
+  SIGNAL_ENABLED=true
+  SIGNAL_CLI_PATH=/path/to/signal-cli
+  SIGNAL_NUMBER=+1234567890
+  SIGNAL_RECIPIENT=+0987654321
+
+For now, setting reminders to **off**.
+` + completeSetup(context, data as unknown as SetupData);
+      }
+      
       context.services.memory.setFact('system', 'calendar_setup_step', 5, { source: 'explicit' });
       return `
 ✓ Week starts: ${data.weekStart}
