@@ -187,45 +187,31 @@ export const addEvent: Tool = {
 
     let response = `✓ Created: ${event.title}\n  ${dateStr} at ${timeStr}`;
 
-    // First-time onboarding - start the setup flow
+    // First-time onboarding - start the step-by-step setup flow
     if (isFirstEvent) {
-      // Don't mark as onboarded yet - that happens after setup completes
-      context.services.memory.setFact('system', 'calendar_setup_pending', true, { source: 'explicit' });
-      
-      // Detect timezone
       const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
       const tzOffset = new Date().getTimezoneOffset();
       const tzHours = Math.abs(Math.floor(tzOffset / 60));
       const tzSign = tzOffset <= 0 ? '+' : '-';
+      
+      // Initialize setup state
+      context.services.memory.setFact('system', 'calendar_setup_step', 1, { source: 'explicit' });
+      context.services.memory.setFact('system', 'calendar_setup_data', {}, { source: 'explicit' });
+      context.services.memory.setFact('system', 'calendar_setup_pending', true, { source: 'explicit' });
       
       response += `
 
 ───────────────────────────────────────────
 📅 **Welcome to Bartleby's Calendar!**
 
-Let me ask a few quick questions to set things up.
+Let me set things up for you. Just answer each question.
+(Or type "defaults" to skip with standard settings)
 
-**1. Timezone**
-   Detected: ${tz} (UTC${tzSign}${tzHours})
-   Is this correct? [yes / or tell me your timezone]
+**Setup (1/5) - Timezone**
+I detected: **${tz}** (UTC${tzSign}${tzHours})
 
-**2. Default event duration**
-   How long are your typical meetings?
-   [30m / 1h / 90m]
-
-**3. Ambiguous times**
-   When you say "3" without am/pm, assume:
-   [morning / afternoon]
-
-**4. Week starts on**
-   [Sunday / Monday]
-
-**5. Event reminders via Signal**
-   Send a notification before events?
-   [no / 15m / 30m / 1h]
-
-Reply like: "yes, 1h, afternoon, Monday, 15m"
-Or just "defaults" to accept: 1h, afternoon, Sunday, no reminders
+Is this correct?
+→ **yes** or type your timezone
 ───────────────────────────────────────────`;
     }
 
@@ -239,172 +225,205 @@ export const calendarSetup: Tool = {
 
   routing: {
     patterns: [
-      /^(yes|no|defaults?),?\s/i,
-      /^(30m|1h|90m|morning|afternoon|sunday|monday|15m|30m),?\s/i,
       /^change\s+calendar\s+settings?$/i,
       /^calendar\s+settings?$/i,
       /^setup\s+calendar$/i,
+      // Catch simple responses during setup
+      /^(yes|no|correct|y|n)$/i,
+      /^(30m?|1h|60m?|90m?)$/i,
+      /^(morning|afternoon|am|pm)$/i,
+      /^(sunday|monday|sun|mon)$/i,
+      /^(15m?|30m?|none|off)$/i,
+      /^defaults?$/i,
     ],
     keywords: {
       verbs: ['change', 'setup', 'configure'],
       nouns: ['calendar settings', 'calendar setup'],
     },
-    priority: 100, // High priority to catch setup responses
+    priority: 100,
   },
 
-  parseArgs: (input) => {
-    const lower = input.toLowerCase().trim();
+  execute: async (args, context) => {
+    const input = context.input.toLowerCase().trim();
     
-    // Check if this is "change settings" request
-    if (lower.includes('change') || lower.includes('setup') || lower.includes('settings')) {
-      return { action: 'start' };
+    // Get current setup state
+    const setupStep = context.services.memory.getFact('system', 'calendar_setup_step');
+    const currentStep = (setupStep?.value as number) || 0;
+    
+    // Check if this is "change settings" request to start fresh
+    if (input.includes('change') || input.includes('setup') || input.includes('settings')) {
+      return startSetup(context);
     }
     
-    // Check for defaults
-    if (lower === 'defaults' || lower === 'default') {
-      return {
-        action: 'complete',
-        timezone: 'auto',
+    // Handle "defaults" - skip to end with defaults
+    if (input === 'defaults' || input === 'default') {
+      return completeSetup(context, {
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
         duration: 60,
         ambiguousTime: 'afternoon',
         weekStart: 'sunday',
         reminder: 'none',
-      };
+      });
     }
     
-    // Parse comma-separated answers
-    const parts = lower.split(/[,\s]+/).filter(p => p.length > 0);
-    
-    let timezone = 'auto';
-    let duration = 60;
-    let ambiguousTime = 'afternoon';
-    let weekStart = 'sunday';
-    let reminder = 'none';
-    
-    for (const part of parts) {
-      // Timezone confirmation
-      if (part === 'yes' || part === 'correct') timezone = 'auto';
-      
-      // Duration
-      if (part === '30m' || part === '30') duration = 30;
-      if (part === '1h' || part === '60' || part === '60m') duration = 60;
-      if (part === '90m' || part === '90') duration = 90;
-      
-      // Ambiguous time
-      if (part === 'morning' || part === 'am') ambiguousTime = 'morning';
-      if (part === 'afternoon' || part === 'pm') ambiguousTime = 'afternoon';
-      
-      // Week start
-      if (part === 'sunday' || part === 'sun') weekStart = 'sunday';
-      if (part === 'monday' || part === 'mon') weekStart = 'monday';
-      
-      // Reminder
-      if (part === 'no' || part === 'none' || part === 'off') reminder = 'none';
-      if (part === '15m' || part === '15') reminder = '15';
-      if (part === '30m' && !lower.includes('duration')) reminder = '30'; // Avoid confusion with duration
-      if (part === '1h' && lower.includes('remind')) reminder = '60';
-    }
-    
-    return {
-      action: 'complete',
-      timezone,
-      duration,
-      ambiguousTime,
-      weekStart,
-      reminder,
-    };
-  },
-
-  execute: async (args, context) => {
-    const { action, timezone, duration, ambiguousTime, weekStart, reminder } = args as {
-      action: string;
-      timezone?: string;
-      duration?: number;
-      ambiguousTime?: string;
-      weekStart?: string;
-      reminder?: string;
-    };
-
-    // Check if setup is pending
-    const setupPending = context.services.memory.getFact('system', 'calendar_setup_pending');
-    
-    // "change settings" command - show the setup prompt
-    if (action === 'start') {
-      const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
-      const tzOffset = new Date().getTimezoneOffset();
-      const tzHours = Math.abs(Math.floor(tzOffset / 60));
-      const tzSign = tzOffset <= 0 ? '+' : '-';
-      
-      context.services.memory.setFact('system', 'calendar_setup_pending', true, { source: 'explicit' });
-      
-      return `
-📅 **Calendar Settings**
-
-**1. Timezone**
-   Detected: ${tz} (UTC${tzSign}${tzHours})
-   Is this correct? [yes / or tell me your timezone]
-
-**2. Default event duration**
-   [30m / 1h / 90m]
-
-**3. Ambiguous times (when you say "3" without am/pm)**
-   [morning / afternoon]
-
-**4. Week starts on**
-   [Sunday / Monday]
-
-**5. Event reminders via Signal**
-   [no / 15m / 30m / 1h]
-
-Reply like: "yes, 1h, afternoon, Monday, 15m"
-Or just "defaults" to accept current settings.`;
-    }
-
-    // Not in setup mode and not a settings command
-    if (!setupPending) {
+    // Not in setup mode
+    if (currentStep === 0) {
       return "I'm not sure what you mean. Try 'change calendar settings' to configure your calendar.";
     }
+    
+    // Process answer for current step and advance
+    return processSetupStep(context, currentStep, input);
+  },
+};
 
-    // Complete the setup
-    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
-    
-    // Store preferences in memory
-    context.services.memory.setFact('preference', 'event_duration', duration, { source: 'explicit' });
-    context.services.memory.setFact('preference', 'ambiguous_time', ambiguousTime, { source: 'explicit' });
-    context.services.memory.setFact('preference', 'week_start', weekStart, { source: 'explicit' });
-    context.services.memory.setFact('preference', 'event_reminder', reminder, { source: 'explicit' });
-    
-    // Mark setup as complete
-    context.services.memory.setFact('system', 'calendar_setup_pending', false, { source: 'explicit' });
-    context.services.memory.setFact('system', 'calendar_onboarded', true, { source: 'explicit' });
+// Helper functions for setup flow
+function startSetup(context: import('./types.js').ToolContext): string {
+  const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const tzOffset = new Date().getTimezoneOffset();
+  const tzHours = Math.abs(Math.floor(tzOffset / 60));
+  const tzSign = tzOffset <= 0 ? '+' : '-';
+  
+  // Initialize setup state
+  context.services.memory.setFact('system', 'calendar_setup_step', 1, { source: 'explicit' });
+  context.services.memory.setFact('system', 'calendar_setup_data', {}, { source: 'explicit' });
+  
+  return `
+📅 **Calendar Setup** (1/5)
 
-    // Build .env output
-    const reminderVal = reminder || 'none';
-    
-    return `
+**Timezone**
+I detected: **${tz}** (UTC${tzSign}${tzHours})
+
+Is this correct?
+→ **yes** or type your timezone`;
+}
+
+function processSetupStep(context: import('./types.js').ToolContext, step: number, input: string): string {
+  // Get accumulated data
+  const dataFact = context.services.memory.getFact('system', 'calendar_setup_data');
+  const data = (dataFact?.value as Record<string, unknown>) || {};
+  
+  const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  
+  switch (step) {
+    case 1: // Timezone
+      data.timezone = (input === 'yes' || input === 'y' || input === 'correct') ? tz : input;
+      context.services.memory.setFact('system', 'calendar_setup_data', data, { source: 'explicit' });
+      context.services.memory.setFact('system', 'calendar_setup_step', 2, { source: 'explicit' });
+      return `
+✓ Timezone: ${data.timezone}
+
+📅 **Calendar Setup** (2/5)
+
+**Default event duration**
+How long are your typical meetings?
+
+→ **30m** / **1h** / **90m**`;
+
+    case 2: // Duration
+      if (input.includes('30')) data.duration = 30;
+      else if (input.includes('90')) data.duration = 90;
+      else data.duration = 60;
+      
+      context.services.memory.setFact('system', 'calendar_setup_data', data, { source: 'explicit' });
+      context.services.memory.setFact('system', 'calendar_setup_step', 3, { source: 'explicit' });
+      return `
+✓ Duration: ${data.duration} minutes
+
+📅 **Calendar Setup** (3/5)
+
+**Ambiguous times**
+When you say "meeting at 3" without am/pm, should I assume:
+
+→ **morning** or **afternoon**`;
+
+    case 3: // Ambiguous time
+      data.ambiguousTime = (input.includes('morning') || input === 'am') ? 'morning' : 'afternoon';
+      context.services.memory.setFact('system', 'calendar_setup_data', data, { source: 'explicit' });
+      context.services.memory.setFact('system', 'calendar_setup_step', 4, { source: 'explicit' });
+      return `
+✓ Ambiguous times: ${data.ambiguousTime}
+
+📅 **Calendar Setup** (4/5)
+
+**Week starts on**
+
+→ **Sunday** or **Monday**`;
+
+    case 4: // Week start
+      data.weekStart = (input.includes('mon')) ? 'monday' : 'sunday';
+      context.services.memory.setFact('system', 'calendar_setup_data', data, { source: 'explicit' });
+      context.services.memory.setFact('system', 'calendar_setup_step', 5, { source: 'explicit' });
+      return `
+✓ Week starts: ${data.weekStart}
+
+📅 **Calendar Setup** (5/5)
+
+**Event reminders**
+Send a Signal notification before events start?
+
+→ **no** / **15m** / **30m** / **1h**`;
+
+    case 5: // Reminder
+      if (input.includes('15')) data.reminder = '15';
+      else if (input.includes('30')) data.reminder = '30';
+      else if (input.includes('1h') || input.includes('60')) data.reminder = '60';
+      else data.reminder = 'none';
+      
+      return completeSetup(context, data as unknown as SetupData);
+
+    default:
+      return startSetup(context);
+  }
+}
+
+interface SetupData {
+  timezone: string;
+  duration: number;
+  ambiguousTime: string;
+  weekStart: string;
+  reminder: string;
+}
+
+function completeSetup(context: import('./types.js').ToolContext, data: SetupData): string {
+  const { timezone, duration, ambiguousTime, weekStart, reminder } = data;
+  
+  // Store preferences in memory
+  context.services.memory.setFact('preference', 'timezone', timezone, { source: 'explicit' });
+  context.services.memory.setFact('preference', 'event_duration', duration, { source: 'explicit' });
+  context.services.memory.setFact('preference', 'ambiguous_time', ambiguousTime, { source: 'explicit' });
+  context.services.memory.setFact('preference', 'week_start', weekStart, { source: 'explicit' });
+  context.services.memory.setFact('preference', 'event_reminder', reminder, { source: 'explicit' });
+  
+  // Clear setup state
+  context.services.memory.setFact('system', 'calendar_setup_step', 0, { source: 'explicit' });
+  context.services.memory.setFact('system', 'calendar_setup_pending', false, { source: 'explicit' });
+  context.services.memory.setFact('system', 'calendar_onboarded', true, { source: 'explicit' });
+
+  const reminderDisplay = reminder === 'none' ? 'off' : reminder + ' before';
+  
+  return `
 ✓ **Calendar configured!**
 
 Your settings:
-• Timezone: ${tz}
-• Default duration: ${duration || 60} minutes
-• Ambiguous times: ${ambiguousTime || 'afternoon'}
-• Week starts: ${weekStart || 'sunday'}
-• Reminders: ${reminderVal === 'none' ? 'off' : reminderVal + ' before'}
+• Timezone: ${timezone}
+• Default duration: ${duration} minutes
+• Ambiguous times: ${ambiguousTime}
+• Week starts: ${weekStart}
+• Reminders: ${reminderDisplay}
 
 ───────────────────────────────────────────
 **Copy to .env (optional):**
 
 # Calendar Preferences
-CALENDAR_TIMEZONE=${tz}
-CALENDAR_DEFAULT_DURATION=${duration || 60}
-CALENDAR_AMBIGUOUS_TIME=${ambiguousTime || 'afternoon'}
-CALENDAR_WEEK_START=${weekStart || 'sunday'}
-CALENDAR_REMINDER_MINUTES=${reminderVal === 'none' ? '0' : reminderVal}
-SIGNAL_ENABLED=${reminderVal !== 'none' ? 'true' : 'false'}
+CALENDAR_TIMEZONE=${timezone}
+CALENDAR_DEFAULT_DURATION=${duration}
+CALENDAR_AMBIGUOUS_TIME=${ambiguousTime}
+CALENDAR_WEEK_START=${weekStart}
+CALENDAR_REMINDER_MINUTES=${reminder === 'none' ? '0' : reminder}
+SIGNAL_ENABLED=${reminder !== 'none' ? 'true' : 'false'}
 ───────────────────────────────────────────
 
-These are saved to my memory. Add to .env for persistence across reinstalls.`;
-  },
-};
+Settings saved! You can change these anytime with "change calendar settings".`;
+}
 
 export const calendarTools: Tool[] = [showCalendar, showToday, addEvent, calendarSetup];
