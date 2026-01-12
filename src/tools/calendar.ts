@@ -89,18 +89,18 @@ export const addEvent: Tool = {
   },
 
   parseArgs: (input) => {
-    let title = input.replace(/^(add\s+event|schedule)\s*/i, '');
     let startTime = new Date();
-
     const lower = input.toLowerCase();
 
     // Check for "tomorrow"
     if (lower.includes('tomorrow')) {
       startTime.setDate(startTime.getDate() + 1);
-      title = title.replace(/\s*tomorrow\s*/i, ' ');
     }
 
-    // Check for time like "at 3pm"
+    // Check for "today" (explicit, not needed but helps parsing)
+    // Already defaults to today
+
+    // Extract time: "at 10:30 am", "at 3pm", "at 15:00"
     const timeMatch = lower.match(/at\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)?/i);
     if (timeMatch) {
       let hour = parseInt(timeMatch[1]);
@@ -109,12 +109,30 @@ export const addEvent: Tool = {
 
       if (ampm === 'pm' && hour < 12) hour += 12;
       if (ampm === 'am' && hour === 12) hour = 0;
+      // Handle 24-hour format (no am/pm)
+      if (!ampm && hour < 24) {
+        // Assume PM for hours 1-6 without am/pm
+        if (hour >= 1 && hour <= 6) hour += 12;
+      }
 
       startTime.setHours(hour, minute, 0, 0);
-      title = title.replace(/\s*at\s+\d{1,2}(?::\d{2})?\s*(am|pm)?/i, '');
     }
 
-    title = title.replace(/\s+(on|for)\s*/i, ' ').trim();
+    // Extract title - more robust parsing
+    // Remove command prefix
+    let title = input
+      .replace(/^(add\s+event|create\s+event|schedule)\s*/i, '')
+      // Remove "today" and "tomorrow"
+      .replace(/\b(today|tomorrow)\b/gi, '')
+      // Remove time expressions
+      .replace(/\bat\s+\d{1,2}(?::\d{2})?\s*(am|pm)?\b/gi, '')
+      // Remove prepositions
+      .replace(/\b(on|for)\b/gi, '')
+      // Stop at sentence boundary - only take first sentence/clause
+      .split(/[.!?]|,\s*(and|then|also)\s+/i)[0]
+      // Clean up extra whitespace
+      .replace(/\s+/g, ' ')
+      .trim();
 
     const endTime = new Date(startTime);
     endTime.setHours(endTime.getHours() + 1);

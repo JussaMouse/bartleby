@@ -5,6 +5,7 @@ import { allTools, getToolByName, getToolDescriptions } from '../tools/index.js'
 import { Tool, ToolContext } from '../tools/types.js';
 import { buildSimplePrompt, buildComplexPrompt } from './prompts.js';
 import { debug, warn, info, error } from '../utils/logger.js';
+import { cleanLLMOutput } from '../utils/llm.js';
 
 export class Agent {
   private services: ServiceContainer;
@@ -27,10 +28,13 @@ export class Agent {
     const systemPrompt = buildSimplePrompt(tools, profile, contextStr);
 
     try {
-      const response = await this.services.llm.chat([
+      const rawResponse = await this.services.llm.chat([
         { role: 'system', content: systemPrompt },
         { role: 'user', content: input },
       ], { tier: 'fast' });
+
+      // Clean thinking tags and special tokens
+      const response = cleanLLMOutput(rawResponse);
 
       // Parse for tool call (text-based format for simple model)
       const toolMatch = response.match(/TOOL:\s*(\w+)/i);
@@ -58,7 +62,7 @@ export class Agent {
         }
       }
 
-      // No tool call - return conversational response
+      // No tool call - return conversational response (already cleaned)
       return response
         .replace(/TOOL:.*$/gim, '')
         .replace(/ARGS:.*$/gim, '')
@@ -140,7 +144,7 @@ export class Agent {
           }
         } else {
           // No tool calls - model is done, return final response
-          const finalResponse = response.content || "I've completed the task.";
+          const finalResponse = cleanLLMOutput(response.content || "I've completed the task.");
           info('Agentic loop complete', { iterations: iteration + 1 });
           return finalResponse;
         }
