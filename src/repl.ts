@@ -155,6 +155,10 @@ async function handleMissedReminders(
   services: ServiceContainer
 ): Promise<void> {
   const missed = services.scheduler.getMissedReminders();
+  debug('Checking for missed reminders', { 
+    count: missed.length, 
+    config: services.config.scheduler.missedReminders 
+  });
   if (missed.length === 0) return;
 
   let behavior = services.config.scheduler.missedReminders;
