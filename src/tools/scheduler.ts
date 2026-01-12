@@ -42,8 +42,8 @@ export const scheduleReminder: Tool = {
     let message = '';
     let when = '';
 
-    // Pattern: "send me a message in <time> '<message>'"
-    const sendMatch = input.match(/^(?:send\s+me\s+a?\s*message|message\s+me)\s+in\s+(.+?)\s+['"](.+)['"]$/i);
+    // Pattern: "send me a message/msg in <time> '<message>'"
+    const sendMatch = input.match(/^(?:send\s+me\s+a?\s*(?:message|msg)|(?:message|msg)\s+me)\s+in\s+(.+?)\s+['"](.+)['"]$/i);
     if (sendMatch) {
       when = sendMatch[1].trim();
       message = sendMatch[2].trim();
