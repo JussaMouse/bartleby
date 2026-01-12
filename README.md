@@ -55,9 +55,39 @@ pnpm start
 
 ## Configuration
 
-Edit `.env` to match your LLM setup:
+Bartleby uses a **conversational settings** approach. Instead of editing config files, just talk to Bartleby about what you want to change:
 
-### For Ollama (Most Common)
+```
+> change calendar settings
+```
+
+Bartleby walks you through each option one at a time, then outputs the `.env` values ready to copy:
+
+```
+✓ Calendar configured!
+
+Your settings:
+• Timezone: America/Los_Angeles
+• Default duration: 30 minutes
+• Week starts: Monday
+• Reminders: 15m before
+
+───────────────────────────────────────────
+Copy to .env (optional):
+
+CALENDAR_DEFAULT_DURATION=30
+CALENDAR_WEEK_START=monday
+CALENDAR_REMINDER_MINUTES=15
+───────────────────────────────────────────
+```
+
+Settings are saved to Bartleby's memory immediately. The `.env` output is for backup/portability—copy it if you want settings to survive a fresh install.
+
+### Initial LLM Setup
+
+The one thing you *do* need to configure manually is your LLM endpoints. Copy `.env.example` to `.env` and set your model URLs:
+
+#### For Ollama (Most Common)
 
 ```env
 # Router: Tiny model for SIMPLE/COMPLEX classification
@@ -95,7 +125,7 @@ EMBEDDINGS_URL=http://127.0.0.1:8084/v1
 EMBEDDINGS_DIMENSIONS=4096
 ```
 
-### Other Options
+### Paths & Integrations (Manual)
 
 ```env
 # Paths (defaults work for most setups)
@@ -114,6 +144,19 @@ SIGNAL_CLI_PATH=/usr/local/bin/signal-cli
 SIGNAL_NUMBER=+1234567890
 SIGNAL_RECIPIENT=+0987654321
 ```
+
+### Conversational Settings
+
+After initial setup, configure Bartleby by talking to it:
+
+| Say this... | Bartleby will... |
+|-------------|------------------|
+| `change calendar settings` | Walk through calendar preferences |
+| `I prefer 30 minute meetings` | Remember your default meeting length |
+| `my week starts on Monday` | Update week start preference |
+| `I like morning meetings` | Know "9" means 9am, not 9pm |
+
+Bartleby remembers these preferences and outputs `.env` values you can save for portability.
 
 ## Command Reference
 
