@@ -58,13 +58,16 @@ Bartleby implements David Allen's GTD methodology.
 `.trim();
 
 const HELP_CALENDAR = `
-**Calendar — Events & Scheduling**
+**Calendar — Unified Temporal View**
 
-Manage your schedule with natural language.
+The calendar shows everything time-based in one place:
+• **Events** — meetings, appointments, activities
+• **Deadlines** — task due dates from GTD
+• **Reminders** — scheduled notifications
 
 **Commands**
-  calendar                Show upcoming events
-  today                   Today's schedule
+  calendar                Show upcoming (events, deadlines, reminders)
+  today                   Today's unified schedule
   add event <details>     Create an event
   change calendar settings   Configure preferences
   reset calendar          Clear settings, restart setup
@@ -78,11 +81,19 @@ Manage your schedule with natural language.
   add event dentist at 2pm
   add event team standup 9am tomorrow
   add event lunch with Sarah at noon wednesday
-  add event quarterly review 3pm next monday
+
+**Reminders** (see "help reminders")
+  remind me to stretch in 30 min
+  send me a msg in 5 min 'time to move'
+
+**Task Due Dates** (from GTD)
+When you add a task with a due date, it appears in calendar:
+  add task finish report due friday
 
 **Time Formats**
   2pm, 2:30pm, 14:00, noon, midnight
   tomorrow, monday, wed, next friday
+  in 30 min, in 2 hours
 
 **.env Settings**
   CALENDAR_TIMEZONE=America/Los_Angeles   Your timezone
@@ -91,13 +102,10 @@ Manage your schedule with natural language.
   CALENDAR_WEEK_START=sunday              sunday|monday
   CALENDAR_REMINDER_MINUTES=15            0=off, or minutes before
 
-Use "change calendar settings" for guided setup, or edit .env directly.
-
 **Tips**
-• Bartleby shows today's events at startup
-• If you have Signal configured, set reminders for notifications
-• Say "today" anytime to see your schedule
-• Events without am/pm use your "ambiguous time" preference
+• "today" shows events, deadlines, and reminders together
+• Task due dates automatically appear in your calendar
+• Reminders from "remind me" also show in calendar view
 `.trim();
 
 const HELP_CONTACTS = `

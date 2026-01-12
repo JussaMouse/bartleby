@@ -7,6 +7,7 @@ import chokidar, { FSWatcher } from 'chokidar';
 import { Config, resolvePath, getDbPath, ensureDir } from '../config.js';
 import { parseMarkdown, generateMarkdown, sanitizeFilename } from '../utils/markdown.js';
 import { info, warn, error, debug } from '../utils/logger.js';
+import type { CalendarService } from './calendar.js';
 
 // === Types ===
 
@@ -84,6 +85,7 @@ export class GardenService {
   private gardenPath: string;
   private watcher?: FSWatcher;
   private syncing = false;
+  private calendar?: CalendarService;
 
   constructor(private config: Config) {
     const dbPath = getDbPath(config, 'garden.sqlite3');
@@ -92,6 +94,14 @@ export class GardenService {
     this.db = new Database(dbPath);
     this.db.pragma('journal_mode = WAL');
     this.gardenPath = resolvePath(config, 'garden');
+  }
+
+  /**
+   * Set the calendar service for temporal index integration.
+   * Called after both services are initialized.
+   */
+  setCalendar(calendar: CalendarService): void {
+    this.calendar = calendar;
   }
 
   async initialize(): Promise<void> {
@@ -132,6 +142,10 @@ export class GardenService {
     );
 
     this.syncToFile(record);
+    
+    // Sync temporal data to calendar
+    this.syncToCalendar(record);
+    
     return record;
   }
 
@@ -176,6 +190,10 @@ export class GardenService {
     );
 
     this.syncToFile(updated);
+    
+    // Sync temporal data to calendar (handles add/update/remove)
+    this.syncToCalendar(updated, existing);
+    
     return updated;
   }
 
@@ -190,6 +208,11 @@ export class GardenService {
       this.syncing = true;
       fs.unlinkSync(filepath);
       this.syncing = false;
+    }
+
+    // Remove from calendar temporal index
+    if (this.calendar) {
+      this.calendar.removeTemporal('garden', id);
     }
 
     return true;
@@ -479,6 +502,59 @@ export class GardenService {
       updated_at: row.updated_at,
       completed_at: row.completed_at || undefined,
     };
+  }
+
+  // === Calendar Temporal Sync ===
+
+  /**
+   * Get all tasks that have due dates (for reconciliation)
+   */
+  getTasksWithDueDates(): GardenRecord[] {
+    const rows = this.db.prepare(`
+      SELECT * FROM garden_records 
+      WHERE type = 'action' AND due_date IS NOT NULL AND status = 'active'
+      ORDER BY due_date
+    `).all() as any[];
+    return rows.map(r => this.rowToRecord(r));
+  }
+
+  /**
+   * Check if a record exists (for reconciliation)
+   */
+  exists(id: string): boolean {
+    const row = this.db.prepare('SELECT 1 FROM garden_records WHERE id = ?').get(id);
+    return !!row;
+  }
+
+  /**
+   * Sync a record's temporal data to the calendar index
+   */
+  private syncToCalendar(record: GardenRecord, previous?: GardenRecord): void {
+    if (!this.calendar) return;
+
+    const hasDueDate = !!record.due_date && record.status === 'active';
+    const hadDueDate = previous && !!previous.due_date && previous.status === 'active';
+
+    if (hasDueDate) {
+      // Has due date - register or update in calendar
+      const dueDate = new Date(record.due_date!);
+      this.calendar.registerTemporal(
+        'garden',
+        record.id,
+        dueDate,
+        'deadline',
+        record.title,
+        {
+          metadata: {
+            context: record.context,
+            project: record.project,
+          },
+        }
+      );
+    } else if (hadDueDate && !hasDueDate) {
+      // Due date was removed or task completed - remove from calendar
+      this.calendar.removeTemporal('garden', record.id);
+    }
   }
 
   close(): void {

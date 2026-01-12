@@ -70,6 +70,24 @@ export async function initServices(config: Config): Promise<ServiceContainer> {
   await shed.initialize();
   await scheduler.initialize();
 
+  // Wire up calendar to services that need temporal index
+  garden.setCalendar(calendar);
+  scheduler.setCalendar(calendar);
+
+  // Reconcile calendar temporal index with source services
+  const gardenTasks = garden.getTasksWithDueDates().map(t => ({
+    id: t.id,
+    title: t.title,
+    due_date: t.due_date!,
+  }));
+  const schedulerTasks = scheduler.list().map(t => ({
+    id: t.id,
+    actionPayload: t.actionPayload as string,
+    nextRun: t.nextRun,
+    scheduleType: t.scheduleType,
+  }));
+  await calendar.reconcile(gardenTasks, schedulerTasks);
+
   // Create Presence service (depends on context, garden, calendar)
   const presence = new PresenceService(config, context, garden, calendar);
 
@@ -110,7 +128,7 @@ export function closeServices(services: ServiceContainer): void {
 
 // Re-export types
 export { GardenService, GardenRecord, RecordType, RecordStatus, TaskFilters } from './garden.js';
-export { CalendarService, CalendarEvent } from './calendar.js';
+export { CalendarService, CalendarEntry, CalendarEvent, EntryType, SourceType } from './calendar.js';
 export { ContextService, Episode, UserFact } from './context.js';
 export { PresenceService, PresenceConfig, MomentType } from './presence.js';
 export { LLMService, Tier, Complexity } from './llm.js';

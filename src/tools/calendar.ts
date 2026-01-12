@@ -19,18 +19,48 @@ export const showCalendar: Tool = {
   },
 
   execute: async (args, context) => {
-    const events = context.services.calendar.getUpcoming(10);
+    const entries = context.services.calendar.getUpcoming(15);
 
-    if (events.length === 0) {
-      return 'No upcoming events.';
+    if (entries.length === 0) {
+      return 'Nothing scheduled.';
     }
 
-    const lines = ['**Upcoming Events**'];
-    for (const event of events) {
-      const date = new Date(event.start_time);
-      const dateStr = date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
-      const timeStr = event.all_day ? 'all day' : date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
-      lines.push(`  ${dateStr} ${timeStr} - ${event.title}`);
+    // Group by type
+    const events = entries.filter(e => e.entry_type === 'event');
+    const deadlines = entries.filter(e => e.entry_type === 'deadline');
+    const reminders = entries.filter(e => e.entry_type === 'reminder');
+
+    const lines: string[] = [];
+
+    if (events.length > 0) {
+      lines.push('**📅 Upcoming Events**');
+      for (const event of events) {
+        const date = new Date(event.start_time);
+        const dateStr = date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+        const timeStr = event.all_day ? 'all day' : date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+        lines.push(`  ${dateStr} ${timeStr} - ${event.title}`);
+      }
+    }
+
+    if (deadlines.length > 0) {
+      if (lines.length > 0) lines.push('');
+      lines.push('**⚠️ Deadlines**');
+      for (const dl of deadlines) {
+        const date = new Date(dl.start_time);
+        const dateStr = date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+        lines.push(`  ${dateStr} - ${dl.title}`);
+      }
+    }
+
+    if (reminders.length > 0) {
+      if (lines.length > 0) lines.push('');
+      lines.push('**🔔 Reminders**');
+      for (const rem of reminders) {
+        const date = new Date(rem.start_time);
+        const dateStr = date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+        const timeStr = date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+        lines.push(`  ${dateStr} ${timeStr} - ${rem.title}`);
+      }
     }
 
     return lines.join('\n');
@@ -56,17 +86,44 @@ export const showToday: Tool = {
   },
 
   execute: async (args, context) => {
-    const events = context.services.calendar.getForDay(new Date());
+    const entries = context.services.calendar.getForDay(new Date());
 
-    if (events.length === 0) {
-      return "Nothing on today's calendar.";
+    if (entries.length === 0) {
+      return "Nothing scheduled for today.";
     }
 
-    const lines = ["**Today's Schedule**"];
-    for (const event of events) {
-      const date = new Date(event.start_time);
-      const timeStr = event.all_day ? 'All day' : date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
-      lines.push(`  ${timeStr} - ${event.title}`);
+    // Group by type
+    const events = entries.filter(e => e.entry_type === 'event');
+    const deadlines = entries.filter(e => e.entry_type === 'deadline');
+    const reminders = entries.filter(e => e.entry_type === 'reminder');
+
+    const lines: string[] = ["**Today's Schedule**", ''];
+
+    if (events.length > 0) {
+      lines.push('**📅 Events**');
+      for (const event of events) {
+        const date = new Date(event.start_time);
+        const timeStr = event.all_day ? 'All day' : date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+        lines.push(`  ${timeStr} - ${event.title}`);
+      }
+    }
+
+    if (deadlines.length > 0) {
+      if (events.length > 0) lines.push('');
+      lines.push('**⚠️ Due Today**');
+      for (const dl of deadlines) {
+        lines.push(`  ${dl.title}`);
+      }
+    }
+
+    if (reminders.length > 0) {
+      if (events.length > 0 || deadlines.length > 0) lines.push('');
+      lines.push('**🔔 Reminders**');
+      for (const rem of reminders) {
+        const date = new Date(rem.start_time);
+        const timeStr = date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+        lines.push(`  ${timeStr} - ${rem.title}`);
+      }
     }
 
     return lines.join('\n');

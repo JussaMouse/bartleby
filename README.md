@@ -354,11 +354,18 @@ Bartleby learns about you over time from natural conversation.
 ┌──────────────────────────────────────────────────────────────────┐
 │                        Services                                   │
 │   ┌─────────────┐  ┌─────────────┐  ┌─────────────────────────┐  │
-│   │   Garden    │  │  Calendar   │  │      Context            │  │
-│   │  (tasks)    │  │  (events)   │  │  (memory, profile)      │  │
+│   │   Garden    │  │  Scheduler  │  │      Context            │  │
+│   │  (tasks)    │  │ (reminders) │  │  (memory, profile)      │  │
 │   └──────┬──────┘  └──────┬──────┘  └───────────┬─────────────┘  │
 │          │                │                     │                │
-│          └────────────────┼─────────────────────┘                │
+│          ▼                ▼                     │                │
+│   ┌───────────────────────────────┐            │                │
+│   │         Calendar              │            │                │
+│   │    (Temporal Index)           │            │                │
+│   │  events + deadlines +         │            │                │
+│   │  reminders unified            │            │                │
+│   └───────────────┬───────────────┘            │                │
+│                   └────────────────────────────┘                │
 │                           ▼                                      │
 │                  ┌─────────────────┐                             │
 │                  │    Presence     │  ← "What should B say?"     │
@@ -377,6 +384,34 @@ Bartleby learns about you over time from natural conversation.
 | Embeddings | 1B | Vector generation | ~100ms |
 
 Most requests hit the deterministic router (layers 1-3) and never need an LLM at all.
+
+### Calendar: Unified Temporal View
+
+The Calendar isn't just for events—it's Bartleby's **temporal index** that shows everything time-related in one place:
+
+| Type | Source | Example |
+|------|--------|---------|
+| **Event** | Calendar | "Team meeting at 3pm" |
+| **Deadline** | Garden (GTD) | Task due dates: "Report due Friday" |
+| **Reminder** | Scheduler | "remind me in 30 min 'stretch'" |
+
+When you say `today` or `calendar`, you see them all:
+
+```
+**Today's Schedule**
+
+**📅 Events**
+  3:00 PM - Team meeting
+  5:30 PM - Gym
+
+**⚠️ Due Today**
+  Finish quarterly report
+
+**🔔 Reminders**
+  4:00 PM - stretch break
+```
+
+This unified view means you never miss something because it's in the "wrong system."
 
 ### Context & Presence
 

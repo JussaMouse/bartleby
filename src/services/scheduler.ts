@@ -5,6 +5,7 @@ import path from 'path';
 import { Config, getDbPath, ensureDir } from '../config.js';
 import { info, warn, debug, error } from '../utils/logger.js';
 import { SignalService } from './signal.js';
+import type { CalendarService } from './calendar.js';
 
 export interface ScheduledTask {
   id: string;
@@ -45,6 +46,7 @@ export class SchedulerService {
   private db: Database.Database;
   private intervalId?: NodeJS.Timeout;
   private running = false;
+  private calendar?: CalendarService;
 
   constructor(
     private config: Config,
@@ -55,6 +57,14 @@ export class SchedulerService {
 
     this.db = new Database(dbPath);
     this.db.pragma('journal_mode = WAL');
+  }
+
+  /**
+   * Set the calendar service for temporal index integration.
+   * Called after both services are initialized.
+   */
+  setCalendar(calendar: CalendarService): void {
+    this.calendar = calendar;
   }
 
   async initialize(): Promise<void> {
@@ -142,12 +152,24 @@ export class SchedulerService {
       this.db.prepare(
         'UPDATE tasks SET enabled = 0, last_run = ? WHERE id = ?'
       ).run(now, task.id);
+      
+      // Remove from calendar (one-time reminder is done)
+      if (this.calendar) {
+        this.calendar.removeTemporal('scheduler', task.id);
+      }
     } else {
       // Calculate next run
       const nextRun = this.calculateNextRun(task);
       this.db.prepare(
         'UPDATE tasks SET last_run = ?, next_run = ? WHERE id = ?'
       ).run(now, nextRun, task.id);
+      
+      // Update next run time in calendar
+      if (this.calendar) {
+        this.calendar.updateTemporal('scheduler', task.id, {
+          datetime: new Date(nextRun),
+        });
+      }
     }
   }
 
@@ -236,6 +258,10 @@ export class SchedulerService {
     const result = this.db.prepare('UPDATE tasks SET enabled = 0 WHERE id = ?').run(id);
     if (result.changes > 0) {
       info('Scheduled task cancelled', { id });
+      // Remove from calendar temporal index
+      if (this.calendar) {
+        this.calendar.removeTemporal('scheduler', id);
+      }
       return true;
     }
     return false;
@@ -250,7 +276,7 @@ export class SchedulerService {
 
   scheduleReminder(message: string, when: Date | string): ScheduledTask {
     const nextRun = typeof when === 'string' ? when : when.toISOString();
-    return this.create({
+    const task = this.create({
       type: 'reminder',
       scheduleType: 'once',
       scheduleValue: nextRun,
@@ -259,6 +285,19 @@ export class SchedulerService {
       nextRun,
       createdBy: 'user',
     });
+
+    // Register in calendar temporal index
+    if (this.calendar) {
+      this.calendar.registerTemporal(
+        'scheduler',
+        task.id,
+        new Date(nextRun),
+        'reminder',
+        message
+      );
+    }
+
+    return task;
   }
 
   scheduleDaily(message: string, hour: number): ScheduledTask {
@@ -268,7 +307,7 @@ export class SchedulerService {
       nextRun.setDate(nextRun.getDate() + 1);
     }
 
-    return this.create({
+    const task = this.create({
       type: 'recurring',
       scheduleType: 'cron',
       scheduleValue: `0 ${hour} * * *`,
@@ -277,6 +316,20 @@ export class SchedulerService {
       nextRun: nextRun.toISOString(),
       createdBy: 'user',
     });
+
+    // Register in calendar temporal index (recurring)
+    if (this.calendar) {
+      this.calendar.registerTemporal(
+        'scheduler',
+        task.id,
+        nextRun,
+        'reminder',
+        message,
+        { recurrence: 'daily' }
+      );
+    }
+
+    return task;
   }
 
   private rowToTask(row: any): ScheduledTask {
