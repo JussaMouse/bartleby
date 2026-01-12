@@ -66,6 +66,7 @@ const ConfigSchema = z.object({
     ambiguousTime: z.enum(['morning', 'afternoon', 'ask']),
     weekStart: z.enum(['sunday', 'monday']),
     reminderMinutes: z.number().min(0),
+    dateFormat: z.enum(['mdy', 'dmy']),  // Month/Day/Year (US) or Day/Month/Year (intl)
   }),
 
   presence: z.object({
@@ -149,6 +150,7 @@ export function loadConfig(): Config {
       ambiguousTime: (process.env.CALENDAR_AMBIGUOUS_TIME as 'morning' | 'afternoon' | 'ask') || 'afternoon',
       weekStart: (process.env.CALENDAR_WEEK_START as 'sunday' | 'monday') || 'sunday',
       reminderMinutes: parseInt(process.env.CALENDAR_REMINDER_MINUTES || '0'),
+      dateFormat: (process.env.CALENDAR_DATE_FORMAT as 'mdy' | 'dmy') || 'mdy',
     },
     presence: {
       startup: process.env.PRESENCE_STARTUP !== 'false',

@@ -108,6 +108,7 @@ Actions with due dates flow into the Time System automatically:
   CALENDAR_DEFAULT_DURATION=60            Event length in minutes
   CALENDAR_AMBIGUOUS_TIME=afternoon       morning|afternoon|ask
   CALENDAR_WEEK_START=sunday              sunday|monday
+  CALENDAR_DATE_FORMAT=mdy                mdy (1/11=Jan 11) | dmy (1/11=Nov 1)
   CALENDAR_REMINDER_MINUTES=15            0=off, or minutes before
 
 **The Time System Principle**

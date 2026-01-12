@@ -1,5 +1,6 @@
 // src/tools/gtd.ts
 import { Tool } from './types.js';
+import { loadConfig } from '../config.js';
 
 export const viewNextActions: Tool = {
   name: 'viewNextActions',
@@ -151,11 +152,23 @@ export const addTask: Tool = {
           today.setDate(today.getDate() + daysUntil);
           dueDate = today.toISOString().split('T')[0];
         } else {
-          // Try MM/DD or M/D format (assume current year)
-          const mdMatch = dueStr.match(/^(\d{1,2})\/(\d{1,2})$/);
-          if (mdMatch) {
-            const month = parseInt(mdMatch[1], 10) - 1; // 0-indexed
-            const day = parseInt(mdMatch[2], 10);
+          // Try MM/DD or DD/MM format based on config (assume current year)
+          const slashMatch = dueStr.match(/^(\d{1,2})\/(\d{1,2})$/);
+          if (slashMatch) {
+            const config = loadConfig();
+            const dateFormat = config.calendar.dateFormat;
+            
+            let month: number, day: number;
+            if (dateFormat === 'dmy') {
+              // DD/MM format (international)
+              day = parseInt(slashMatch[1], 10);
+              month = parseInt(slashMatch[2], 10) - 1; // 0-indexed
+            } else {
+              // MM/DD format (US default)
+              month = parseInt(slashMatch[1], 10) - 1; // 0-indexed
+              day = parseInt(slashMatch[2], 10);
+            }
+            
             const year = today.getFullYear();
             const parsed = new Date(year, month, day);
             // If date is in the past, assume next year

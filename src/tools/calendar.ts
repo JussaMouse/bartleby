@@ -383,6 +383,7 @@ export const calendarSetup: Tool = {
         duration: 60,
         ambiguousTime: 'afternoon',
         weekStart: 'sunday',
+        dateFormat: 'mdy',
         reminder: 'none',
       });
     }
@@ -487,7 +488,7 @@ function processSetupStep(context: import('./types.js').ToolContext, step: numbe
       return `
 ✓ Timezone: ${data.timezone}
 
-📅 **Calendar Setup** (2/5)
+📅 **Calendar Setup** (2/6)
 
 **Default event duration**
 How long are your typical meetings?
@@ -504,7 +505,7 @@ How long are your typical meetings?
       return `
 ✓ Duration: ${data.duration} minutes
 
-📅 **Calendar Setup** (3/5)
+📅 **Calendar Setup** (3/6)
 
 **Ambiguous times**
 When you say "meeting at 3" without am/pm, should I:
@@ -526,7 +527,7 @@ When you say "meeting at 3" without am/pm, should I:
       return `
 ✓ Ambiguous times: ${data.ambiguousTime}
 
-📅 **Calendar Setup** (4/5)
+📅 **Calendar Setup** (4/6)
 
 **Week starts on**
 
@@ -534,6 +535,21 @@ When you say "meeting at 3" without am/pm, should I:
 
     case 4: // Week start
       data.weekStart = (input.includes('mon')) ? 'monday' : 'sunday';
+      context.services.context.setFact('system', 'calendar_setup_data', data, { source: 'explicit' });
+      context.services.context.setFact('system', 'calendar_setup_step', 5, { source: 'explicit' });
+      return `
+✓ Week starts: ${data.weekStart}
+
+📅 **Calendar Setup** (5/6)
+
+**Date format**
+When you type dates like "1/11", how should I read them?
+
+→ **mdy** - Month/Day (US: 1/11 = January 11)
+→ **dmy** - Day/Month (intl: 1/11 = November 1)`;
+
+    case 5: // Date format
+      data.dateFormat = input.includes('dmy') ? 'dmy' : 'mdy';
       context.services.context.setFact('system', 'calendar_setup_data', data, { source: 'explicit' });
       
       // Check if Signal is configured
@@ -545,9 +561,9 @@ When you say "meeting at 3" without am/pm, should I:
         data.reminder = 'none';
         context.services.context.setFact('system', 'calendar_setup_data', data, { source: 'explicit' });
         return `
-✓ Week starts: ${data.weekStart}
+✓ Date format: ${data.dateFormat === 'mdy' ? 'Month/Day (US)' : 'Day/Month (intl)'}
 
-📅 **Calendar Setup** (5/5)
+📅 **Calendar Setup** (6/6)
 
 **Event reminders**
 Signal notifications are not configured yet.
@@ -562,18 +578,18 @@ For now, setting reminders to **off**.
 ` + completeSetup(context, data as unknown as SetupData);
       }
       
-      context.services.context.setFact('system', 'calendar_setup_step', 5, { source: 'explicit' });
+      context.services.context.setFact('system', 'calendar_setup_step', 6, { source: 'explicit' });
       return `
-✓ Week starts: ${data.weekStart}
+✓ Date format: ${data.dateFormat === 'mdy' ? 'Month/Day (US)' : 'Day/Month (intl)'}
 
-📅 **Calendar Setup** (5/5)
+📅 **Calendar Setup** (6/6)
 
 **Event reminders**
 Send a Signal notification before events start?
 
 → **no** / **15m** / **30m** / **1h**`;
 
-    case 5: // Reminder
+    case 6: // Reminder
       if (input.includes('15')) data.reminder = '15';
       else if (input.includes('30')) data.reminder = '30';
       else if (input.includes('1h') || input.includes('60')) data.reminder = '60';
@@ -591,17 +607,19 @@ interface SetupData {
   duration: number;
   ambiguousTime: string;
   weekStart: string;
+  dateFormat: string;
   reminder: string;
 }
 
 function completeSetup(context: import('./types.js').ToolContext, data: SetupData): string {
-  const { timezone, duration, ambiguousTime, weekStart, reminder } = data;
+  const { timezone, duration, ambiguousTime, weekStart, dateFormat, reminder } = data;
   
   // Store preferences in memory
   context.services.context.setFact('preference', 'timezone', timezone, { source: 'explicit' });
   context.services.context.setFact('preference', 'event_duration', duration, { source: 'explicit' });
   context.services.context.setFact('preference', 'ambiguous_time', ambiguousTime, { source: 'explicit' });
   context.services.context.setFact('preference', 'week_start', weekStart, { source: 'explicit' });
+  context.services.context.setFact('preference', 'date_format', dateFormat, { source: 'explicit' });
   context.services.context.setFact('preference', 'event_reminder', reminder, { source: 'explicit' });
   
   // Clear setup state
@@ -611,6 +629,7 @@ function completeSetup(context: import('./types.js').ToolContext, data: SetupDat
 
   const reminderDisplay = reminder === 'none' ? 'off' : reminder + ' before';
   const reminderMinutes = reminder === 'none' ? '0' : reminder;
+  const dateFormatDisplay = dateFormat === 'mdy' ? 'Month/Day (US)' : 'Day/Month (intl)';
   
   return `
 ✓ **Calendar configured!**
@@ -620,6 +639,7 @@ Your settings:
 • Default duration: ${duration} minutes
 • Ambiguous times: ${ambiguousTime}
 • Week starts: ${weekStart}
+• Date format: ${dateFormatDisplay}
 • Reminders: ${reminderDisplay}
 
 ───────────────────────────────────────────
@@ -630,6 +650,7 @@ CALENDAR_TIMEZONE=${timezone}
 CALENDAR_DEFAULT_DURATION=${duration}
 CALENDAR_AMBIGUOUS_TIME=${ambiguousTime}
 CALENDAR_WEEK_START=${weekStart}
+CALENDAR_DATE_FORMAT=${dateFormat}
 CALENDAR_REMINDER_MINUTES=${reminderMinutes}${reminder !== 'none' ? '\nSIGNAL_ENABLED=true' : ''}
 ───────────────────────────────────────────
 
