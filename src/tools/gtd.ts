@@ -361,22 +361,28 @@ export const showOverdue: Tool = {
       return '✓ No overdue actions. You\'re all caught up!';
     }
 
+    // Get all active tasks to find the correct global numbering
+    const allTasks = context.services.garden.getTasks({ status: 'active' });
+    const taskIdToNumber = new Map<string, number>();
+    allTasks.forEach((t, i) => taskIdToNumber.set(t.id, i + 1));
+
     const lines = [`**Overdue Actions** (${overdue.length})\n`];
     const today = new Date();
     
-    overdue.forEach((t, i) => {
+    overdue.forEach((t) => {
+      const globalNum = taskIdToNumber.get(t.id) || '?';
       const dueDate = new Date(t.due_date!);
       const daysOverdue = Math.floor((today.getTime() - dueDate.getTime()) / (1000 * 60 * 60 * 24));
       const daysStr = daysOverdue === 1 ? '1 day' : `${daysOverdue} days`;
       
-      lines.push(`  ${i + 1}. ${t.title}`);
+      lines.push(`  ${globalNum}. ${t.title}`);
       lines.push(`     ⚠️ Due: ${t.due_date} (${daysStr} ago)`);
       if (t.context && t.context !== '@inbox') {
         lines.push(`     ${t.context}`);
       }
     });
 
-    lines.push('\n💡 Mark done: `done <number>` or reschedule the due date.');
+    lines.push('\n💡 Mark done: `done <number>` (numbers match "show next actions")');
     
     return lines.join('\n');
   },
