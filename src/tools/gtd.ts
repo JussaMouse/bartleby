@@ -87,6 +87,7 @@ export const addTask: Tool = {
     // Parse inline context (@) and project (+)
     let context: string | undefined;
     let project: string | undefined;
+    let dueDate: string | undefined;
 
     const contextMatch = description.match(/@(\w+)/);
     if (contextMatch) {
@@ -100,25 +101,51 @@ export const addTask: Tool = {
       description = description.replace(/\+\w+/, '').trim();
     }
 
-    return { description, context, project };
+    // Parse due date: due:today, due:tomorrow, due:2026-01-15, due:jan15
+    const dueMatch = description.match(/due:(\S+)/i);
+    if (dueMatch) {
+      const dueStr = dueMatch[1].toLowerCase();
+      description = description.replace(/due:\S+/i, '').trim();
+
+      const today = new Date();
+      if (dueStr === 'today') {
+        dueDate = today.toISOString().split('T')[0];
+      } else if (dueStr === 'tomorrow') {
+        today.setDate(today.getDate() + 1);
+        dueDate = today.toISOString().split('T')[0];
+      } else if (/^\d{4}-\d{2}-\d{2}$/.test(dueStr)) {
+        // ISO date format
+        dueDate = dueStr;
+      } else {
+        // Try to parse as date string (e.g., "jan15", "15jan")
+        const parsed = new Date(dueStr);
+        if (!isNaN(parsed.getTime())) {
+          dueDate = parsed.toISOString().split('T')[0];
+        }
+      }
+    }
+
+    return { description, context, project, dueDate };
   },
 
   execute: async (args, context) => {
-    const { description, context: ctx, project } = args as {
+    const { description, context: ctx, project, dueDate } = args as {
       description: string;
       context?: string;
       project?: string;
+      dueDate?: string;
     };
 
     if (!description) {
       return 'Please provide a task description. Example: add task buy milk @errands';
     }
 
-    const task = context.services.garden.addTask(description, ctx || '@inbox', project);
+    const task = context.services.garden.addTask(description, ctx || '@inbox', project, dueDate);
 
     let response = `✓ Added: "${task.title}"`;
     if (task.context) response += ` (${task.context})`;
     if (task.project) response += ` [${task.project}]`;
+    if (task.due_date) response += ` [due: ${task.due_date}]`;
 
     return response;
   },
