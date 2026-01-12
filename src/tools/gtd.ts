@@ -337,10 +337,56 @@ export const showWaitingFor: Tool = {
   },
 };
 
+export const showOverdue: Tool = {
+  name: 'showOverdue',
+  description: 'Show actions that are past their due date',
+
+  routing: {
+    patterns: [
+      /^(show|list|view)\s+overdue(\s+actions?)?$/i,
+      /^overdue(\s+actions?)?$/i,
+      /^what('s| is)\s+overdue/i,
+    ],
+    keywords: {
+      verbs: ['show', 'list', 'view'],
+      nouns: ['overdue', 'late', 'past due'],
+    },
+    priority: 85,
+  },
+
+  execute: async (args, context) => {
+    const overdue = context.services.garden.getOverdueTasks();
+
+    if (overdue.length === 0) {
+      return '✓ No overdue actions. You\'re all caught up!';
+    }
+
+    const lines = [`**Overdue Actions** (${overdue.length})\n`];
+    const today = new Date();
+    
+    overdue.forEach((t, i) => {
+      const dueDate = new Date(t.due_date!);
+      const daysOverdue = Math.floor((today.getTime() - dueDate.getTime()) / (1000 * 60 * 60 * 24));
+      const daysStr = daysOverdue === 1 ? '1 day' : `${daysOverdue} days`;
+      
+      lines.push(`  ${i + 1}. ${t.title}`);
+      lines.push(`     ⚠️ Due: ${t.due_date} (${daysStr} ago)`);
+      if (t.context && t.context !== '@inbox') {
+        lines.push(`     ${t.context}`);
+      }
+    });
+
+    lines.push('\n💡 Mark done: `done <number>` or reschedule the due date.');
+    
+    return lines.join('\n');
+  },
+};
+
 export const gtdTools: Tool[] = [
   viewNextActions,
   addTask,
   markDone,
   capture,
   showWaitingFor,
+  showOverdue,
 ];
