@@ -62,7 +62,7 @@ export const setPreference: Tool = {
       /^my name is\s+(.+)$/i,  // "my name is Lon"
       /^(call me|i'm called|i go by)\s+(.+)$/i,  // "call me Lon", "I'm called Lon"
       /^my (wife|husband|partner|sister|brother|mom|dad|mother|father|boss|friend|son|daughter|child|coworker|colleague)\s+(\w+)/i,  // "my wife Nicole..."
-      /^i (prefer|always|never)\s+(.+)/i,
+      /^i (prefer|always|never|usually|typically|normally)\s+(.+)/i,
       /^i('m| am) (a |an )?(\w+)\s+(person|type|kind)/i,  // "I am a morning person"
       /^i('m| am) (a |an )?(.+)/i,  // "I am a vegetarian", "I'm lactose intolerant"
       /^i (like|love|hate|enjoy|dislike)\s+(.+)/i,
@@ -124,7 +124,7 @@ export const setPreference: Tool = {
 
     const preference = input
       .replace(/^(remember|note) that i (prefer|like|want|am|'m)\s*/i, '')
-      .replace(/^i (prefer|always|never)\s*/i, '')
+      .replace(/^i (prefer|always|never|usually|typically|normally)\s*/i, '')
       .trim();
     return { preference };
   },
