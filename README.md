@@ -55,13 +55,17 @@ pnpm start
 
 ## Configuration
 
-Bartleby uses a **conversational settings** approach. Instead of editing config files, just talk to Bartleby about what you want to change:
+The `.env` file is Bartleby's **source of truth** for all configuration—like how the Garden's markdown files are the source of truth for your tasks and notes.
+
+### The Settings Flow
+
+Instead of manually editing `.env`, talk to Bartleby about what you want to change:
 
 ```
 > change calendar settings
 ```
 
-Bartleby walks you through each option one at a time, then outputs the `.env` values ready to copy:
+Bartleby walks you through each option, then outputs the `.env` values:
 
 ```
 ✓ Calendar configured!
@@ -73,7 +77,7 @@ Your settings:
 • Reminders: 15m before
 
 ───────────────────────────────────────────
-Copy to .env (optional):
+Copy to .env:
 
 CALENDAR_DEFAULT_DURATION=30
 CALENDAR_WEEK_START=monday
@@ -81,7 +85,15 @@ CALENDAR_REMINDER_MINUTES=15
 ───────────────────────────────────────────
 ```
 
-Settings are saved to Bartleby's memory immediately. The `.env` output is for backup/portability—copy it if you want settings to survive a fresh install.
+**You copy these values to `.env`** — Bartleby can't write to files himself, but he'll generate the correct config for you.
+
+### Bidirectional Trust
+
+This works like the Garden's bidirectional sync:
+- **`.env` is authoritative** — Bartleby reads it on startup and respects whatever's there
+- **You can edit `.env` directly** anytime — Bartleby will use your changes on next restart  
+- **Bartleby helps you configure** — through conversation, outputting values ready to copy
+- **Bartleby may suggest changes** — if he notices something that could improve your experience
 
 ### Initial LLM Setup
 
@@ -145,18 +157,17 @@ SIGNAL_NUMBER=+1234567890
 SIGNAL_RECIPIENT=+0987654321
 ```
 
-### Conversational Settings
+### Changing Settings
 
-After initial setup, configure Bartleby by talking to it:
+Talk to Bartleby about what you want to change:
 
 | Say this... | Bartleby will... |
 |-------------|------------------|
-| `change calendar settings` | Walk through calendar preferences |
-| `I prefer 30 minute meetings` | Remember your default meeting length |
-| `my week starts on Monday` | Update week start preference |
-| `I like morning meetings` | Know "9" means 9am, not 9pm |
+| `change calendar settings` | Walk through calendar preferences, output `.env` values |
+| `I prefer 30 minute meetings` | Suggest the config change and output the `.env` line |
+| `my week starts on Monday` | Same — conversation → `.env` output |
 
-Bartleby remembers these preferences and outputs `.env` values you can save for portability.
+Copy the output to your `.env` file. On next startup, Bartleby uses the new values.
 
 ## Command Reference
 
