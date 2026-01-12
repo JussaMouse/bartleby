@@ -285,11 +285,19 @@ function parseTimeString(str: string): Date {
   const now = new Date();
   const lower = str.toLowerCase().trim();
 
-  // Relative: "in X hours/minutes"
-  const relativeMatch = lower.match(/^in\s+(\d+)\s+(minute|hour|day|week)s?$/);
+  // Relative: "in X hours/minutes" (with abbreviations)
+  const relativeMatch = lower.match(/^in\s+(\d+)\s*(min(?:ute)?s?|hr?s?|hour?s?|days?|weeks?)$/);
   if (relativeMatch) {
     const amount = parseInt(relativeMatch[1]);
-    const unit = relativeMatch[2];
+    const unitRaw = relativeMatch[2];
+    // Normalize unit
+    let unit: string;
+    if (unitRaw.startsWith('min')) unit = 'minute';
+    else if (unitRaw.startsWith('h')) unit = 'hour';
+    else if (unitRaw.startsWith('d')) unit = 'day';
+    else if (unitRaw.startsWith('w')) unit = 'week';
+    else unit = 'hour';
+    
     const ms = {
       minute: 60 * 1000,
       hour: 60 * 60 * 1000,
