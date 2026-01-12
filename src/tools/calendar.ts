@@ -92,6 +92,7 @@ export const addEvent: Tool = {
   parseArgs: (input) => {
     let startTime = new Date();
     const lower = input.toLowerCase();
+    let ambiguousHour: number | null = null;  // Track if time was ambiguous
 
     // Check for day of week
     const days = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
@@ -113,18 +114,20 @@ export const addEvent: Tool = {
 
     // Extract time - flexible: "at 3pm", "3pm", "3:30pm", "at 15:00", "8:00"
     const timeMatch = lower.match(/\b(?:at\s+)?(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\b/i);
+    let minute = 0;
     if (timeMatch) {
       let hour = parseInt(timeMatch[1]);
-      const minute = timeMatch[2] ? parseInt(timeMatch[2]) : 0;
+      minute = timeMatch[2] ? parseInt(timeMatch[2]) : 0;
       const ampm = timeMatch[3]?.toLowerCase();
 
       if (ampm === 'pm' && hour < 12) hour += 12;
       if (ampm === 'am' && hour === 12) hour = 0;
       // Handle ambiguous times (no am/pm)
-      if (!ampm) {
-        // If hour looks like 24h format (>= 13), use as-is
-        // Otherwise assume PM for 1-6, AM for 7-12
-        if (hour < 13 && hour >= 1 && hour <= 6) hour += 12;
+      if (!ampm && hour < 13 && hour >= 1 && hour <= 12) {
+        // This is ambiguous - mark it for potential clarification
+        ambiguousHour = hour;
+        // Default: assume PM for 1-6, AM for 7-12
+        if (hour >= 1 && hour <= 6) hour += 12;
       }
 
       startTime.setHours(hour, minute, 0, 0);
@@ -154,18 +157,49 @@ export const addEvent: Tool = {
       title,
       start_time: startTime.toISOString(),
       end_time: endTime.toISOString(),
+      ambiguousHour,  // Pass this to execute for "ask" preference handling
+      minute,
     };
   },
 
   execute: async (args, context) => {
-    const { title, start_time, end_time } = args as {
+    const { title, start_time, end_time, ambiguousHour, minute } = args as {
       title: string;
       start_time: string;
       end_time: string;
+      ambiguousHour: number | null;
+      minute: number;
     };
 
     if (!title) {
       return 'Please provide an event title. Example: add event "Meeting" at 3pm';
+    }
+
+    // Check if we need to ask about ambiguous time
+    if (ambiguousHour !== null) {
+      const ambiguousPref = context.services.memory.getFact('preference', 'ambiguous_time');
+      const pref = ambiguousPref?.value as string || 'afternoon';
+      
+      if (pref === 'ask') {
+        // Store pending event data and ask for clarification
+        context.services.memory.setFact('system', 'event_pending_clarification', {
+          title,
+          ambiguousHour,
+          minute,
+          baseDate: start_time,  // Has the correct date, just wrong hour potentially
+        }, { source: 'explicit' });
+        
+        const dateObj = new Date(start_time);
+        const dateStr = dateObj.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+        
+        return `
+📅 **"${title}"** on ${dateStr}
+
+You said **${ambiguousHour}${minute ? ':' + minute.toString().padStart(2, '0') : ''}** - did you mean:
+→ **am** (${ambiguousHour}:${minute.toString().padStart(2, '0')} AM)
+→ **pm** (${ambiguousHour + 12 > 12 ? ambiguousHour : ambiguousHour + 12}:${minute.toString().padStart(2, '0')} PM)`;
+      }
+      // Otherwise continue with default behavior (morning/afternoon already applied in parseArgs)
     }
 
     // Check for first-time calendar use
@@ -540,4 +574,63 @@ To confirm, type:
   },
 };
 
-export const calendarTools: Tool[] = [showCalendar, showToday, addEvent, calendarSetup, resetCalendar];
+export const clarifyEventTime: Tool = {
+  name: 'clarifyEventTime',
+  description: 'Clarify am/pm for ambiguous event time',
+
+  routing: {
+    patterns: [
+      /^(am|pm)$/i,
+      /^(morning|afternoon)$/i,
+    ],
+    priority: 100,  // High priority to catch am/pm when event is pending
+  },
+
+  execute: async (args, context) => {
+    const pendingEvent = context.services.memory.getFact('system', 'event_pending_clarification');
+    
+    if (!pendingEvent?.value) {
+      // No pending event - this am/pm isn't for us
+      return "I'm not sure what you mean. Try 'add event meeting at 3pm'.";
+    }
+    
+    const { title, ambiguousHour, minute, baseDate } = pendingEvent.value as {
+      title: string;
+      ambiguousHour: number;
+      minute: number;
+      baseDate: string;
+    };
+    
+    const input = context.input.toLowerCase().trim();
+    const isPM = input === 'pm' || input === 'afternoon';
+    
+    // Calculate the correct hour
+    let hour = ambiguousHour;
+    if (isPM && hour < 12) hour += 12;
+    if (!isPM && hour === 12) hour = 0;
+    
+    // Create the event with clarified time
+    const startTime = new Date(baseDate);
+    startTime.setHours(hour, minute, 0, 0);
+    
+    const endTime = new Date(startTime);
+    endTime.setHours(endTime.getHours() + 1);
+    
+    const event = context.services.calendar.create({
+      title,
+      start_time: startTime.toISOString(),
+      end_time: endTime.toISOString(),
+      all_day: false,
+    });
+    
+    // Clear pending state
+    context.services.memory.setFact('system', 'event_pending_clarification', null, { source: 'explicit' });
+    
+    const dateStr = startTime.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+    const timeStr = startTime.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+    
+    return `✓ Created: ${event.title}\n  ${dateStr} at ${timeStr}`;
+  },
+};
+
+export const calendarTools: Tool[] = [showCalendar, showToday, addEvent, calendarSetup, resetCalendar, clarifyEventTime];
