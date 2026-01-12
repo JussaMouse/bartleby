@@ -230,7 +230,7 @@ export const calendarSetup: Tool = {
       /^setup\s+calendar$/i,
       // Catch setup-specific responses
       /^(30m?|1h|60m?|90m?)$/i,
-      /^(morning|afternoon|am|pm)$/i,
+      /^(morning|afternoon|am|pm|ask)$/i,
       /^(sunday|monday|sun|mon)$/i,
       /^(15m?|none|off)$/i,
       /^defaults?$/i,
@@ -395,12 +395,20 @@ How long are your typical meetings?
 📅 **Calendar Setup** (3/5)
 
 **Ambiguous times**
-When you say "meeting at 3" without am/pm, should I assume:
+When you say "meeting at 3" without am/pm, should I:
 
-→ **morning** or **afternoon**`;
+→ **morning** - assume AM
+→ **afternoon** - assume PM  
+→ **ask** - ask you to clarify`;
 
     case 3: // Ambiguous time
-      data.ambiguousTime = (input.includes('morning') || input === 'am') ? 'morning' : 'afternoon';
+      if (input.includes('ask') || input.includes('clarif')) {
+        data.ambiguousTime = 'ask';
+      } else if (input.includes('morning') || input === 'am') {
+        data.ambiguousTime = 'morning';
+      } else {
+        data.ambiguousTime = 'afternoon';
+      }
       context.services.memory.setFact('system', 'calendar_setup_data', data, { source: 'explicit' });
       context.services.memory.setFact('system', 'calendar_setup_step', 4, { source: 'explicit' });
       return `
