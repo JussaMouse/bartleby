@@ -106,7 +106,7 @@ export const showScheduled: Tool = {
     }
 
     const lines = [`**Scheduled Reminders** (${tasks.length})\n`];
-    for (const task of tasks) {
+    tasks.forEach((task, index) => {
       const whenDate = new Date(task.nextRun);
       const formattedTime = whenDate.toLocaleString('en-US', {
         weekday: 'short',
@@ -119,9 +119,12 @@ export const showScheduled: Tool = {
       const status = task.enabled ? '' : ' [disabled]';
       const recurring = task.scheduleType !== 'once' ? ' (recurring)' : '';
 
-      lines.push(`- ${formattedTime}${recurring}${status}`);
-      lines.push(`  "${task.actionPayload}"`);
-    }
+      lines.push(`**${index + 1}.** ${formattedTime}${recurring}${status}`);
+      lines.push(`   "${task.actionPayload}"`);
+    });
+
+    lines.push('');
+    lines.push('*Use "cancel reminder <number>" to remove.*');
 
     return lines.join('\n');
   },
