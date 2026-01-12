@@ -8,7 +8,7 @@ const HELP_OVERVIEW = `
 
 Type \`help <topic>\` for details and .env settings.
 
-**GTD** — Task management (help gtd)
+**GTD** — Actions & inbox management (help gtd)
 **Time System** — Events, deadlines, reminders unified (help calendar)
 **Reminders** — Scheduled notifications (help reminders)
 **Contacts** — People you know (help contacts)
@@ -26,35 +26,41 @@ const HELP_GTD = `
 
 Bartleby implements David Allen's GTD methodology.
 
+**Terminology**
+  Action    Something you can do directly (next physical step)
+  Item      Something in inbox, not yet processed
+  Event     Something on the calendar (see "help calendar")
+
 **Commands**
-  show next actions       List active tasks by context
-  tasks                   Same as above
-  add task <text>         Add a new task
-  done <n>                Complete task by number
+  show next actions       List active actions by context
+  add task <text>         Add a new action
+  done <n>                Complete action by number
   done <partial title>    Complete by partial match
   capture <text>          Quick capture to inbox
   waiting for             Show delegated items
 
 **Inline Syntax**
-  @context    Assign context (where/how to do it)
-  +project    Assign to project
+  @context       Assign context (where/how to do it)
+  +project       Assign to project
+  due:DATE       Set due date (today, tomorrow, YYYY-MM-DD)
 
 **Examples**
   add task buy milk @errands
-  add task review PR @computer +website
+  add task review PR @computer +website due:tomorrow
   add task call Sarah @phone +hiring
   capture remember to check on the budget
   done 3
   done buy milk
 
 **.env Settings**
-  GARDEN_PATH=./garden    Where task markdown files are stored
+  GARDEN_PATH=./garden    Where Garden markdown files are stored
 
 **Tips**
 • Process your inbox regularly — items waiting > 2 days appear at startup
-• Use contexts to batch similar tasks (@calls, @errands, @computer)
-• Projects group related tasks but aren't actionable themselves
+• Use contexts to batch similar actions (@calls, @errands, @computer)
+• Projects group related actions but aren't actionable themselves
 • "capture" is fastest for quick thoughts — sort later
+• Actions with due dates show as "overdue" if past due
 `.trim();
 
 const HELP_CALENDAR = `
@@ -65,7 +71,7 @@ Bartleby's Time System shows everything temporal in one place.
 
 **What the Time System tracks:**
 • **📅 Events** — meetings, appointments, activities
-• **⚠️ Deadlines** — task due dates from GTD
+• **⚠️ Deadlines** — action due dates from GTD
 • **🔔 Reminders** — scheduled notifications
 
 **Commands**
@@ -84,9 +90,9 @@ Bartleby's Time System shows everything temporal in one place.
   remind me to stretch in 30 min
   send me a msg in 5 min 'time to move'
 
-**Task Deadlines** (from GTD)
-Tasks with due dates flow into the Time System automatically:
-  add task finish report due friday
+**Action Deadlines** (from GTD)
+Actions with due dates flow into the Time System automatically:
+  add task finish report due:friday
   → Shows in "today" when due
 
 **Time Formats**
@@ -338,7 +344,7 @@ Presence controls when Bartleby speaks unprompted.
 • Today's events (from Calendar)
 • Pending follow-ups (from Context)
 • Stale inbox items (from GTD)
-• Overdue tasks (from GTD)
+• Overdue actions (from GTD)
 • Last conversation summary (from Context)
 `.trim();
 

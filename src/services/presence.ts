@@ -77,11 +77,11 @@ export class PresenceService {
       debug('Presence: stale inbox check failed', { error: String(err) });
     }
 
-    // 3. Overdue tasks
+    // 3. Overdue actions
     try {
       const overdue = this.garden.getOverdueTasks();
       if (overdue.length > 0) {
-        insights.push(`⚠️ ${overdue.length} overdue task(s)`);
+        insights.push(`⚠️ ${overdue.length} overdue action(s)`);
       }
     } catch (err) {
       debug('Presence: overdue check failed', { error: String(err) });
@@ -115,7 +115,7 @@ export class PresenceService {
     try {
       const stats = this.garden.getTaskStats(7);
       if (stats.added > 5 && stats.completed / stats.added < 0.3) {
-        insights.push(`📊 ${stats.completed}/${stats.added} tasks completed this week`);
+        insights.push(`📊 ${stats.completed}/${stats.added} actions completed this week`);
       }
     } catch (err) {
       debug('Presence: task stats failed', { error: String(err) });
@@ -204,7 +204,7 @@ export class PresenceService {
 
     try {
       const tasks = this.garden.getTasks({ status: 'active' });
-      lines.push(`📋 ${tasks.length} active task(s)`);
+      lines.push(`📋 ${tasks.length} active action(s)`);
 
       const inbox = tasks.filter(t => t.context === '@inbox');
       if (inbox.length > 3) {
@@ -222,7 +222,7 @@ export class PresenceService {
 
     try {
       const stats = this.garden.getTaskStats(1);
-      lines.push(`Today: ${stats.completed} task(s) completed`);
+      lines.push(`Today: ${stats.completed} action(s) completed`);
     } catch (err) {
       debug('Presence: evening stats failed', { error: String(err) });
     }
@@ -249,14 +249,14 @@ export class PresenceService {
 
     try {
       const stats = this.garden.getTaskStats(7);
-      lines.push(`This week: ${stats.completed}/${stats.added} tasks completed`);
+      lines.push(`This week: ${stats.completed}/${stats.added} actions completed`);
     } catch (err) {
       debug('Presence: weekly stats failed', { error: String(err) });
     }
 
     try {
       const tasks = this.garden.getTasks({ status: 'active' });
-      lines.push(`Active: ${tasks.length} task(s)`);
+      lines.push(`Active: ${tasks.length} action(s)`);
 
       const inbox = tasks.filter(t => t.context === '@inbox');
       if (inbox.length > 0) {
