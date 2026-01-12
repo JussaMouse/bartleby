@@ -389,8 +389,6 @@ Most requests hit the deterministic router (layers 1-3) and never need an LLM at
 
 Bartleby has a **Time System** — a unified way of handling everything temporal. Instead of events, reminders, and deadlines living in separate silos, they all flow into one place.
 
-**The Principle:** *"When" is a dimension, not a destination.*
-
 A task has a *what* (the thing to do) and optionally a *when* (due date).  
 A reminder has a *what* (the message) and a *when* (fire time).  
 An event has a *what* (title/notes) and a *when* (start/end time).

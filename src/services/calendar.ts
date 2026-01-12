@@ -31,6 +31,7 @@ export interface CalendarEntry {
 // Legacy interface for backward compatibility
 export interface CalendarEvent extends CalendarEntry {}
 
+// Base schema - only creates table structure
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS events (
   id TEXT PRIMARY KEY,
@@ -40,23 +41,17 @@ CREATE TABLE IF NOT EXISTS events (
   end_time TEXT NOT NULL,
   all_day INTEGER DEFAULT 0,
   location TEXT,
-  entry_type TEXT DEFAULT 'event',
-  source_type TEXT DEFAULT 'calendar',
-  source_id TEXT,
-  reminder_minutes INTEGER DEFAULT 0,
   recurrence TEXT,
-  metadata TEXT,
   created_at TEXT DEFAULT (datetime('now')),
   updated_at TEXT DEFAULT (datetime('now'))
 );
 
 CREATE INDEX IF NOT EXISTS idx_events_start ON events(start_time);
-CREATE INDEX IF NOT EXISTS idx_events_source ON events(source_type, source_id);
-CREATE INDEX IF NOT EXISTS idx_events_type ON events(entry_type);
 `;
 
-// Migration to add new columns to existing databases
+// Migrations to add Time System columns to existing databases
 const MIGRATIONS = [
+  // Add new columns (safe to fail if already exist)
   `ALTER TABLE events ADD COLUMN entry_type TEXT DEFAULT 'event'`,
   `ALTER TABLE events ADD COLUMN source_type TEXT DEFAULT 'calendar'`,
   `ALTER TABLE events ADD COLUMN source_id TEXT`,
@@ -76,9 +71,10 @@ export class CalendarService {
   }
 
   async initialize(): Promise<void> {
+    // 1. Create base table structure
     this.db.exec(SCHEMA);
     
-    // Run migrations for existing databases
+    // 2. Run migrations to add Time System columns
     for (const migration of MIGRATIONS) {
       try {
         this.db.exec(migration);
@@ -87,19 +83,19 @@ export class CalendarService {
       }
     }
     
-    // Ensure existing events have source_id set to their own id
+    // 3. Backfill existing events with source info
     this.db.exec(`
       UPDATE events 
       SET source_id = id, source_type = 'calendar', entry_type = 'event'
       WHERE source_id IS NULL
     `);
     
-    // Create index if not exists (may fail silently if already exists)
+    // 4. Create indexes (now that columns exist)
     try {
       this.db.exec(`CREATE INDEX IF NOT EXISTS idx_events_source ON events(source_type, source_id)`);
       this.db.exec(`CREATE INDEX IF NOT EXISTS idx_events_type ON events(entry_type)`);
     } catch {
-      // Indexes exist
+      // Indexes already exist
     }
     
     info('CalendarService initialized');
