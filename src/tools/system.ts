@@ -244,8 +244,9 @@ Set one-time or recurring reminders.
 **.env Settings**
   SCHEDULER_ENABLED=true          Enable/disable reminder system
   SCHEDULER_CHECK_INTERVAL=60000  How often to check (ms)
-  SCHEDULER_MISSED_REMINDERS=ask  What to do with missed reminders:
-    • ask  = summarize and ask (default)
+  SCHEDULER_MISSED_REMINDERS=...  What to do with missed reminders:
+    • (unset) = wizard asks on first occurrence
+    • ask  = summarize and ask each time
     • fire = send all immediately
     • skip = dismiss silently
     • show = show only, don't act
@@ -257,8 +258,8 @@ Set one-time or recurring reminders.
   SIGNAL_RECIPIENT=+0987654321    Who receives notifications
 
 **Missed Reminders**
-When you start Bartleby and reminders fired while offline,
-behavior depends on SCHEDULER_MISSED_REMINDERS setting.
+First time you start with missed reminders, Bartleby asks how
+you'd like to handle them and outputs the .env setting to save.
 
 **Tips**
 • Console: Reminders always show in terminal
