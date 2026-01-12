@@ -30,6 +30,7 @@ cd bartleby
 
 # Install
 pnpm install
+pnpm approve-builds   # Approve native module compilation (hnswlib, sqlite)
 
 # Configure
 cp .env.example .env
