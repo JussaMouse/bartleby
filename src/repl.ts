@@ -2,7 +2,7 @@
 import readline from 'readline';
 import { CommandRouter } from './router/index.js';
 import { Agent } from './agent/index.js';
-import { ServiceContainer, buildSessionOpener } from './services/index.js';
+import { ServiceContainer } from './services/index.js';
 import { info, warn, error, debug } from './utils/logger.js';
 
 export async function startRepl(
@@ -18,17 +18,17 @@ export async function startRepl(
 
   console.log('\n📋 Bartleby is ready. Type "help" for commands, "quit" to exit.\n');
 
-  // === Session Opener ===
-  // Proactive behavior at startup - surfaces relevant context
+  // === Startup Presence ===
+  // Bartleby's initiative layer decides what to surface at startup
   try {
-    const opener = buildSessionOpener(services);
+    const opener = services.presence.getStartupMessage();
     if (opener) {
       console.log('─'.repeat(50));
       console.log(opener);
       console.log('─'.repeat(50));
     }
   } catch (err) {
-    warn('Session opener failed', { error: String(err) });
+    warn('Startup presence failed', { error: String(err) });
   }
 
   // Start personal context session
@@ -82,9 +82,7 @@ export async function startRepl(
 
       // Check for exit
       if (response === '__EXIT__') {
-        console.log('\nGoodbye! 👋\n');
-        await services.context.endSession();
-        rl.close();
+        await handleShutdown(rl, services);
         return;
       }
 
@@ -108,8 +106,30 @@ export async function startRepl(
 
   // Handle Ctrl+C
   process.on('SIGINT', async () => {
-    console.log('\n\nGoodbye! 👋\n');
-    await services.context.endSession();
-    rl.close();
+    await handleShutdown(rl, services);
   });
+}
+
+/**
+ * Handle graceful shutdown with presence message
+ */
+async function handleShutdown(
+  rl: readline.Interface,
+  services: ServiceContainer
+): Promise<void> {
+  // Show shutdown presence message
+  try {
+    const shutdownMsg = services.presence.getShutdownMessage();
+    if (shutdownMsg) {
+      console.log('\n' + '─'.repeat(50));
+      console.log(shutdownMsg);
+      console.log('─'.repeat(50));
+    }
+  } catch (err) {
+    warn('Shutdown presence failed', { error: String(err) });
+  }
+
+  console.log('\nGoodbye! 👋\n');
+  await services.context.endSession();
+  rl.close();
 }

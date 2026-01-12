@@ -8,10 +8,29 @@ Bartleby is a personal assistant that combines:
 - **GTD task management** with contexts, projects, and inbox capture
 - **Personal knowledge base** (the "Garden") synced as markdown files
 - **Document library** (the "Shed") with semantic search and RAG
-- **Conversational memory** that remembers past discussions
-- **Proactive intelligence** that surfaces relevant info at session start
+- **Personal Context** that remembers your conversations, preferences, and follow-ups
+- **Presence** — Bartleby's initiative layer that decides when to speak unprompted
 
 All powered by local LLMs. Your data stays on your machine.
+
+### Not Just Reactive
+
+Most assistants only respond to commands. Bartleby is **present** — aware of your context, noticing opportunities to help, and occasionally speaking first:
+
+```
+📋 Bartleby is ready. Type "help" for commands, "quit" to exit.
+
+──────────────────────────────────────────────────
+📅 4 event(s) today
+📝 Pending: "follow up with Sarah about the proposal"
+⚠️ 2 overdue task(s)
+💭 Last: "review the Q3 budget numbers..."
+──────────────────────────────────────────────────
+
+> 
+```
+
+This "session opener" isn't scripted — Bartleby checks your calendar, tasks, follow-ups, and recent conversations to surface what's relevant *right now*.
 
 ## Quick Start
 
@@ -288,14 +307,22 @@ Your events are preserved unless you explicitly say "yes delete events".
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│                      User Input                         │
-└─────────────────────────┬───────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────┐
+│                          REPL                                     │
+│   Startup ──► Presence.getStartupMessage()                       │
+│   Loop    ──► Router → Agent → Tools                             │
+│   Quit    ──► Presence.getShutdownMessage()                      │
+└──────────────────────────────────────────────────────────────────┘
+                               │
+                               ▼
+┌──────────────────────────────────────────────────────────────────┐
+│                      User Input                                   │
+└─────────────────────────┬────────────────────────────────────────┘
                           ▼
-┌─────────────────────────────────────────────────────────┐
-│              Router Model: SIMPLE or COMPLEX?           │
-│                    (0.5B parameter model)               │
-└─────────────────────────┬───────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────┐
+│              Router Model: SIMPLE or COMPLEX?                     │
+│                    (0.5B parameter model)                         │
+└─────────────────────────┬────────────────────────────────────────┘
                           │
           ┌───────────────┴───────────────┐
           ▼                               ▼
@@ -309,6 +336,22 @@ Your events are preserved unless you explicitly say "yes delete events".
 │  4. Fast LLM        │       │  (30B+ parameter model)     │
 │     (7B model)      │       │                             │
 └─────────────────────┘       └─────────────────────────────┘
+                               │
+                               ▼
+┌──────────────────────────────────────────────────────────────────┐
+│                        Services                                   │
+│   ┌─────────────┐  ┌─────────────┐  ┌─────────────────────────┐  │
+│   │   Garden    │  │  Calendar   │  │   Personal Context      │  │
+│   │  (tasks)    │  │  (events)   │  │   (memory, profile)     │  │
+│   └──────┬──────┘  └──────┬──────┘  └───────────┬─────────────┘  │
+│          │                │                     │                │
+│          └────────────────┼─────────────────────┘                │
+│                           ▼                                      │
+│                  ┌─────────────────┐                             │
+│                  │    Presence     │  ← "What should B say?"     │
+│                  │   (initiative)  │                             │
+│                  └─────────────────┘                             │
+└──────────────────────────────────────────────────────────────────┘
 ```
 
 **Why 4 Models?**
@@ -321,6 +364,42 @@ Your events are preserved unless you explicitly say "yes delete events".
 | Embeddings | 1B | Vector generation | ~100ms |
 
 Most requests hit the deterministic router (layers 1-3) and never need an LLM at all.
+
+### Personal Context & Presence
+
+Bartleby has two complementary systems for understanding and assisting you:
+
+**Personal Context Service** — The memory layer
+- Records every conversation as "episodes" with summaries, topics, and actions
+- Tracks facts about you: preferences, habits, goals, relationships
+- Enables recall: "What did we talk about last week?"
+
+**Presence Service** — The initiative layer
+- Queries Personal Context, Calendar, and Garden
+- Decides what (if anything) to surface at key moments
+- Configurable: enable/disable different "moments"
+
+| Moment | When | Example |
+|--------|------|---------|
+| **Startup** | REPL starts | "📅 4 events today, 📝 follow up with Sarah pending" |
+| **Shutdown** | Before quit | "📅 Tomorrow: 2 events. Anything to capture?" |
+| **Morning** | Scheduled (8am) | "☀️ Morning Review: 3 events, 12 tasks" |
+| **Evening** | Scheduled (6pm) | "🌙 5 tasks done today, 2 events tomorrow" |
+| **Weekly** | Scheduled (Sun 9am) | "📋 Weekly Review: 15/20 tasks completed" |
+
+Configure in `.env`:
+
+```env
+PRESENCE_STARTUP=true
+PRESENCE_SHUTDOWN=true
+PRESENCE_SCHEDULED=true
+PRESENCE_MORNING_HOUR=8
+PRESENCE_EVENING_HOUR=18
+PRESENCE_WEEKLY_DAY=0    # Sunday
+PRESENCE_WEEKLY_HOUR=9
+```
+
+This is what makes Bartleby feel like a companion rather than just a command processor.
 
 ## Data Storage
 

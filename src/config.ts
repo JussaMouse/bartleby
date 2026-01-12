@@ -67,6 +67,19 @@ const ConfigSchema = z.object({
     reminderMinutes: z.number().min(0),
   }),
 
+  presence: z.object({
+    startup: z.boolean(),
+    shutdown: z.boolean(),
+    scheduled: z.boolean(),
+    contextual: z.boolean(),
+    idle: z.boolean(),
+    idleMinutes: z.number().positive(),
+    morningHour: z.number().min(0).max(23),
+    eveningHour: z.number().min(0).max(23),
+    weeklyDay: z.number().min(0).max(6),
+    weeklyHour: z.number().min(0).max(23),
+  }),
+
   logging: z.object({
     level: z.enum(['debug', 'info', 'warn', 'error']),
     file: z.string(),
@@ -133,6 +146,18 @@ export function loadConfig(): Config {
       ambiguousTime: (process.env.CALENDAR_AMBIGUOUS_TIME as 'morning' | 'afternoon' | 'ask') || 'afternoon',
       weekStart: (process.env.CALENDAR_WEEK_START as 'sunday' | 'monday') || 'sunday',
       reminderMinutes: parseInt(process.env.CALENDAR_REMINDER_MINUTES || '0'),
+    },
+    presence: {
+      startup: process.env.PRESENCE_STARTUP !== 'false',
+      shutdown: process.env.PRESENCE_SHUTDOWN !== 'false',
+      scheduled: process.env.PRESENCE_SCHEDULED !== 'false',
+      contextual: process.env.PRESENCE_CONTEXTUAL !== 'false',
+      idle: process.env.PRESENCE_IDLE === 'true',
+      idleMinutes: parseInt(process.env.PRESENCE_IDLE_MINUTES || '5'),
+      morningHour: parseInt(process.env.PRESENCE_MORNING_HOUR || '8'),
+      eveningHour: parseInt(process.env.PRESENCE_EVENING_HOUR || '18'),
+      weeklyDay: parseInt(process.env.PRESENCE_WEEKLY_DAY || '0'),
+      weeklyHour: parseInt(process.env.PRESENCE_WEEKLY_HOUR || '9'),
     },
     logging: {
       level: (process.env.LOG_LEVEL as 'debug' | 'info' | 'warn' | 'error') || 'info',
