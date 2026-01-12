@@ -112,8 +112,8 @@ export const addTask: Tool = {
       dueStr = dueMatch[1].toLowerCase();
       description = description.replace(/due:\S+/i, '').trim();
     } else {
-      // Try parenthetical format: (due TODAY) or (due 8pm)
-      const parenMatch = description.match(/\(due\s+([^)]+)\)/i);
+      // Try parenthetical format: (due TODAY), (due 8pm), (due: 8pm)
+      const parenMatch = description.match(/\(due:?\s*([^)]+)\)/i);
       if (parenMatch) {
         dueStr = parenMatch[1].toLowerCase().trim();
         description = description.replace(/\(due\s+[^)]+\)/i, '').trim();
