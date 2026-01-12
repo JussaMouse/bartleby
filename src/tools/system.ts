@@ -136,46 +136,49 @@ Store and search contact information.
 const HELP_CONTEXT = `
 **Context — What Bartleby Learns About You**
 
-Bartleby builds a profile of you over time: preferences, habits,
-goals, relationships, and conversation history.
+Bartleby maintains a personal context that grows over time:
+your preferences, habits, goals, relationships, and conversation history.
 
-**Commands**
-  I am a <type> person             Tell Bartleby about yourself
-  I prefer <preference>            Set a preference
-  I like/love/hate <thing>         Express preferences
-  what do you know about me        View your profile
+## How Facts Are Collected
+
+Just talk naturally! Bartleby picks up on statements like:
+  "my name is Lon"           → stores your name
+  "I'm a morning person"     → stores preference
+  "my wife Sarah..."         → stores relationship
+  "I prefer short meetings"  → stores preference
+  "I want to learn piano"    → stores goal
+
+## How Bartleby Uses Your Context
+
+• **Startup message** — surfaces relevant follow-ups and reminders
+• **Adapts responses** — knows your preferences and style
+• **Recalls history** — can search past conversations
+• **Presence** — decides what to proactively mention
+
+## View Your Stored Facts
+  what do you know about me        Shows all stored facts
+  show profile                     Same as above
+
+## Query Conversation History
   what did we talk about <topic>   Search past conversations
-  done checking <followup>         Clear a pending follow-up
+  what did we discuss last week    Find recent topics
 
-**What's Tracked**
-• **Preferences** — "I prefer morning meetings", "I'm a morning person"
-• **Habits** — "I wake up at 6am", "I always drink tea"
-• **Goals** — "I want to learn piano", "I'm trying to exercise more"
-• **Relationships** — "my wife Sarah", "my boss Tom"
-• **Episodes** — summaries of past conversations
-• **Follow-ups** — things you said you'd do
-
-**Examples**
-  I am a morning person
-  I prefer short meetings
-  remember that I like tea not coffee
-  my wife Sarah is a doctor
-  what do you know about me
-  what did we talk about the budget
+## Tell Bartleby About Yourself
+  my name is <name>                Your name
+  I am a <type> person             Personality/style
+  I prefer <preference>            Preferences
+  I like/love/hate <thing>         Likes/dislikes
+  my <relation> <name>             Relationships
 
 **.env Settings**
   DATABASE_PATH=./database         Context stored in database/memory/
-
-**Related: Presence** (see help presence)
-Context feeds the Presence system, which surfaces relevant info:
-  PRESENCE_STARTUP=true            Show follow-ups at startup
-  PRESENCE_CONTEXTUAL=true         Surface related context during chat
+  PRESENCE_STARTUP=true            Show context in startup message
+  PRESENCE_CONTEXTUAL=true         Surface context during chat
 
 **Tips**
-• Just talk naturally — "I'm a vegetarian", "I hate mornings"
-• Pending follow-ups appear at startup
-• Say "my sister Sarah" and Bartleby remembers the relationship
-• Your profile grows over time from conversations
+• Your profile grows automatically from natural conversation
+• Say "what do you know about me" anytime to see what's stored
+• Follow-ups you mention ("I'll call Sarah tomorrow") appear at startup
 `.trim();
 
 const HELP_SHED = `

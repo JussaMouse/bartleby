@@ -419,19 +419,40 @@ When you say `today` or `calendar`, the Time System shows them all:
 
 **Why it matters:** You never miss something because it's in the "wrong system." Everything temporal is unified.
 
-### Context & Presence
+### The Context System
 
-Bartleby has two complementary systems for understanding and assisting you:
+Bartleby learns about you over time, building a personal context from natural conversation.
 
-**Context Service** — The memory layer
-- Records every conversation as "episodes" with summaries, topics, and actions
-- Tracks facts about you: preferences, habits, goals, relationships
-- Enables recall: "What did we talk about last week?"
+**How it works:**
+```
+> my name is Lon                    → Bartleby remembers your name
+> I'm a morning person              → Stores your preference
+> my wife Sarah is a doctor         → Stores relationship
+> I'll call the dentist tomorrow    → Tracks as follow-up
+```
 
-**Presence Service** — The initiative layer
+**What's stored:**
+| Type | Examples | How it's used |
+|------|----------|---------------|
+| **Identity** | name, timezone | Personalization |
+| **Preferences** | "morning person", "likes tea" | Adapts suggestions |
+| **Relationships** | "wife Sarah", "boss Tom" | Context in conversations |
+| **Goals** | "learn piano", "exercise more" | Motivation, tracking |
+| **Episodes** | Conversation summaries | "What did we talk about X?" |
+| **Follow-ups** | "call dentist tomorrow" | Surfaces at startup |
+
+**Commands:**
+```
+> what do you know about me         # See all stored facts
+> what did we talk about budget     # Search conversation history
+```
+
+### Presence Service
+
+The initiative layer that decides when Bartleby speaks unprompted:
 - Queries Context, Calendar, and Garden
-- Decides what (if anything) to surface at key moments
-- Configurable: enable/disable different "moments"
+- Surfaces relevant info at key moments
+- Configurable per-moment
 
 | Moment | When | Example |
 |--------|------|---------|
