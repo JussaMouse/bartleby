@@ -263,7 +263,7 @@ export const calendarSetup: Tool = {
       /^calendar\s+settings?$/i,
       /^setup\s+calendar$/i,
       // Catch setup-specific responses
-      /^(30m?|1h|60m?|90m?)$/i,
+      /^(30m?|1h|1hr|60m?|90m?|hour)$/i,
       /^(morning|afternoon|am|pm|ask)$/i,
       /^(sunday|monday|sun|mon)$/i,
       /^(15m?|none|off)$/i,
@@ -419,7 +419,7 @@ How long are your typical meetings?
     case 2: // Duration
       if (input.includes('30')) data.duration = 30;
       else if (input.includes('90')) data.duration = 90;
-      else data.duration = 60;
+      else data.duration = 60;  // 1h, 1hr, 60m, hour, etc. all default to 60
       
       context.services.memory.setFact('system', 'calendar_setup_data', data, { source: 'explicit' });
       context.services.memory.setFact('system', 'calendar_setup_step', 3, { source: 'explicit' });
