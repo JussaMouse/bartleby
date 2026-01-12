@@ -1,0 +1,34 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+
+# Environment
+.env
+.env.local
+
+# Databases
+database/*.sqlite3
+database/*.sqlite3-shm
+database/*.sqlite3-wal
+database/*.hnsw
+database/*.json
+
+# Logs
+logs/
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# User data (optional - you may want to track garden/)
+# garden/
+# shed/

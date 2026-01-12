@@ -1,0 +1,5542 @@
+# Bartleby: Implementation Guide
+
+> **Purpose**: Build Bartleby from scratch. A personal AI assistant with 4-tier model architecture, deterministic command routing, and agentic multi-step reasoning.
+
+---
+
+## Table of Contents
+
+1. [Prerequisites](#1-prerequisites)
+2. [Phase 0: Project Bootstrap](#phase-0-project-bootstrap)
+3. [Phase 1: Foundation](#phase-1-foundation)
+4. [Phase 2: Services](#phase-2-services)
+5. [Phase 3: Tools](#phase-3-tools)
+6. [Phase 4: Router & Agent](#phase-4-router--agent)
+7. [Phase 5: Application](#phase-5-application)
+8. [Phase 6: Verification](#phase-6-verification)
+
+---
+
+## 1. Prerequisites
+
+### System Requirements
+
+- **Node.js 22+**: `node --version` → v22.x.x
+- **pnpm**: `pnpm --version` → 9.x+
+- **Git**: For version control
+- **SQLite3** (optional): For inspecting databases
+
+### LLM Server
+
+Any OpenAI-compatible API. Examples:
+- Ollama: `ollama serve` (default: http://localhost:11434)
+- LM Studio: http://localhost:1234
+- vLLM, llama.cpp, etc.
+
+Verify: `curl http://localhost:11434/v1/models`
+
+### Time Estimate
+
+- **Full implementation**: 3-4 hours
+- **Can be done incrementally**: Each phase is self-contained
+
+---
+
+## Phase 0: Project Bootstrap
+
+### Step 0.1: Create Project Directory
+
+```bash
+mkdir bartleby
+cd bartleby
+git init
+```
+
+### Step 0.2: Create `package.json`
+
+```json
+{
+  "name": "bartleby",
+  "version": "0.0.1",
+  "description": "Personal AI assistant with memory",
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "tsx src/index.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.7.0",
+    "chokidar": "^4.0.3",
+    "dotenv": "^16.4.7",
+    "gray-matter": "^4.0.3",
+    "hnswlib-node": "^3.0.0",
+    "openai": "^4.77.0",
+    "uuid": "^11.0.4",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.12",
+    "@types/node": "^22.10.5",
+    "@types/uuid": "^10.0.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.3"
+  },
+  "engines": {
+    "node": ">=22.0.0"
+  }
+}
+```
+
+### Step 0.3: Install Dependencies
+
+```bash
+pnpm install
+
+# hnswlib-node requires native compilation - approve when prompted
+pnpm approve-builds
+```
+
+### Step 0.4: Create `tsconfig.json`
+
+```json
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "lib": ["ES2022"],
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "declaration": true,
+    "sourceMap": true,
+    "resolveJsonModule": true
+  },
+  "include": ["src/**/*"],
+  "exclude": ["node_modules", "dist"]
+}
+```
+
+### Step 0.5: Create `.gitignore`
+
+```gitignore
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+
+# Environment
+.env
+.env.local
+
+# Databases
+database/*.sqlite3
+database/*.sqlite3-shm
+database/*.sqlite3-wal
+
+# Logs
+logs/
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# User data (optional - you may want to track garden/)
+# garden/
+# shed/
+```
+
+### Step 0.6: Create `.env.example`
+
+```bash
+# ============================================
+# Bartleby Configuration
+# ============================================
+
+# --- LLM (any OpenAI-compatible API) ---
+# Models shown are examples - use what fits your hardware
+
+# Router tier: Complexity classification (tiny, fast)
+ROUTER_MODEL=mlx-community/Qwen3-0.6B-4bit
+ROUTER_URL=http://127.0.0.1:8080/v1
+ROUTER_MAX_TOKENS=100
+
+# Fast tier: Simple queries, single tool calls
+FAST_MODEL=mlx-community/Qwen3-30B-A3B-4bit
+FAST_URL=http://127.0.0.1:8081/v1
+FAST_MAX_TOKENS=4096
+
+# Thinking tier: Complex reasoning, multi-step tasks, code
+THINKING_MODEL=mlx-community/Qwen3-30B-A3B-Thinking-2507-4bit
+THINKING_URL=http://127.0.0.1:8083/v1
+THINKING_MAX_TOKENS=8192
+THINKING_BUDGET=4096
+
+# Health check timeout (ms) - increase for cold starts
+HEALTH_TIMEOUT=35000
+
+# Agent settings
+AGENT_MAX_ITERATIONS=10
+
+# --- Embeddings ---
+EMBEDDINGS_MODEL=Qwen/Qwen3-Embedding-8B
+EMBEDDINGS_URL=http://127.0.0.1:8084/v1
+EMBEDDINGS_DIMENSIONS=4096
+
+# --- Paths ---
+GARDEN_PATH=./garden
+SHED_PATH=./shed
+DATABASE_PATH=./database
+LOG_DIR=./logs
+
+# --- Scheduler ---
+SCHEDULER_ENABLED=true
+SCHEDULER_CHECK_INTERVAL=60000
+
+# --- Weather (optional) ---
+WEATHER_CITY=
+WEATHER_UNITS=F
+OPENWEATHERMAP_API_KEY=
+
+# --- Signal Notifications (optional) ---
+SIGNAL_ENABLED=false
+SIGNAL_CLI_PATH=/usr/local/bin/signal-cli
+SIGNAL_NUMBER=
+SIGNAL_RECIPIENT=
+SIGNAL_TIMEOUT=20000
+
+# --- Logging ---
+LOG_LEVEL=info
+LOG_FILE=./logs/bartleby.log
+LOG_CONSOLE=true
+```
+
+### Step 0.7: Create Directory Structure
+
+```bash
+mkdir -p src/{utils,services,tools,router,agent}
+mkdir -p garden database logs
+mkdir -p shed/{sources,index}
+```
+
+### Step 0.8: Create `.env` from Example
+
+```bash
+cp .env.example .env
+# Edit .env with your actual values
+```
+
+### ✓ Phase 0 Checkpoint
+
+Verify:
+```bash
+ls -la
+# Should see: package.json, tsconfig.json, .gitignore, .env.example, .env, src/, garden/, database/, logs/
+
+pnpm typecheck
+# Should pass (no files yet, but config is valid)
+```
+
+Commit:
+```bash
+git add -A
+git commit -m 'chore: initialize bartleby project'
+```
+
+---
+
+## Phase 1: Foundation
+
+Core utilities that everything else depends on.
+
+### Step 1.1: Create `src/utils/logger.ts`
+
+```typescript
+// src/utils/logger.ts
+import fs from 'fs';
+import path from 'path';
+
+export enum LogLevel {
+  DEBUG = 0,
+  INFO = 1,
+  WARN = 2,
+  ERROR = 3,
+}
+
+const LEVEL_NAMES = ['DEBUG', 'INFO', 'WARN', 'ERROR'];
+const COLORS = ['\x1b[36m', '\x1b[32m', '\x1b[33m', '\x1b[31m'];
+const RESET = '\x1b[0m';
+
+let minLevel = LogLevel.INFO;
+let logFile: string | null = null;
+let consoleEnabled = true;
+
+export function configureLogger(options: {
+  level?: LogLevel;
+  file?: string;
+  console?: boolean;
+}): void {
+  if (options.level !== undefined) minLevel = options.level;
+  if (options.file) {
+    logFile = options.file;
+    const dir = path.dirname(logFile);
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+  }
+  if (options.console !== undefined) consoleEnabled = options.console;
+}
+
+export function log(level: LogLevel, message: string, meta?: Record<string, unknown>): void {
+  if (level < minLevel) return;
+
+  const timestamp = new Date().toISOString();
+  const levelName = LEVEL_NAMES[level];
+  const metaStr = meta ? ' ' + JSON.stringify(meta) : '';
+  const line = `[${timestamp}] [${levelName}] ${message}${metaStr}`;
+
+  if (consoleEnabled) {
+    console.log(`${COLORS[level]}${line}${RESET}`);
+  }
+
+  if (logFile) {
+    fs.appendFileSync(logFile, line + '\n');
+  }
+}
+
+export const debug = (msg: string, meta?: Record<string, unknown>) => log(LogLevel.DEBUG, msg, meta);
+export const info = (msg: string, meta?: Record<string, unknown>) => log(LogLevel.INFO, msg, meta);
+export const warn = (msg: string, meta?: Record<string, unknown>) => log(LogLevel.WARN, msg, meta);
+export const error = (msg: string, meta?: Record<string, unknown>) => log(LogLevel.ERROR, msg, meta);
+```
+
+### Step 1.2: Create `src/utils/markdown.ts`
+
+```typescript
+// src/utils/markdown.ts
+import matter from 'gray-matter';
+
+export interface ParsedMarkdown {
+  frontmatter: Record<string, unknown>;
+  content: string;
+}
+
+export function parseMarkdown(text: string): ParsedMarkdown {
+  const { data, content } = matter(text);
+  return { frontmatter: data, content: content.trim() };
+}
+
+export function generateMarkdown(
+  frontmatter: Record<string, unknown>,
+  content: string
+): string {
+  const yaml = matter.stringify(content, frontmatter);
+  return yaml;
+}
+
+export function extractTitle(content: string): string | null {
+  const match = content.match(/^#\s+(.+)$/m);
+  return match ? match[1].trim() : null;
+}
+
+export function sanitizeFilename(name: string): string {
+  return name
+    .replace(/[<>:"/\\|?*]/g, '')
+    .replace(/\s+/g, '-')
+    .toLowerCase()
+    .trim();
+}
+```
+
+### Step 1.3: Create `src/utils/math.ts`
+
+```typescript
+// src/utils/math.ts
+
+export function cosineSimilarity(a: number[], b: number[]): number {
+  if (a.length !== b.length) return 0;
+
+  let dotProduct = 0;
+  let normA = 0;
+  let normB = 0;
+
+  for (let i = 0; i < a.length; i++) {
+    dotProduct += a[i] * b[i];
+    normA += a[i] * a[i];
+    normB += b[i] * b[i];
+  }
+
+  const magnitude = Math.sqrt(normA) * Math.sqrt(normB);
+  return magnitude === 0 ? 0 : dotProduct / magnitude;
+}
+
+export function topK<T>(
+  items: T[],
+  scores: number[],
+  k: number
+): Array<{ item: T; score: number }> {
+  const indexed = items.map((item, i) => ({ item, score: scores[i] }));
+  indexed.sort((a, b) => b.score - a.score);
+  return indexed.slice(0, k);
+}
+```
+
+### Step 1.4: Create `src/config.ts`
+
+```typescript
+// src/config.ts
+import { z } from 'zod';
+import dotenv from 'dotenv';
+import path from 'path';
+import fs from 'fs';
+
+dotenv.config();
+
+// === Schema ===
+
+const TierSchema = z.object({
+  model: z.string(),
+  url: z.string().url(),
+  maxTokens: z.number().positive(),
+});
+
+const ThinkingTierSchema = TierSchema.extend({
+  budget: z.number().positive().optional(),
+});
+
+const ConfigSchema = z.object({
+  llm: z.object({
+    router: TierSchema,
+    fast: TierSchema,
+    thinking: ThinkingTierSchema,
+    healthTimeout: z.number().positive(),
+    agentMaxIterations: z.number().positive(),
+  }),
+
+  embeddings: z.object({
+    url: z.string().url(),
+    model: z.string(),
+    dimensions: z.number().positive(),
+  }),
+
+  paths: z.object({
+    garden: z.string(),
+    shed: z.string(),
+    database: z.string(),
+    logs: z.string(),
+  }),
+
+  weather: z.object({
+    city: z.string().optional(),
+    apiKey: z.string().optional(),
+    units: z.enum(['C', 'F']),
+  }),
+
+  signal: z.object({
+    enabled: z.boolean(),
+    cliPath: z.string(),
+    number: z.string().optional(),
+    recipient: z.string().optional(),
+    timeout: z.number().positive(),
+  }),
+
+  scheduler: z.object({
+    enabled: z.boolean(),
+    checkInterval: z.number().positive(),
+  }),
+
+  logging: z.object({
+    level: z.enum(['debug', 'info', 'warn', 'error']),
+    file: z.string(),
+    console: z.boolean(),
+  }),
+});
+
+export type Config = z.infer<typeof ConfigSchema>;
+
+// === Loader ===
+
+export function loadConfig(): Config {
+  const config = ConfigSchema.parse({
+    llm: {
+      router: {
+        model: process.env.ROUTER_MODEL || 'qwen3:0.6b',
+        url: process.env.ROUTER_URL || 'http://localhost:11434/v1',
+        maxTokens: parseInt(process.env.ROUTER_MAX_TOKENS || '100'),
+      },
+      fast: {
+        model: process.env.FAST_MODEL || 'qwen3:7b',
+        url: process.env.FAST_URL || 'http://localhost:11434/v1',
+        maxTokens: parseInt(process.env.FAST_MAX_TOKENS || '4096'),
+      },
+      thinking: {
+        model: process.env.THINKING_MODEL || 'qwen3:32b',
+        url: process.env.THINKING_URL || 'http://localhost:11434/v1',
+        maxTokens: parseInt(process.env.THINKING_MAX_TOKENS || '8192'),
+        budget: process.env.THINKING_BUDGET ? parseInt(process.env.THINKING_BUDGET) : undefined,
+      },
+      healthTimeout: parseInt(process.env.HEALTH_TIMEOUT || '35000'),
+      agentMaxIterations: parseInt(process.env.AGENT_MAX_ITERATIONS || '10'),
+    },
+    embeddings: {
+      url: process.env.EMBEDDINGS_URL || 'http://localhost:11434/v1',
+      model: process.env.EMBEDDINGS_MODEL || 'nomic-embed-text',
+      dimensions: parseInt(process.env.EMBEDDINGS_DIMENSIONS || '4096'),
+    },
+    paths: {
+      garden: process.env.GARDEN_PATH || './garden',
+      shed: process.env.SHED_PATH || './shed',
+      database: process.env.DATABASE_PATH || './database',
+      logs: process.env.LOG_DIR || './logs',
+    },
+    weather: {
+      city: process.env.WEATHER_CITY || undefined,
+      apiKey: process.env.OPENWEATHERMAP_API_KEY || undefined,
+      units: (process.env.WEATHER_UNITS as 'C' | 'F') || 'F',
+    },
+    signal: {
+      enabled: process.env.SIGNAL_ENABLED === 'true',
+      cliPath: process.env.SIGNAL_CLI_PATH || '/usr/local/bin/signal-cli',
+      number: process.env.SIGNAL_NUMBER || undefined,
+      recipient: process.env.SIGNAL_RECIPIENT || undefined,
+      timeout: parseInt(process.env.SIGNAL_TIMEOUT || '20000'),
+    },
+    scheduler: {
+      enabled: process.env.SCHEDULER_ENABLED !== 'false',
+      checkInterval: parseInt(process.env.SCHEDULER_CHECK_INTERVAL || '60000'),
+    },
+    logging: {
+      level: (process.env.LOG_LEVEL as 'debug' | 'info' | 'warn' | 'error') || 'info',
+      file: process.env.LOG_FILE || './logs/bartleby.log',
+      console: process.env.LOG_CONSOLE !== 'false',
+    },
+  });
+
+  return config;
+}
+
+// === Path Helpers ===
+
+export function resolvePath(config: Config, key: keyof Config['paths']): string {
+  const p = config.paths[key];
+  return path.isAbsolute(p) ? p : path.join(process.cwd(), p);
+}
+
+export function getDbPath(config: Config, name: string): string {
+  return path.join(resolvePath(config, 'database'), name);
+}
+
+export function ensureDir(dirPath: string): void {
+  if (!fs.existsSync(dirPath)) {
+    fs.mkdirSync(dirPath, { recursive: true });
+  }
+}
+```
+
+### ✓ Phase 1 Checkpoint
+
+Verify:
+```bash
+pnpm typecheck
+# Should pass with no errors
+
+# Quick test - create a temp file to verify imports work
+echo "import { loadConfig } from './config.js';" > src/test.ts
+echo "console.log('Config loaded');" >> src/test.ts
+pnpm dev src/test.ts
+# Should print "Config loaded" (may show config loading warnings)
+rm src/test.ts
+```
+
+Commit:
+```bash
+git add -A
+git commit -m 'feat: add foundation utilities (logger, config, markdown, math)'
+```
+
+---
+
+## Phase 2: Services
+
+Services are stateful components initialized once at startup. They manage data persistence and external connections.
+
+### Step 2.1: Create `src/services/garden.ts`
+
+The Garden is the unified data store - tasks, contacts, notes, everything.
+
+```typescript
+// src/services/garden.ts
+import Database from 'better-sqlite3';
+import { v4 as uuidv4 } from 'uuid';
+import fs from 'fs';
+import path from 'path';
+import chokidar, { FSWatcher } from 'chokidar';
+import { Config, resolvePath, getDbPath, ensureDir } from '../config.js';
+import { parseMarkdown, generateMarkdown, sanitizeFilename } from '../utils/markdown.js';
+import { info, warn, error, debug } from '../utils/logger.js';
+
+// === Types ===
+
+export type RecordType = 'action' | 'project' | 'context' | 'contact' | 'note' | 'daily' | 'list';
+export type RecordStatus = 'active' | 'completed' | 'archived' | 'someday' | 'waiting';
+
+export interface GardenRecord {
+  id: string;
+  type: RecordType;
+  title: string;
+  status: RecordStatus;
+  context?: string;
+  project?: string;
+  due_date?: string;
+  email?: string;
+  phone?: string;
+  birthday?: string;
+  content?: string;
+  tags?: string[];
+  metadata?: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+  completed_at?: string;
+}
+
+export interface TaskFilters {
+  status?: RecordStatus | RecordStatus[];
+  context?: string;
+  project?: string;
+  type?: RecordType;
+  dueBefore?: string;
+  dueAfter?: string;
+}
+
+// === Schema ===
+
+const SCHEMA = `
+CREATE TABLE IF NOT EXISTS garden_records (
+  id TEXT PRIMARY KEY,
+  type TEXT NOT NULL,
+  title TEXT NOT NULL,
+  status TEXT DEFAULT 'active',
+  context TEXT,
+  project TEXT,
+  due_date TEXT,
+  email TEXT,
+  phone TEXT,
+  birthday TEXT,
+  content TEXT,
+  tags TEXT,
+  metadata TEXT,
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now')),
+  completed_at TEXT
+);
+
+CREATE TABLE IF NOT EXISTS garden_links (
+  source_id TEXT NOT NULL,
+  target_id TEXT NOT NULL,
+  link_text TEXT,
+  PRIMARY KEY (source_id, target_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_garden_type ON garden_records(type);
+CREATE INDEX IF NOT EXISTS idx_garden_status ON garden_records(status);
+CREATE INDEX IF NOT EXISTS idx_garden_context ON garden_records(context);
+CREATE INDEX IF NOT EXISTS idx_garden_project ON garden_records(project);
+CREATE INDEX IF NOT EXISTS idx_garden_due ON garden_records(due_date);
+`;
+
+// === Service ===
+
+export class GardenService {
+  private db: Database.Database;
+  private gardenPath: string;
+  private watcher?: FSWatcher;
+  private syncing = false;
+
+  constructor(private config: Config) {
+    const dbPath = getDbPath(config, 'garden.sqlite3');
+    ensureDir(path.dirname(dbPath));
+
+    this.db = new Database(dbPath);
+    this.db.pragma('journal_mode = WAL');
+    this.gardenPath = resolvePath(config, 'garden');
+  }
+
+  async initialize(): Promise<void> {
+    this.db.exec(SCHEMA);
+    ensureDir(this.gardenPath);
+
+    await this.syncFromFiles();
+    this.startWatcher();
+
+    info('GardenService initialized', { path: this.gardenPath });
+  }
+
+  // === CRUD ===
+
+  create(data: Omit<GardenRecord, 'id' | 'created_at' | 'updated_at'>): GardenRecord {
+    const id = uuidv4();
+    const now = new Date().toISOString();
+
+    const record: GardenRecord = {
+      ...data,
+      id,
+      status: data.status || 'active',
+      created_at: now,
+      updated_at: now,
+    };
+
+    this.db.prepare(`
+      INSERT INTO garden_records 
+      (id, type, title, status, context, project, due_date, email, phone, birthday, content, tags, metadata, created_at, updated_at, completed_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      record.id, record.type, record.title, record.status,
+      record.context, record.project, record.due_date,
+      record.email, record.phone, record.birthday,
+      record.content, JSON.stringify(record.tags || []),
+      JSON.stringify(record.metadata || {}),
+      record.created_at, record.updated_at, record.completed_at
+    );
+
+    this.syncToFile(record);
+    return record;
+  }
+
+  get(id: string): GardenRecord | null {
+    const row = this.db.prepare('SELECT * FROM garden_records WHERE id = ?').get(id) as any;
+    return row ? this.rowToRecord(row) : null;
+  }
+
+  getByTitle(title: string): GardenRecord | null {
+    const row = this.db.prepare('SELECT * FROM garden_records WHERE title = ? COLLATE NOCASE').get(title) as any;
+    return row ? this.rowToRecord(row) : null;
+  }
+
+  update(id: string, updates: Partial<GardenRecord>): GardenRecord | null {
+    const existing = this.get(id);
+    if (!existing) return null;
+
+    const updated: GardenRecord = {
+      ...existing,
+      ...updates,
+      id: existing.id,
+      updated_at: new Date().toISOString(),
+    };
+
+    if (updates.status === 'completed' && existing.status !== 'completed') {
+      updated.completed_at = updated.updated_at;
+    }
+
+    this.db.prepare(`
+      UPDATE garden_records SET
+        type=?, title=?, status=?, context=?, project=?, due_date=?,
+        email=?, phone=?, birthday=?, content=?, tags=?, metadata=?,
+        updated_at=?, completed_at=?
+      WHERE id=?
+    `).run(
+      updated.type, updated.title, updated.status,
+      updated.context, updated.project, updated.due_date,
+      updated.email, updated.phone, updated.birthday,
+      updated.content, JSON.stringify(updated.tags || []),
+      JSON.stringify(updated.metadata || {}),
+      updated.updated_at, updated.completed_at, id
+    );
+
+    this.syncToFile(updated);
+    return updated;
+  }
+
+  delete(id: string): boolean {
+    const record = this.get(id);
+    if (!record) return false;
+
+    this.db.prepare('DELETE FROM garden_records WHERE id = ?').run(id);
+
+    const filepath = this.getFilePath(record);
+    if (fs.existsSync(filepath)) {
+      this.syncing = true;
+      fs.unlinkSync(filepath);
+      this.syncing = false;
+    }
+
+    return true;
+  }
+
+  // === Queries ===
+
+  getTasks(filters: TaskFilters = {}): GardenRecord[] {
+    let sql = 'SELECT * FROM garden_records WHERE type = ?';
+    const params: unknown[] = ['action'];
+
+    if (filters.status) {
+      const statuses = Array.isArray(filters.status) ? filters.status : [filters.status];
+      sql += ` AND status IN (${statuses.map(() => '?').join(', ')})`;
+      params.push(...statuses);
+    }
+
+    if (filters.context) {
+      sql += ' AND context = ?';
+      params.push(filters.context);
+    }
+
+    if (filters.project) {
+      sql += ' AND project = ?';
+      params.push(filters.project);
+    }
+
+    if (filters.dueBefore) {
+      sql += ' AND due_date <= ?';
+      params.push(filters.dueBefore);
+    }
+
+    if (filters.dueAfter) {
+      sql += ' AND due_date >= ?';
+      params.push(filters.dueAfter);
+    }
+
+    sql += ' ORDER BY context, project, title';
+
+    const rows = this.db.prepare(sql).all(...params) as any[];
+    return rows.map(r => this.rowToRecord(r));
+  }
+
+  getByType(type: RecordType): GardenRecord[] {
+    const rows = this.db.prepare('SELECT * FROM garden_records WHERE type = ? ORDER BY title').all(type) as any[];
+    return rows.map(r => this.rowToRecord(r));
+  }
+
+  search(query: string, limit = 50): GardenRecord[] {
+    const pattern = `%${query}%`;
+    const rows = this.db.prepare(`
+      SELECT * FROM garden_records 
+      WHERE title LIKE ? OR content LIKE ?
+      ORDER BY updated_at DESC
+      LIMIT ?
+    `).all(pattern, pattern, limit) as any[];
+    return rows.map(r => this.rowToRecord(r));
+  }
+
+  // === Task Helpers ===
+
+  addTask(title: string, context = '@inbox', project?: string, dueDate?: string): GardenRecord {
+    return this.create({
+      type: 'action',
+      title,
+      status: 'active',
+      context,
+      project,
+      due_date: dueDate,
+    });
+  }
+
+  completeTask(identifier: string | number): GardenRecord | null {
+    let record: GardenRecord | null = null;
+
+    if (typeof identifier === 'number') {
+      const tasks = this.getTasks({ status: 'active' });
+      if (identifier > 0 && identifier <= tasks.length) {
+        record = tasks[identifier - 1];
+      }
+    } else {
+      record = this.get(identifier) || this.getByTitle(identifier);
+    }
+
+    if (!record) return null;
+    return this.update(record.id, { status: 'completed' });
+  }
+
+  captureToInbox(text: string): GardenRecord {
+    return this.addTask(text, '@inbox');
+  }
+
+  // === Stats for Proactive ===
+
+  getStaleInboxItems(days: number): GardenRecord[] {
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - days);
+    const cutoffStr = cutoff.toISOString();
+
+    const rows = this.db.prepare(`
+      SELECT * FROM garden_records 
+      WHERE type = 'action' AND context = '@inbox' AND created_at < ?
+      ORDER BY created_at
+    `).all(cutoffStr) as any[];
+    return rows.map(r => this.rowToRecord(r));
+  }
+
+  getOverdueTasks(): GardenRecord[] {
+    const today = new Date().toISOString().split('T')[0];
+    const rows = this.db.prepare(`
+      SELECT * FROM garden_records 
+      WHERE type = 'action' AND status = 'active' 
+      AND due_date IS NOT NULL AND due_date < ?
+    `).all(today) as any[];
+    return rows.map(r => this.rowToRecord(r));
+  }
+
+  getTaskStats(days: number): { added: number; completed: number } {
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - days);
+    const cutoffStr = cutoff.toISOString();
+
+    const added = this.db.prepare(`
+      SELECT COUNT(*) as count FROM garden_records 
+      WHERE type = 'action' AND created_at >= ?
+    `).get(cutoffStr) as { count: number };
+
+    const completed = this.db.prepare(`
+      SELECT COUNT(*) as count FROM garden_records 
+      WHERE type = 'action' AND status = 'completed' AND completed_at >= ?
+    `).get(cutoffStr) as { count: number };
+
+    return { added: added.count, completed: completed.count };
+  }
+
+  // === Contact Helpers ===
+
+  addContact(name: string, data: Partial<GardenRecord> = {}): GardenRecord {
+    return this.create({
+      type: 'contact',
+      title: name,
+      status: 'active',
+      email: data.email,
+      phone: data.phone,
+      birthday: data.birthday,
+      content: data.content,
+      tags: data.tags,
+    });
+  }
+
+  searchContacts(query: string): GardenRecord[] {
+    const pattern = `%${query}%`;
+    const rows = this.db.prepare(`
+      SELECT * FROM garden_records 
+      WHERE type = 'contact' AND (title LIKE ? OR email LIKE ?)
+      ORDER BY title
+    `).all(pattern, pattern) as any[];
+    return rows.map(r => this.rowToRecord(r));
+  }
+
+  // === File Sync ===
+
+  private getFilePath(record: GardenRecord): string {
+    const filename = `${sanitizeFilename(record.title)}.md`;
+    return path.join(this.gardenPath, filename);
+  }
+
+  private syncToFile(record: GardenRecord): void {
+    if (this.syncing) return;
+
+    const filepath = this.getFilePath(record);
+
+    const frontmatter: Record<string, unknown> = {
+      id: record.id,
+      type: record.type,
+      status: record.status,
+    };
+
+    if (record.context) frontmatter.context = record.context;
+    if (record.project) frontmatter.project = record.project;
+    if (record.due_date) frontmatter.due = record.due_date;
+    if (record.email) frontmatter.email = record.email;
+    if (record.phone) frontmatter.phone = record.phone;
+    if (record.birthday) frontmatter.birthday = record.birthday;
+    if (record.tags?.length) frontmatter.tags = record.tags;
+
+    const body = `# ${record.title}\n\n${record.content || ''}`;
+    const markdown = generateMarkdown(frontmatter, body);
+
+    this.syncing = true;
+    fs.writeFileSync(filepath, markdown);
+    this.syncing = false;
+
+    debug('Synced to file', { filepath });
+  }
+
+  private syncFromFile(filepath: string): void {
+    if (this.syncing || !filepath.endsWith('.md')) return;
+
+    try {
+      const content = fs.readFileSync(filepath, 'utf-8');
+      const { frontmatter, content: body } = parseMarkdown(content);
+
+      const titleMatch = body.match(/^#\s+(.+)$/m);
+      const title = titleMatch ? titleMatch[1].trim() : path.basename(filepath, '.md');
+
+      // Check if this file has an ID (was created by us)
+      const existingId = frontmatter.id as string | undefined;
+      const existing = existingId ? this.get(existingId) : this.getByTitle(title);
+
+      const recordData = {
+        type: (frontmatter.type as RecordType) || 'note',
+        title,
+        status: (frontmatter.status as RecordStatus) || 'active',
+        context: frontmatter.context as string | undefined,
+        project: frontmatter.project as string | undefined,
+        due_date: frontmatter.due as string | undefined,
+        email: frontmatter.email as string | undefined,
+        phone: frontmatter.phone as string | undefined,
+        birthday: frontmatter.birthday as string | undefined,
+        content: body.replace(/^#\s+.+\n+/, '').trim(),
+        tags: frontmatter.tags as string[] | undefined,
+      };
+
+      this.syncing = true;
+
+      if (existing) {
+        this.update(existing.id, recordData);
+      } else {
+        this.create(recordData);
+      }
+
+      this.syncing = false;
+    } catch (err) {
+      error('Failed to sync from file', { filepath, error: String(err) });
+      this.syncing = false;
+    }
+  }
+
+  private async syncFromFiles(): Promise<void> {
+    if (!fs.existsSync(this.gardenPath)) return;
+
+    const files = fs.readdirSync(this.gardenPath).filter(f => f.endsWith('.md'));
+
+    for (const file of files) {
+      this.syncFromFile(path.join(this.gardenPath, file));
+    }
+
+    info('Initial file sync complete', { files: files.length });
+  }
+
+  private startWatcher(): void {
+    this.watcher = chokidar.watch(this.gardenPath, {
+      ignored: /(^|[\/\\])\../,
+      persistent: true,
+      ignoreInitial: true,
+      awaitWriteFinish: { stabilityThreshold: 300 },
+    });
+
+    this.watcher.on('change', filepath => {
+      if (!this.syncing) this.syncFromFile(filepath);
+    });
+
+    this.watcher.on('add', filepath => {
+      if (!this.syncing) this.syncFromFile(filepath);
+    });
+  }
+
+  // === Helpers ===
+
+  private rowToRecord(row: any): GardenRecord {
+    return {
+      id: row.id,
+      type: row.type,
+      title: row.title,
+      status: row.status,
+      context: row.context || undefined,
+      project: row.project || undefined,
+      due_date: row.due_date || undefined,
+      email: row.email || undefined,
+      phone: row.phone || undefined,
+      birthday: row.birthday || undefined,
+      content: row.content || undefined,
+      tags: row.tags ? JSON.parse(row.tags) : [],
+      metadata: row.metadata ? JSON.parse(row.metadata) : {},
+      created_at: row.created_at,
+      updated_at: row.updated_at,
+      completed_at: row.completed_at || undefined,
+    };
+  }
+
+  close(): void {
+    this.watcher?.close();
+    this.db.close();
+  }
+}
+```
+
+### Step 2.2: Create `src/services/calendar.ts`
+
+```typescript
+// src/services/calendar.ts
+import Database from 'better-sqlite3';
+import { v4 as uuidv4 } from 'uuid';
+import path from 'path';
+import { Config, getDbPath, ensureDir } from '../config.js';
+import { info } from '../utils/logger.js';
+
+export interface CalendarEvent {
+  id: string;
+  title: string;
+  description?: string;
+  start_time: string;
+  end_time: string;
+  all_day: boolean;
+  location?: string;
+  linked_record?: string;
+  recurrence?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+const SCHEMA = `
+CREATE TABLE IF NOT EXISTS events (
+  id TEXT PRIMARY KEY,
+  title TEXT NOT NULL,
+  description TEXT,
+  start_time TEXT NOT NULL,
+  end_time TEXT NOT NULL,
+  all_day INTEGER DEFAULT 0,
+  location TEXT,
+  linked_record TEXT,
+  recurrence TEXT,
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_events_start ON events(start_time);
+`;
+
+export class CalendarService {
+  private db: Database.Database;
+
+  constructor(private config: Config) {
+    const dbPath = getDbPath(config, 'calendar.sqlite3');
+    ensureDir(path.dirname(dbPath));
+
+    this.db = new Database(dbPath);
+    this.db.pragma('journal_mode = WAL');
+  }
+
+  async initialize(): Promise<void> {
+    this.db.exec(SCHEMA);
+    info('CalendarService initialized');
+  }
+
+  create(data: Omit<CalendarEvent, 'id' | 'created_at' | 'updated_at'>): CalendarEvent {
+    const id = uuidv4();
+    const now = new Date().toISOString();
+
+    const event: CalendarEvent = { ...data, id, created_at: now, updated_at: now };
+
+    this.db.prepare(`
+      INSERT INTO events (id, title, description, start_time, end_time, all_day, location, linked_record, recurrence, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      event.id, event.title, event.description,
+      event.start_time, event.end_time, event.all_day ? 1 : 0,
+      event.location, event.linked_record, event.recurrence,
+      event.created_at, event.updated_at
+    );
+
+    return event;
+  }
+
+  getForDay(date: Date): CalendarEvent[] {
+    const dayStart = new Date(date);
+    dayStart.setHours(0, 0, 0, 0);
+    const dayEnd = new Date(date);
+    dayEnd.setHours(23, 59, 59, 999);
+
+    const rows = this.db.prepare(`
+      SELECT * FROM events
+      WHERE start_time >= ? AND start_time <= ?
+      ORDER BY start_time
+    `).all(dayStart.toISOString(), dayEnd.toISOString()) as any[];
+
+    return rows.map(r => this.rowToEvent(r));
+  }
+
+  getInRange(start: Date, end: Date): CalendarEvent[] {
+    const rows = this.db.prepare(`
+      SELECT * FROM events
+      WHERE start_time >= ? AND start_time <= ?
+      ORDER BY start_time
+    `).all(start.toISOString(), end.toISOString()) as any[];
+
+    return rows.map(r => this.rowToEvent(r));
+  }
+
+  getUpcoming(count = 10): CalendarEvent[] {
+    const rows = this.db.prepare(`
+      SELECT * FROM events
+      WHERE start_time >= ?
+      ORDER BY start_time
+      LIMIT ?
+    `).all(new Date().toISOString(), count) as any[];
+
+    return rows.map(r => this.rowToEvent(r));
+  }
+
+  delete(id: string): boolean {
+    const result = this.db.prepare('DELETE FROM events WHERE id = ?').run(id);
+    return result.changes > 0;
+  }
+
+  private rowToEvent(row: any): CalendarEvent {
+    return {
+      id: row.id,
+      title: row.title,
+      description: row.description || undefined,
+      start_time: row.start_time,
+      end_time: row.end_time,
+      all_day: row.all_day === 1,
+      location: row.location || undefined,
+      linked_record: row.linked_record || undefined,
+      recurrence: row.recurrence || undefined,
+      created_at: row.created_at,
+      updated_at: row.updated_at,
+    };
+  }
+
+  close(): void {
+    this.db.close();
+  }
+}
+```
+
+### Step 2.3: Create `src/services/memory.ts`
+
+```typescript
+// src/services/memory.ts
+import fs from 'fs';
+import path from 'path';
+import { Config, resolvePath, ensureDir } from '../config.js';
+import { info, debug } from '../utils/logger.js';
+
+export interface Episode {
+  id: string;
+  timestamp: string;
+  summary: string;
+  topics: string[];
+  actionsTaken: string[];
+  pendingFollowups: string[];
+  messageCount: number;
+}
+
+export interface UserFact {
+  category: 'preference' | 'habit' | 'goal' | 'relationship' | 'schedule' | 'interest' | 'health';
+  key: string;
+  value: unknown;
+  confidence: number;
+  lastUpdated: string;
+  source: 'explicit' | 'inferred';
+}
+
+export class MemoryService {
+  private storagePath: string;
+  private episodes: Episode[] = [];
+  private facts = new Map<string, UserFact>();
+  private currentSession: { messages: string[]; startTime: Date } | null = null;
+
+  constructor(private config: Config) {
+    this.storagePath = path.join(resolvePath(config, 'database'), 'memory');
+  }
+
+  async initialize(): Promise<void> {
+    ensureDir(this.storagePath);
+
+    // Load episodes
+    const episodesFile = path.join(this.storagePath, 'episodes.json');
+    if (fs.existsSync(episodesFile)) {
+      try {
+        this.episodes = JSON.parse(fs.readFileSync(episodesFile, 'utf-8'));
+      } catch {
+        this.episodes = [];
+      }
+    }
+
+    // Load profile
+    const profileFile = path.join(this.storagePath, 'profile.json');
+    if (fs.existsSync(profileFile)) {
+      try {
+        const data = JSON.parse(fs.readFileSync(profileFile, 'utf-8'));
+        for (const [k, v] of Object.entries(data)) {
+          this.facts.set(k, v as UserFact);
+        }
+      } catch {
+        // Start fresh
+      }
+    }
+
+    info('MemoryService initialized', {
+      episodes: this.episodes.length,
+      facts: this.facts.size,
+    });
+  }
+
+  // === Session Management ===
+
+  startSession(): void {
+    this.currentSession = { messages: [], startTime: new Date() };
+  }
+
+  recordMessage(message: string, isUser: boolean): void {
+    if (this.currentSession) {
+      this.currentSession.messages.push(`${isUser ? 'User' : 'Bartleby'}: ${message}`);
+    }
+
+    // Extract facts from user messages
+    if (isUser) {
+      this.extractFacts(message);
+    }
+  }
+
+  async endSession(): Promise<void> {
+    if (!this.currentSession || this.currentSession.messages.length === 0) return;
+
+    const episode: Episode = {
+      id: crypto.randomUUID(),
+      timestamp: new Date().toISOString(),
+      summary: this.summarizeSession(this.currentSession.messages),
+      topics: this.extractTopics(this.currentSession.messages),
+      actionsTaken: this.extractActions(this.currentSession.messages),
+      pendingFollowups: this.extractFollowups(this.currentSession.messages),
+      messageCount: this.currentSession.messages.length,
+    };
+
+    this.episodes.push(episode);
+    this.currentSession = null;
+
+    await this.save();
+  }
+
+  // === Episodic Memory ===
+
+  getLastSession(): Episode | null {
+    return this.episodes[this.episodes.length - 1] || null;
+  }
+
+  getTodayEpisodes(): Episode[] {
+    const today = new Date().toISOString().split('T')[0];
+    return this.episodes.filter(e => e.timestamp.startsWith(today));
+  }
+
+  getPendingFollowups(): Array<{ episodeId: string; text: string }> {
+    const results: Array<{ episodeId: string; text: string }> = [];
+    for (const ep of this.episodes) {
+      for (const followup of ep.pendingFollowups) {
+        results.push({ episodeId: ep.id, text: followup });
+      }
+    }
+    return results;
+  }
+
+  clearFollowup(episodeId: string, text: string): boolean {
+    const episode = this.episodes.find(e => e.id === episodeId);
+    if (!episode) return false;
+
+    const idx = episode.pendingFollowups.indexOf(text);
+    if (idx === -1) return false;
+
+    episode.pendingFollowups.splice(idx, 1);
+    this.save();
+    return true;
+  }
+
+  clearMatchingFollowup(description: string): string | null {
+    const lower = description.toLowerCase();
+    for (const ep of this.episodes) {
+      for (let i = 0; i < ep.pendingFollowups.length; i++) {
+        if (ep.pendingFollowups[i].toLowerCase().includes(lower)) {
+          const cleared = ep.pendingFollowups[i];
+          ep.pendingFollowups.splice(i, 1);
+          this.save();
+          return cleared;
+        }
+      }
+    }
+    return null;
+  }
+
+  recallRelevant(query: string, limit = 5): Episode[] {
+    const words = query.toLowerCase().split(/\s+/);
+    const scored = this.episodes.map(ep => {
+      let score = 0;
+      for (const word of words) {
+        if (ep.summary.toLowerCase().includes(word)) score += 2;
+        if (ep.topics.some(t => t.includes(word))) score += 1;
+      }
+      return { ep, score };
+    });
+
+    return scored
+      .filter(s => s.score > 0)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, limit)
+      .map(s => s.ep);
+  }
+
+  // === Semantic Profile ===
+
+  getFact(category: string, key: string): UserFact | undefined {
+    return this.facts.get(`${category}:${key}`);
+  }
+
+  setFact(
+    category: UserFact['category'],
+    key: string,
+    value: unknown,
+    options: { source?: 'explicit' | 'inferred'; confidence?: number } = {}
+  ): void {
+    const fullKey = `${category}:${key}`;
+    this.facts.set(fullKey, {
+      category,
+      key,
+      value,
+      confidence: options.confidence ?? 0.7,
+      lastUpdated: new Date().toISOString(),
+      source: options.source ?? 'inferred',
+    });
+    this.save();
+  }
+
+  getFactsByCategory(category: string): UserFact[] {
+    return Array.from(this.facts.values()).filter(f => f.category === category);
+  }
+
+  getProfileSummary(): string {
+    const sections: string[] = [];
+    const categories = ['preference', 'habit', 'goal', 'relationship', 'schedule', 'interest', 'health'];
+
+    for (const cat of categories) {
+      const facts = this.getFactsByCategory(cat);
+      if (facts.length > 0) {
+        const items = facts.map(f => `${f.key}: ${f.value}`).join(', ');
+        sections.push(`**${cat.charAt(0).toUpperCase() + cat.slice(1)}**: ${items}`);
+      }
+    }
+
+    return sections.join('\n');
+  }
+
+  getEpisodeCount(): number {
+    return this.episodes.length;
+  }
+
+  // === Fact Extraction ===
+
+  private extractFacts(message: string): void {
+    const lower = message.toLowerCase();
+
+    // Preference patterns
+    const prefPatterns = [
+      /i (prefer|like|love|enjoy)\s+(.+?)(?:\.|,|$)/i,
+      /my favorite\s+(.+?)\s+is\s+(.+?)(?:\.|,|$)/i,
+    ];
+    for (const pattern of prefPatterns) {
+      const match = lower.match(pattern);
+      if (match) {
+        this.setFact('preference', match[match.length - 1].trim(), true);
+      }
+    }
+
+    // Goal patterns
+    const goalMatch = lower.match(/i want to\s+(.+?)(?:\.|,|$)/i);
+    if (goalMatch) {
+      this.setFact('goal', goalMatch[1].trim(), true);
+    }
+
+    // Relationship patterns
+    const relMatch = lower.match(/my (wife|husband|son|daughter|brother|sister|mom|dad|partner|friend)\s+(\w+)?/i);
+    if (relMatch) {
+      const relation = relMatch[1];
+      const name = relMatch[2];
+      if (name) {
+        this.setFact('relationship', relation, name);
+      }
+    }
+
+    // Habit patterns
+    const habitMatch = lower.match(/i (usually|always|every)\s+(.+?)(?:\.|,|$)/i);
+    if (habitMatch) {
+      this.setFact('habit', habitMatch[2].trim(), true);
+    }
+
+    // Health patterns
+    const healthPatterns = [
+      /i('m| am)\s+(trying to|working on)\s+(lose weight|exercise|eat better|sleep more)/i,
+      /my goal is to\s+(run|walk|exercise|meditate)\s+(\d+)/i,
+    ];
+    for (const pattern of healthPatterns) {
+      const match = lower.match(pattern);
+      if (match) {
+        this.setFact('health', match[match.length - 1], true);
+      }
+    }
+  }
+
+  // === Session Analysis ===
+
+  private summarizeSession(messages: string[]): string {
+    const firstUser = messages.find(m => m.startsWith('User:'));
+    if (firstUser) {
+      return firstUser.replace('User: ', '').slice(0, 100);
+    }
+    return 'Session with no user messages';
+  }
+
+  private extractTopics(messages: string[]): string[] {
+    const text = messages.join(' ').toLowerCase();
+    const topics: string[] = [];
+
+    const keywords = ['task', 'project', 'calendar', 'meeting', 'email', 'call', 'work', 'home', 'health', 'exercise'];
+    for (const kw of keywords) {
+      if (text.includes(kw)) topics.push(kw);
+    }
+
+    return topics.slice(0, 5);
+  }
+
+  private extractActions(messages: string[]): string[] {
+    const actions: string[] = [];
+    for (const msg of messages) {
+      if (msg.startsWith('Bartleby:') && msg.includes('✓')) {
+        actions.push(msg.replace('Bartleby: ', '').slice(0, 50));
+      }
+    }
+    return actions;
+  }
+
+  private extractFollowups(messages: string[]): string[] {
+    const followups: string[] = [];
+    for (const msg of messages) {
+      if (msg.startsWith('User:')) {
+        const lower = msg.toLowerCase();
+        if (lower.includes("i'll") || lower.includes('i will') || lower.includes('remind me')) {
+          followups.push(msg.replace('User: ', '').slice(0, 50));
+        }
+      }
+    }
+    return followups;
+  }
+
+  // === Persistence ===
+
+  private async save(): Promise<void> {
+    const episodesFile = path.join(this.storagePath, 'episodes.json');
+    fs.writeFileSync(episodesFile, JSON.stringify(this.episodes, null, 2));
+
+    const profileFile = path.join(this.storagePath, 'profile.json');
+    const profile: Record<string, UserFact> = {};
+    for (const [k, v] of this.facts) {
+      profile[k] = v;
+    }
+    fs.writeFileSync(profileFile, JSON.stringify(profile, null, 2));
+  }
+
+  close(): void {
+    if (this.currentSession) {
+      this.endSession();
+    }
+  }
+}
+```
+
+### Step 2.4: Create `src/services/proactive.ts`
+
+```typescript
+// src/services/proactive.ts
+import { GardenService } from './garden.js';
+import { CalendarService } from './calendar.js';
+import { MemoryService } from './memory.js';
+import { debug } from '../utils/logger.js';
+
+export class ProactiveService {
+  constructor(
+    private garden: GardenService,
+    private calendar: CalendarService,
+    private memory: MemoryService
+  ) {}
+
+  async getSessionOpener(): Promise<string | null> {
+    const insights: string[] = [];
+
+    // 1. Pending follow-ups
+    const followups = this.memory.getPendingFollowups();
+    if (followups.length > 0) {
+      insights.push(`📝 Pending: "${followups[0].text}"`);
+    }
+
+    // 2. Stale inbox items
+    try {
+      const stale = this.garden.getStaleInboxItems(2);
+      if (stale.length > 0) {
+        insights.push(`📥 ${stale.length} inbox item(s) waiting > 2 days`);
+      }
+    } catch (err) {
+      debug('Proactive: stale inbox check failed', { error: String(err) });
+    }
+
+    // 3. Overdue tasks
+    try {
+      const overdue = this.garden.getOverdueTasks();
+      if (overdue.length > 0) {
+        insights.push(`⚠️ ${overdue.length} overdue task(s)`);
+      }
+    } catch (err) {
+      debug('Proactive: overdue check failed', { error: String(err) });
+    }
+
+    // 4. Today's events
+    try {
+      const todayEvents = this.calendar.getForDay(new Date());
+      if (todayEvents.length > 0) {
+        insights.push(`📅 ${todayEvents.length} event(s) today`);
+      }
+    } catch (err) {
+      debug('Proactive: calendar check failed', { error: String(err) });
+    }
+
+    // 5. Last session context
+    const lastSession = this.memory.getLastSession();
+    if (lastSession) {
+      const hoursSince = (Date.now() - new Date(lastSession.timestamp).getTime()) / (1000 * 60 * 60);
+      if (hoursSince < 24 && lastSession.summary) {
+        const summary = lastSession.summary.slice(0, 50);
+        insights.push(`💭 Last: "${summary}..."`);
+      }
+    }
+
+    // 6. Task completion rate
+    try {
+      const stats = this.garden.getTaskStats(7);
+      if (stats.added > 5 && stats.completed / stats.added < 0.3) {
+        insights.push(`📊 ${stats.completed}/${stats.added} tasks completed this week`);
+      }
+    } catch (err) {
+      debug('Proactive: task stats failed', { error: String(err) });
+    }
+
+    return insights.length > 0 ? insights.join('\n') : null;
+  }
+
+  async getContextualReminder(input: string): Promise<string | null> {
+    const related = this.memory.recallRelevant(input, 3);
+
+    for (const episode of related) {
+      if (episode.pendingFollowups.length > 0) {
+        return `💭 Related: You mentioned "${episode.pendingFollowups[0]}"`;
+      }
+    }
+
+    return null;
+  }
+}
+```
+
+### Step 2.5: Create `src/services/llm.ts`
+
+The LLM service handles 3 model tiers: Router (tiny, fast classification), Fast (single tools), Thinking (multi-step reasoning).
+
+```typescript
+// src/services/llm.ts
+import OpenAI from 'openai';
+import { Config } from '../config.js';
+import { info, warn, debug } from '../utils/logger.js';
+
+export type Tier = 'router' | 'fast' | 'thinking';
+export type Complexity = 'SIMPLE' | 'COMPLEX';
+
+// Prompt for complexity classification
+const ROUTER_PROMPT = `Classify this request as SIMPLE or COMPLEX.
+
+SIMPLE: Single action, direct command, one tool needed
+- "show my tasks"
+- "add milk to list"
+- "weather"
+- "what time is it"
+
+COMPLEX: Multiple steps, references needing lookup, code, planning
+- "email Sarah about tomorrow's meeting" (needs contact + calendar lookup)
+- "write a function to parse CSV"
+- "help me plan my week"
+- "compare my tasks with my calendar"
+
+Request: "{input}"
+
+Answer with one word (SIMPLE or COMPLEX):`;
+
+// Heuristic fallback patterns for when router model is unavailable
+const COMPLEX_PATTERNS = [
+  /\b(and then|after that|first|next|finally)\b/i,           // Chaining words
+  /\b(email|message|text|send)\b.*\b(about|regarding)\b/i,   // Communication + context
+  /\b(write|create|build|implement|design)\b.*\b(code|function|script|app|program)\b/i, // Code
+  /\b(plan|schedule|organize|prepare|help me with)\b/i,      // Planning
+  /\b(compare|analyze|review|summarize)\b/i,                 // Analysis
+  /\b(if|when|based on|depending)\b/i,                       // Conditional logic
+];
+
+export class LLMService {
+  private config: Config;
+  private clients: Record<Tier, OpenAI>;
+  private healthy: Record<Tier, boolean> = { router: false, fast: false, thinking: false };
+
+  constructor(config: Config) {
+    this.config = config;
+
+    this.clients = {
+      router: new OpenAI({
+        baseURL: config.llm.router.url,
+        apiKey: 'not-needed-for-local',
+      }),
+      fast: new OpenAI({
+        baseURL: config.llm.fast.url,
+        apiKey: 'not-needed-for-local',
+      }),
+      thinking: new OpenAI({
+        baseURL: config.llm.thinking.url,
+        apiKey: 'not-needed-for-local',
+      }),
+    };
+  }
+
+  async initialize(): Promise<void> {
+    await Promise.all([
+      this.checkHealth('router'),
+      this.checkHealth('fast'),
+      this.checkHealth('thinking'),
+    ]);
+
+    info('LLMService initialized', { healthy: this.healthy });
+  }
+
+  private async checkHealth(tier: Tier): Promise<void> {
+    const tierConfig = this.config.llm[tier];
+    const timeout = this.config.llm.healthTimeout;
+
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), timeout);
+
+      const response = await fetch(`${tierConfig.url}/models`, {
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeoutId);
+      this.healthy[tier] = response.ok;
+      debug(`LLM ${tier} health check`, { ok: response.ok });
+    } catch (err) {
+      warn(`LLM ${tier} tier health check failed`, { error: String(err) });
+      this.healthy[tier] = false;
+    }
+  }
+
+  isHealthy(tier: Tier): boolean {
+    return this.healthy[tier];
+  }
+
+  /**
+   * Classify input complexity using Router model or heuristics fallback.
+   * This determines whether to use Fast (single tool) or Thinking (agentic loop).
+   */
+  async classifyComplexity(input: string): Promise<Complexity> {
+    // Try router model first
+    if (this.healthy['router']) {
+      try {
+        const prompt = ROUTER_PROMPT.replace('{input}', input);
+        const response = await this.chat(
+          [{ role: 'user', content: prompt }],
+          { tier: 'router', maxTokens: 10 }
+        );
+
+        const normalized = response.trim().toUpperCase();
+        if (normalized.includes('COMPLEX')) return 'COMPLEX';
+        if (normalized.includes('SIMPLE')) return 'SIMPLE';
+
+        debug('Router model returned ambiguous response', { response });
+      } catch (err) {
+        debug('Router classification failed, using heuristics', { error: String(err) });
+      }
+    }
+
+    // Heuristic fallback
+    return this.classifyByHeuristics(input);
+  }
+
+  /**
+   * Heuristic complexity detection when router model unavailable
+   */
+  private classifyByHeuristics(input: string): Complexity {
+    const lower = input.toLowerCase();
+
+    // Count matching complex patterns
+    let complexSignals = 0;
+    for (const pattern of COMPLEX_PATTERNS) {
+      if (pattern.test(input)) complexSignals++;
+    }
+
+    // Check for multiple proper nouns (entities that may need lookup)
+    const properNouns = input.match(/\b[A-Z][a-z]+\b/g);
+    if (properNouns && properNouns.length > 2) complexSignals++;
+
+    // Long inputs are often complex
+    if (input.length > 150) complexSignals++;
+
+    // Multiple clauses suggest complexity
+    if (input.split(/[,;]/).length > 2) complexSignals++;
+
+    debug('Heuristic complexity check', { signals: complexSignals, input: input.slice(0, 50) });
+
+    return complexSignals >= 2 ? 'COMPLEX' : 'SIMPLE';
+  }
+
+  async chat(
+    messages: Array<{ role: 'system' | 'user' | 'assistant' | 'tool'; content: string; toolCallId?: string }>,
+    options: { tier?: Tier; maxTokens?: number; tools?: OpenAI.ChatCompletionTool[] } = {}
+  ): Promise<string> {
+    const tier = options.tier || 'fast';
+    const tierConfig = this.config.llm[tier];
+    const client = this.clients[tier];
+
+    debug('LLM chat', { tier, model: tierConfig.model });
+
+    const requestParams: OpenAI.ChatCompletionCreateParamsNonStreaming = {
+      model: tierConfig.model,
+      messages: messages as OpenAI.ChatCompletionMessageParam[],
+      max_tokens: options.maxTokens || tierConfig.maxTokens,
+    };
+
+    // Add tools if provided
+    if (options.tools && options.tools.length > 0) {
+      requestParams.tools = options.tools;
+      requestParams.tool_choice = 'auto';
+    }
+
+    const response = await client.chat.completions.create(requestParams);
+
+    return response.choices[0]?.message?.content || '';
+  }
+
+  /**
+   * Chat with function calling support - returns full message for tool calls
+   */
+  async chatWithTools(
+    messages: Array<OpenAI.ChatCompletionMessageParam>,
+    tools: OpenAI.ChatCompletionTool[],
+    tier: Tier = 'thinking'
+  ): Promise<OpenAI.ChatCompletionMessage> {
+    const tierConfig = this.config.llm[tier];
+    const client = this.clients[tier];
+
+    debug('LLM chat with tools', { tier, model: tierConfig.model, toolCount: tools.length });
+
+    const response = await client.chat.completions.create({
+      model: tierConfig.model,
+      messages,
+      tools,
+      tool_choice: 'auto',
+      max_tokens: tierConfig.maxTokens,
+    });
+
+    return response.choices[0]?.message;
+  }
+
+  getMaxIterations(): number {
+    return this.config.llm.agentMaxIterations;
+  }
+
+  close(): void {
+    // Nothing to close for HTTP clients
+  }
+}
+```
+
+### Step 2.6: Create `src/services/embeddings.ts`
+
+```typescript
+// src/services/embeddings.ts
+import { Config } from '../config.js';
+import { info, warn, debug } from '../utils/logger.js';
+
+export class EmbeddingService {
+  private config: Config;
+  private cache = new Map<string, number[]>();
+  private available = false;
+
+  constructor(config: Config) {
+    this.config = config;
+  }
+
+  async initialize(): Promise<void> {
+    try {
+      await this.embed('test');
+      this.available = true;
+      info('EmbeddingService initialized');
+    } catch (err) {
+      warn('EmbeddingService: embeddings unavailable', { error: String(err) });
+      this.available = false;
+    }
+  }
+
+  isAvailable(): boolean {
+    return this.available;
+  }
+
+  async embed(text: string): Promise<number[]> {
+    const cached = this.cache.get(text);
+    if (cached) return cached;
+
+    const response = await fetch(`${this.config.embeddings.url}/embeddings`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: this.config.embeddings.model,
+        input: text,
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Embedding failed: ${response.status}`);
+    }
+
+    const data = await response.json();
+    const embedding = data.data[0].embedding as number[];
+
+    // Cache with simple LRU
+    this.cache.set(text, embedding);
+    if (this.cache.size > 1000) {
+      const keys = Array.from(this.cache.keys());
+      for (let i = 0; i < 100; i++) {
+        this.cache.delete(keys[i]);
+      }
+    }
+
+    return embedding;
+  }
+
+  async embedBatch(texts: string[]): Promise<number[][]> {
+    return Promise.all(texts.map(t => this.embed(t)));
+  }
+
+  close(): void {
+    this.cache.clear();
+  }
+}
+```
+
+### Step 2.7: Create `src/services/weather.ts`
+
+```typescript
+// src/services/weather.ts
+import { Config } from '../config.js';
+import { info, warn } from '../utils/logger.js';
+
+export interface WeatherData {
+  city: string;
+  temp: number;
+  description: string;
+  high: number;
+  low: number;
+  humidity: number;
+}
+
+export class WeatherService {
+  private config: Config;
+  private available = false;
+
+  constructor(config: Config) {
+    this.config = config;
+    this.available = !!(config.weather.apiKey && config.weather.city);
+  }
+
+  async initialize(): Promise<void> {
+    if (this.available) {
+      info('WeatherService initialized');
+    } else {
+      info('WeatherService: not configured (optional)');
+    }
+  }
+
+  isAvailable(): boolean {
+    return this.available;
+  }
+
+  async getCurrent(): Promise<WeatherData | null> {
+    if (!this.available) return null;
+
+    try {
+      const units = this.config.weather.units === 'C' ? 'metric' : 'imperial';
+      const url = `https://api.openweathermap.org/data/2.5/weather?q=${encodeURIComponent(this.config.weather.city!)}&appid=${this.config.weather.apiKey}&units=${units}`;
+
+      const response = await fetch(url);
+      if (!response.ok) return null;
+
+      const data = await response.json();
+
+      return {
+        city: data.name,
+        temp: Math.round(data.main.temp),
+        description: data.weather[0]?.description || 'Unknown',
+        high: Math.round(data.main.temp_max),
+        low: Math.round(data.main.temp_min),
+        humidity: data.main.humidity,
+      };
+    } catch (err) {
+      warn('Weather fetch failed', { error: String(err) });
+      return null;
+    }
+  }
+
+  close(): void {}
+}
+```
+
+### Step 2.8: Create `src/services/signal.ts`
+
+```typescript
+// src/services/signal.ts
+import { spawn } from 'child_process';
+import { Config } from '../config.js';
+import { info, warn, error } from '../utils/logger.js';
+
+export class SignalService {
+  private config: Config;
+  private enabled: boolean;
+
+  constructor(config: Config) {
+    this.config = config;
+    this.enabled = config.signal.enabled;
+  }
+
+  async initialize(): Promise<void> {
+    if (this.enabled) {
+      info('SignalService initialized');
+    } else {
+      info('SignalService: disabled (optional)');
+    }
+  }
+
+  isEnabled(): boolean {
+    return this.enabled;
+  }
+
+  async send(message: string, recipient?: string): Promise<boolean> {
+    if (!this.enabled) {
+      warn('Signal not enabled');
+      return false;
+    }
+
+    const to = recipient || this.config.signal.recipient;
+    if (!to) {
+      warn('No Signal recipient configured');
+      return false;
+    }
+
+    return new Promise((resolve) => {
+      const args = [
+        '-u', this.config.signal.number || '',
+        'send',
+        '-m', message,
+        to,
+      ];
+
+      const proc = spawn(this.config.signal.cliPath, args, {
+        timeout: this.config.signal.timeout,
+      });
+
+      proc.on('close', (code) => {
+        if (code === 0) {
+          info('Signal sent', { to });
+          resolve(true);
+        } else {
+          error('Signal send failed', { code });
+          resolve(false);
+        }
+      });
+
+      proc.on('error', (err) => {
+        error('Signal spawn error', { error: String(err) });
+        resolve(false);
+      });
+    });
+  }
+
+  close(): void {}
+}
+```
+
+### Step 2.9: Create `src/services/vectors.ts`
+
+HNSW-based vector storage for semantic search at scale.
+
+```typescript
+// src/services/vectors.ts
+import { HierarchicalNSW } from 'hnswlib-node';
+import { v4 as uuidv4 } from 'uuid';
+import fs from 'fs';
+import path from 'path';
+import { Config, getDbPath, ensureDir } from '../config.js';
+import { info, warn, debug } from '../utils/logger.js';
+
+export interface VectorMetadata {
+  id: string;
+  type: string;      // 'shed_chunk', 'episode', etc.
+  recordId: string;  // Reference to source record
+  [key: string]: unknown;
+}
+
+export class VectorService {
+  private index!: HierarchicalNSW;
+  private metadata: Map<number, VectorMetadata> = new Map();
+  private idToLabel: Map<string, number> = new Map();
+  private nextLabel = 0;
+  private dimensions: number;
+  private indexPath: string;
+  private metadataPath: string;
+
+  constructor(private config: Config) {
+    this.dimensions = config.embeddings.dimensions;
+    const dbDir = path.dirname(getDbPath(config, 'vectors.hnsw'));
+    ensureDir(dbDir);
+    this.indexPath = getDbPath(config, 'vectors.hnsw');
+    this.metadataPath = getDbPath(config, 'vectors-meta.json');
+  }
+
+  async initialize(): Promise<void> {
+    this.index = new HierarchicalNSW('cosine', this.dimensions);
+
+    if (fs.existsSync(this.indexPath) && fs.existsSync(this.metadataPath)) {
+      try {
+        this.index.readIndexSync(this.indexPath);
+        this.loadMetadata();
+        info('VectorService loaded', { vectors: this.metadata.size });
+      } catch (err) {
+        warn('Failed to load vector index, creating new', { error: String(err) });
+        this.initializeNewIndex();
+      }
+    } else {
+      this.initializeNewIndex();
+      info('VectorService initialized (new index)');
+    }
+  }
+
+  private initializeNewIndex(): void {
+    // M=16, efConstruction=200 are good defaults
+    // Can hold 100k vectors, will auto-resize if needed
+    this.index.initIndex(100000, 16, 200, 100);
+    this.metadata.clear();
+    this.idToLabel.clear();
+    this.nextLabel = 0;
+  }
+
+  async add(embedding: number[], metadata: Omit<VectorMetadata, 'id'>): Promise<string> {
+    const id = uuidv4();
+    const label = this.nextLabel++;
+
+    this.index.addPoint(embedding, label);
+
+    const fullMetadata: VectorMetadata = { ...metadata, id };
+    this.metadata.set(label, fullMetadata);
+    this.idToLabel.set(id, label);
+
+    // Save periodically
+    if (this.nextLabel % 100 === 0) {
+      this.save();
+    }
+
+    debug('Vector added', { id, type: metadata.type });
+    return id;
+  }
+
+  async search(
+    queryEmbedding: number[],
+    k: number,
+    filter?: { type?: string; [key: string]: unknown }
+  ): Promise<Array<{ id: string; score: number; metadata: VectorMetadata }>> {
+    if (this.metadata.size === 0) return [];
+
+    // Search more candidates if filtering
+    const searchK = filter ? Math.min(k * 3, this.metadata.size) : Math.min(k, this.metadata.size);
+    const result = this.index.searchKnn(queryEmbedding, searchK);
+
+    const matches: Array<{ id: string; score: number; metadata: VectorMetadata }> = [];
+
+    for (let i = 0; i < result.neighbors.length && matches.length < k; i++) {
+      const label = result.neighbors[i];
+      const distance = result.distances[i];
+      const meta = this.metadata.get(label);
+
+      if (!meta) continue;
+
+      // Apply filter
+      if (filter) {
+        let pass = true;
+        for (const [key, value] of Object.entries(filter)) {
+          if (meta[key] !== value) {
+            pass = false;
+            break;
+          }
+        }
+        if (!pass) continue;
+      }
+
+      // HNSW cosine distance = 1 - similarity
+      const score = 1 - distance;
+      matches.push({ id: meta.id, score, metadata: meta });
+    }
+
+    return matches;
+  }
+
+  async delete(id: string): Promise<boolean> {
+    const label = this.idToLabel.get(id);
+    if (label === undefined) return false;
+
+    this.index.markDelete(label);
+    this.metadata.delete(label);
+    this.idToLabel.delete(id);
+
+    return true;
+  }
+
+  save(): void {
+    try {
+      this.index.writeIndexSync(this.indexPath);
+      this.saveMetadata();
+      debug('Vector index saved', { vectors: this.metadata.size });
+    } catch (err) {
+      warn('Failed to save vector index', { error: String(err) });
+    }
+  }
+
+  private saveMetadata(): void {
+    const data = {
+      nextLabel: this.nextLabel,
+      metadata: Array.from(this.metadata.entries()),
+      idToLabel: Array.from(this.idToLabel.entries()),
+    };
+    fs.writeFileSync(this.metadataPath, JSON.stringify(data));
+  }
+
+  private loadMetadata(): void {
+    const data = JSON.parse(fs.readFileSync(this.metadataPath, 'utf-8'));
+    this.nextLabel = data.nextLabel;
+    this.metadata = new Map(data.metadata);
+    this.idToLabel = new Map(data.idToLabel);
+  }
+
+  getCount(): number {
+    return this.metadata.size;
+  }
+
+  close(): void {
+    this.save();
+  }
+}
+```
+
+### Step 2.10: Create `src/services/shed.ts`
+
+The Shed is your reference library - document ingestion, chunking, and RAG queries.
+
+```typescript
+// src/services/shed.ts
+import Database from 'better-sqlite3';
+import { v4 as uuidv4 } from 'uuid';
+import fs from 'fs';
+import path from 'path';
+import { Config, resolvePath, getDbPath, ensureDir } from '../config.js';
+import { info, warn, debug, error } from '../utils/logger.js';
+import { EmbeddingService } from './embeddings.js';
+import { VectorService } from './vectors.js';
+import { LLMService } from './llm.js';
+
+export interface ShedSource {
+  id: string;
+  filename: string;
+  filepath: string;
+  title?: string;
+  author?: string;
+  sourceType?: string;
+  sourceUrl?: string;
+  ingestedAt: string;
+  chunkCount?: number;
+}
+
+export interface ShedChunk {
+  id: string;
+  sourceId: string;
+  chunkIndex: number;
+  content: string;
+  tokenCount?: number;
+  embeddingId?: string;
+}
+
+const SCHEMA = `
+CREATE TABLE IF NOT EXISTS sources (
+  id TEXT PRIMARY KEY,
+  filename TEXT NOT NULL,
+  filepath TEXT NOT NULL,
+  title TEXT,
+  author TEXT,
+  source_type TEXT,
+  source_url TEXT,
+  ingested_at TEXT DEFAULT (datetime('now')),
+  metadata TEXT
+);
+
+CREATE TABLE IF NOT EXISTS chunks (
+  id TEXT PRIMARY KEY,
+  source_id TEXT NOT NULL REFERENCES sources(id) ON DELETE CASCADE,
+  chunk_index INTEGER NOT NULL,
+  content TEXT NOT NULL,
+  token_count INTEGER,
+  embedding_id TEXT,
+  metadata TEXT,
+  UNIQUE(source_id, chunk_index)
+);
+
+CREATE INDEX IF NOT EXISTS idx_chunks_source ON chunks(source_id);
+`;
+
+export class ShedService {
+  private db: Database.Database;
+  private shedPath: string;
+  private sourcesPath: string;
+
+  constructor(
+    private config: Config,
+    private embeddings: EmbeddingService,
+    private vectors: VectorService,
+    private llm: LLMService
+  ) {
+    const dbPath = getDbPath(config, 'shed.sqlite3');
+    ensureDir(path.dirname(dbPath));
+
+    this.db = new Database(dbPath);
+    this.db.pragma('journal_mode = WAL');
+    this.db.pragma('foreign_keys = ON');
+
+    this.shedPath = resolvePath(config, 'shed');
+    this.sourcesPath = path.join(this.shedPath, 'sources');
+  }
+
+  async initialize(): Promise<void> {
+    this.db.exec(SCHEMA);
+    ensureDir(this.sourcesPath);
+    info('ShedService initialized', { path: this.shedPath });
+  }
+
+  // === Document Ingestion ===
+
+  async ingestDocument(filepath: string): Promise<ShedSource> {
+    const absolutePath = path.isAbsolute(filepath)
+      ? filepath
+      : path.join(this.sourcesPath, filepath);
+
+    if (!fs.existsSync(absolutePath)) {
+      throw new Error(`File not found: ${absolutePath}`);
+    }
+
+    const filename = path.basename(absolutePath);
+    const ext = path.extname(filename).toLowerCase();
+
+    // Check if already ingested
+    const existing = this.db.prepare(
+      'SELECT * FROM sources WHERE filepath = ?'
+    ).get(absolutePath) as any;
+    
+    if (existing) {
+      info('Document already ingested, updating', { filename });
+      await this.deleteSource(existing.id);
+    }
+
+    // Read content based on file type
+    let content: string;
+    if (ext === '.md' || ext === '.txt') {
+      content = fs.readFileSync(absolutePath, 'utf-8');
+    } else {
+      throw new Error(`Unsupported file type: ${ext}. Supported: .md, .txt`);
+    }
+
+    // Extract title from content
+    const titleMatch = content.match(/^#\s+(.+)$/m);
+    const title = titleMatch ? titleMatch[1].trim() : filename;
+
+    // Create source record
+    const sourceId = uuidv4();
+    this.db.prepare(`
+      INSERT INTO sources (id, filename, filepath, title, source_type)
+      VALUES (?, ?, ?, ?, ?)
+    `).run(sourceId, filename, absolutePath, title, ext.slice(1));
+
+    // Chunk the document
+    const chunks = this.chunkDocument(content);
+    info('Document chunked', { filename, chunks: chunks.length });
+
+    // Embed and store chunks
+    for (let i = 0; i < chunks.length; i++) {
+      const chunkId = uuidv4();
+      const chunkContent = chunks[i];
+
+      // Get embedding
+      const embedding = await this.embeddings.embed(chunkContent);
+
+      // Store in vector index
+      const embeddingId = await this.vectors.add(embedding, {
+        type: 'shed_chunk',
+        recordId: chunkId,
+        sourceId,
+        chunkIndex: i,
+      });
+
+      // Store chunk
+      this.db.prepare(`
+        INSERT INTO chunks (id, source_id, chunk_index, content, token_count, embedding_id)
+        VALUES (?, ?, ?, ?, ?, ?)
+      `).run(chunkId, sourceId, i, chunkContent, this.estimateTokens(chunkContent), embeddingId);
+    }
+
+    info('Document ingested', { filename, title, chunks: chunks.length });
+
+    return {
+      id: sourceId,
+      filename,
+      filepath: absolutePath,
+      title,
+      sourceType: ext.slice(1),
+      ingestedAt: new Date().toISOString(),
+      chunkCount: chunks.length,
+    };
+  }
+
+  // === Chunking ===
+
+  private chunkDocument(content: string, maxTokens = 512, overlap = 50): string[] {
+    const paragraphs = content.split(/\n\n+/);
+    const chunks: string[] = [];
+
+    let currentChunk = '';
+    let currentTokens = 0;
+
+    for (const para of paragraphs) {
+      const paraTokens = this.estimateTokens(para);
+
+      if (currentTokens + paraTokens > maxTokens && currentChunk) {
+        chunks.push(currentChunk.trim());
+
+        // Start new chunk with overlap
+        const words = currentChunk.split(/\s+/);
+        const overlapWords = words.slice(-overlap);
+        currentChunk = overlapWords.join(' ') + '\n\n' + para;
+        currentTokens = this.estimateTokens(currentChunk);
+      } else {
+        currentChunk += (currentChunk ? '\n\n' : '') + para;
+        currentTokens += paraTokens;
+      }
+    }
+
+    if (currentChunk.trim()) {
+      chunks.push(currentChunk.trim());
+    }
+
+    return chunks;
+  }
+
+  private estimateTokens(text: string): number {
+    // Rough estimate: ~4 chars per token for English
+    return Math.ceil(text.length / 4);
+  }
+
+  // === RAG Query ===
+
+  async query(question: string, topK = 5): Promise<string> {
+    // Get query embedding
+    const queryEmbedding = await this.embeddings.embed(question);
+
+    // Find similar chunks
+    const results = await this.vectors.search(queryEmbedding, topK, {
+      type: 'shed_chunk',
+    });
+
+    if (results.length === 0) {
+      return "I don't have any documents that seem relevant to that question. Try ingesting some documents first with 'ingest <filepath>'.";
+    }
+
+    // Build context from chunks
+    const contextParts: string[] = [];
+    for (const result of results) {
+      const chunk = this.getChunk(result.metadata.recordId as string);
+      if (chunk) {
+        const source = this.getSource(chunk.sourceId);
+        contextParts.push(`[Source: ${source?.title || 'Unknown'}]\n${chunk.content}`);
+      }
+    }
+
+    const context = contextParts.join('\n\n---\n\n');
+
+    // Generate answer
+    const response = await this.llm.chat([
+      {
+        role: 'system',
+        content: `You are a helpful assistant. Answer the question based ONLY on the provided context. If the context doesn't contain enough information to answer, say so. Always cite your sources using [Source: title] format.`,
+      },
+      {
+        role: 'user',
+        content: `Context:\n${context}\n\n---\n\nQuestion: ${question}`,
+      },
+    ], { tier: 'thinking' });
+
+    return response;
+  }
+
+  // === CRUD ===
+
+  getSource(id: string): ShedSource | null {
+    const row = this.db.prepare('SELECT * FROM sources WHERE id = ?').get(id) as any;
+    return row ? this.rowToSource(row) : null;
+  }
+
+  getChunk(id: string): ShedChunk | null {
+    const row = this.db.prepare('SELECT * FROM chunks WHERE id = ?').get(id) as any;
+    return row ? this.rowToChunk(row) : null;
+  }
+
+  listSources(): ShedSource[] {
+    const rows = this.db.prepare('SELECT * FROM sources ORDER BY ingested_at DESC').all() as any[];
+    return rows.map(r => this.rowToSource(r));
+  }
+
+  async deleteSource(id: string): Promise<boolean> {
+    // Delete vectors for all chunks
+    const chunks = this.db.prepare('SELECT embedding_id FROM chunks WHERE source_id = ?').all(id) as any[];
+    for (const chunk of chunks) {
+      if (chunk.embedding_id) {
+        await this.vectors.delete(chunk.embedding_id);
+      }
+    }
+
+    // Delete from database (cascades to chunks)
+    const result = this.db.prepare('DELETE FROM sources WHERE id = ?').run(id);
+    return result.changes > 0;
+  }
+
+  // === Helpers ===
+
+  private rowToSource(row: any): ShedSource {
+    const chunkCount = this.db.prepare(
+      'SELECT COUNT(*) as count FROM chunks WHERE source_id = ?'
+    ).get(row.id) as { count: number };
+
+    return {
+      id: row.id,
+      filename: row.filename,
+      filepath: row.filepath,
+      title: row.title,
+      author: row.author,
+      sourceType: row.source_type,
+      sourceUrl: row.source_url,
+      ingestedAt: row.ingested_at,
+      chunkCount: chunkCount.count,
+    };
+  }
+
+  private rowToChunk(row: any): ShedChunk {
+    return {
+      id: row.id,
+      sourceId: row.source_id,
+      chunkIndex: row.chunk_index,
+      content: row.content,
+      tokenCount: row.token_count,
+      embeddingId: row.embedding_id,
+    };
+  }
+
+  close(): void {
+    this.db.close();
+  }
+}
+```
+
+### Step 2.11: Create `src/services/scheduler.ts`
+
+Background task scheduling for reminders and recurring tasks.
+
+```typescript
+// src/services/scheduler.ts
+import Database from 'better-sqlite3';
+import { v4 as uuidv4 } from 'uuid';
+import path from 'path';
+import { Config, getDbPath, ensureDir } from '../config.js';
+import { info, warn, debug, error } from '../utils/logger.js';
+import { SignalService } from './signal.js';
+
+export interface ScheduledTask {
+  id: string;
+  type: 'reminder' | 'recurring' | 'check';
+  scheduleType: 'once' | 'interval' | 'cron';
+  scheduleValue: string;  // ISO date, interval ms, or cron expression
+  actionType: 'notify' | 'execute';
+  actionPayload: unknown;
+  lastRun?: string;
+  nextRun: string;
+  enabled: boolean;
+  createdAt: string;
+  createdBy: 'user' | 'system';
+  relatedRecord?: string;
+}
+
+const SCHEMA = `
+CREATE TABLE IF NOT EXISTS tasks (
+  id TEXT PRIMARY KEY,
+  type TEXT NOT NULL,
+  schedule_type TEXT NOT NULL,
+  schedule_value TEXT NOT NULL,
+  action_type TEXT NOT NULL,
+  action_payload TEXT,
+  last_run TEXT,
+  next_run TEXT NOT NULL,
+  enabled INTEGER DEFAULT 1,
+  created_at TEXT DEFAULT (datetime('now')),
+  created_by TEXT DEFAULT 'user',
+  related_record TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_tasks_next ON tasks(next_run);
+CREATE INDEX IF NOT EXISTS idx_tasks_enabled ON tasks(enabled);
+`;
+
+export class SchedulerService {
+  private db: Database.Database;
+  private intervalId?: NodeJS.Timeout;
+  private running = false;
+
+  constructor(
+    private config: Config,
+    private signal: SignalService
+  ) {
+    const dbPath = getDbPath(config, 'scheduler.sqlite3');
+    ensureDir(path.dirname(dbPath));
+
+    this.db = new Database(dbPath);
+    this.db.pragma('journal_mode = WAL');
+  }
+
+  async initialize(): Promise<void> {
+    this.db.exec(SCHEMA);
+    info('SchedulerService initialized');
+  }
+
+  start(): void {
+    if (this.running) return;
+    if (!this.config.scheduler.enabled) {
+      info('Scheduler disabled by config');
+      return;
+    }
+
+    this.running = true;
+    this.intervalId = setInterval(
+      () => this.tick(),
+      this.config.scheduler.checkInterval
+    );
+
+    // Run immediately
+    this.tick();
+
+    info('Scheduler started', { interval: this.config.scheduler.checkInterval });
+  }
+
+  stop(): void {
+    if (this.intervalId) {
+      clearInterval(this.intervalId);
+      this.intervalId = undefined;
+    }
+    this.running = false;
+    info('Scheduler stopped');
+  }
+
+  private async tick(): Promise<void> {
+    const now = new Date().toISOString();
+
+    const dueTasks = this.db.prepare(`
+      SELECT * FROM tasks
+      WHERE enabled = 1 AND next_run <= ?
+      ORDER BY next_run
+    `).all(now) as any[];
+
+    for (const row of dueTasks) {
+      const task = this.rowToTask(row);
+      try {
+        await this.executeTask(task);
+        this.updateAfterRun(task);
+      } catch (err) {
+        error('Scheduled task failed', { taskId: task.id, error: String(err) });
+      }
+    }
+  }
+
+  private async executeTask(task: ScheduledTask): Promise<void> {
+    debug('Executing scheduled task', { id: task.id, type: task.type });
+
+    switch (task.actionType) {
+      case 'notify':
+        await this.sendNotification(task.actionPayload as string);
+        break;
+      case 'execute':
+        // For now, just log - actual tool execution would require tool registry
+        info('Scheduled execution', { payload: task.actionPayload });
+        break;
+    }
+  }
+
+  private async sendNotification(message: string): Promise<void> {
+    // Try Signal first
+    if (this.signal.isEnabled()) {
+      await this.signal.send(`🔔 Reminder: ${message}`);
+    }
+    
+    // Always log to console
+    console.log(`\n🔔 Reminder: ${message}\n`);
+  }
+
+  private updateAfterRun(task: ScheduledTask): void {
+    const now = new Date().toISOString();
+
+    if (task.scheduleType === 'once') {
+      // Disable one-time tasks
+      this.db.prepare(
+        'UPDATE tasks SET enabled = 0, last_run = ? WHERE id = ?'
+      ).run(now, task.id);
+    } else {
+      // Calculate next run
+      const nextRun = this.calculateNextRun(task);
+      this.db.prepare(
+        'UPDATE tasks SET last_run = ?, next_run = ? WHERE id = ?'
+      ).run(now, nextRun, task.id);
+    }
+  }
+
+  private calculateNextRun(task: ScheduledTask): string {
+    const now = new Date();
+
+    switch (task.scheduleType) {
+      case 'interval':
+        const intervalMs = parseInt(task.scheduleValue);
+        return new Date(now.getTime() + intervalMs).toISOString();
+
+      case 'cron':
+        // Simple cron parsing for common patterns
+        // For full cron support, add a cron parsing library
+        return this.nextCronRun(task.scheduleValue).toISOString();
+
+      default:
+        return now.toISOString();
+    }
+  }
+
+  private nextCronRun(cron: string): Date {
+    // Simplified cron: only supports "0 HH * * *" (daily at hour)
+    // For real implementation, use a library like 'cron-parser'
+    const match = cron.match(/^0\s+(\d+)\s+\*\s+\*\s+\*$/);
+    if (match) {
+      const hour = parseInt(match[1]);
+      const next = new Date();
+      next.setHours(hour, 0, 0, 0);
+      if (next <= new Date()) {
+        next.setDate(next.getDate() + 1);
+      }
+      return next;
+    }
+
+    // Fallback: 24 hours from now
+    warn('Unsupported cron format, defaulting to 24h', { cron });
+    return new Date(Date.now() + 24 * 60 * 60 * 1000);
+  }
+
+  // === CRUD ===
+
+  create(data: Omit<ScheduledTask, 'id' | 'createdAt' | 'enabled'>): ScheduledTask {
+    const id = uuidv4();
+    const now = new Date().toISOString();
+
+    this.db.prepare(`
+      INSERT INTO tasks (id, type, schedule_type, schedule_value, action_type, action_payload, next_run, created_by, related_record)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      id,
+      data.type,
+      data.scheduleType,
+      data.scheduleValue,
+      data.actionType,
+      JSON.stringify(data.actionPayload),
+      data.nextRun,
+      data.createdBy || 'user',
+      data.relatedRecord
+    );
+
+    info('Scheduled task created', { id, type: data.type, nextRun: data.nextRun });
+
+    return {
+      ...data,
+      id,
+      enabled: true,
+      createdAt: now,
+    };
+  }
+
+  get(id: string): ScheduledTask | null {
+    const row = this.db.prepare('SELECT * FROM tasks WHERE id = ?').get(id) as any;
+    return row ? this.rowToTask(row) : null;
+  }
+
+  list(includeDisabled = false): ScheduledTask[] {
+    const sql = includeDisabled
+      ? 'SELECT * FROM tasks ORDER BY next_run'
+      : 'SELECT * FROM tasks WHERE enabled = 1 ORDER BY next_run';
+    const rows = this.db.prepare(sql).all() as any[];
+    return rows.map(r => this.rowToTask(r));
+  }
+
+  cancel(id: string): boolean {
+    const result = this.db.prepare('UPDATE tasks SET enabled = 0 WHERE id = ?').run(id);
+    if (result.changes > 0) {
+      info('Scheduled task cancelled', { id });
+      return true;
+    }
+    return false;
+  }
+
+  delete(id: string): boolean {
+    const result = this.db.prepare('DELETE FROM tasks WHERE id = ?').run(id);
+    return result.changes > 0;
+  }
+
+  // === Helpers ===
+
+  scheduleReminder(message: string, when: Date | string): ScheduledTask {
+    const nextRun = typeof when === 'string' ? when : when.toISOString();
+    return this.create({
+      type: 'reminder',
+      scheduleType: 'once',
+      scheduleValue: nextRun,
+      actionType: 'notify',
+      actionPayload: message,
+      nextRun,
+      createdBy: 'user',
+    });
+  }
+
+  scheduleDaily(message: string, hour: number): ScheduledTask {
+    const nextRun = new Date();
+    nextRun.setHours(hour, 0, 0, 0);
+    if (nextRun <= new Date()) {
+      nextRun.setDate(nextRun.getDate() + 1);
+    }
+
+    return this.create({
+      type: 'recurring',
+      scheduleType: 'cron',
+      scheduleValue: `0 ${hour} * * *`,
+      actionType: 'notify',
+      actionPayload: message,
+      nextRun: nextRun.toISOString(),
+      createdBy: 'user',
+    });
+  }
+
+  private rowToTask(row: any): ScheduledTask {
+    return {
+      id: row.id,
+      type: row.type,
+      scheduleType: row.schedule_type,
+      scheduleValue: row.schedule_value,
+      actionType: row.action_type,
+      actionPayload: row.action_payload ? JSON.parse(row.action_payload) : null,
+      lastRun: row.last_run,
+      nextRun: row.next_run,
+      enabled: row.enabled === 1,
+      createdAt: row.created_at,
+      createdBy: row.created_by,
+      relatedRecord: row.related_record,
+    };
+  }
+
+  close(): void {
+    this.stop();
+    this.db.close();
+  }
+}
+```
+
+### Step 2.12: Create `src/services/index.ts` (Service Container)
+
+```typescript
+// src/services/index.ts
+import { Config } from '../config.js';
+import { GardenService } from './garden.js';
+import { CalendarService } from './calendar.js';
+import { MemoryService } from './memory.js';
+import { ProactiveService } from './proactive.js';
+import { LLMService } from './llm.js';
+import { EmbeddingService } from './embeddings.js';
+import { VectorService } from './vectors.js';
+import { ShedService } from './shed.js';
+import { SchedulerService } from './scheduler.js';
+import { WeatherService } from './weather.js';
+import { SignalService } from './signal.js';
+import { info } from '../utils/logger.js';
+
+export interface ServiceContainer {
+  // Core data
+  garden: GardenService;
+  shed: ShedService;
+  calendar: CalendarService;
+  
+  // Intelligence
+  memory: MemoryService;
+  proactive: ProactiveService;
+  
+  // Infrastructure
+  llm: LLMService;
+  embeddings: EmbeddingService;
+  vectors: VectorService;
+  scheduler: SchedulerService;
+  
+  // Optional integrations
+  weather: WeatherService;
+  signal: SignalService;
+}
+
+export async function initServices(config: Config): Promise<ServiceContainer> {
+  info('Initializing services...');
+
+  // Create services (order matters for dependencies)
+  const llm = new LLMService(config);
+  const embeddings = new EmbeddingService(config);
+  const vectors = new VectorService(config);
+  const signal = new SignalService(config);
+  const weather = new WeatherService(config);
+  
+  // Initialize infrastructure first
+  await llm.initialize();
+  await embeddings.initialize();
+  await vectors.initialize();
+  await signal.initialize();
+  await weather.initialize();
+
+  // Create data services (depend on infrastructure)
+  const garden = new GardenService(config);
+  const calendar = new CalendarService(config);
+  const memory = new MemoryService(config);
+  const shed = new ShedService(config, embeddings, vectors, llm);
+  const scheduler = new SchedulerService(config, signal);
+
+  // Initialize data services
+  await garden.initialize();
+  await calendar.initialize();
+  await memory.initialize();
+  await shed.initialize();
+  await scheduler.initialize();
+
+  // ProactiveService depends on others
+  const proactive = new ProactiveService(garden, calendar, memory);
+
+  // Start scheduler background loop
+  scheduler.start();
+
+  info('All services initialized');
+
+  return {
+    garden,
+    shed,
+    calendar,
+    memory,
+    proactive,
+    llm,
+    embeddings,
+    vectors,
+    scheduler,
+    weather,
+    signal,
+  };
+}
+
+export function closeServices(services: ServiceContainer): void {
+  info('Closing services...');
+  services.scheduler.close();
+  services.shed.close();
+  services.vectors.close();
+  services.garden.close();
+  services.calendar.close();
+  services.memory.close();
+  services.llm.close();
+  services.embeddings.close();
+  services.weather.close();
+  services.signal.close();
+}
+
+// Re-export types
+export { GardenService, GardenRecord, RecordType, RecordStatus, TaskFilters } from './garden.js';
+export { CalendarService, CalendarEvent } from './calendar.js';
+export { MemoryService, Episode, UserFact } from './memory.js';
+export { ProactiveService } from './proactive.js';
+export { LLMService, Tier, Complexity } from './llm.js';
+export { EmbeddingService } from './embeddings.js';
+export { VectorService, VectorMetadata } from './vectors.js';
+export { ShedService, ShedSource, ShedChunk } from './shed.js';
+export { SchedulerService, ScheduledTask } from './scheduler.js';
+export { WeatherService, WeatherData } from './weather.js';
+export { SignalService } from './signal.js';
+```
+
+### ✓ Phase 2 Checkpoint
+
+Verify:
+```bash
+pnpm typecheck
+# Should pass
+
+# Create a simple test
+cat > src/test-services.ts << 'EOF'
+import { loadConfig } from './config.js';
+import { initServices, closeServices } from './services/index.js';
+
+async function test() {
+  const config = loadConfig();
+  const services = await initServices(config);
+  
+  // Test garden
+  const task = services.garden.addTask('Test task', '@test');
+  console.log('Created task:', task.title);
+  
+  // Cleanup
+  services.garden.delete(task.id);
+  closeServices(services);
+  console.log('Services test passed!');
+}
+
+test().catch(console.error);
+EOF
+
+pnpm dev src/test-services.ts
+# Should create task and print success
+rm src/test-services.ts
+```
+
+Commit:
+```bash
+git add -A
+git commit -m 'feat: add core services (garden, calendar, memory, llm, etc)'
+```
+
+---
+
+## Phase 3: Tools
+
+Tools are stateless functions with routing metadata. Each tool knows how to match user input and what to do with it.
+
+### Step 3.1: Create `src/tools/types.ts`
+
+```typescript
+// src/tools/types.ts
+import { ServiceContainer } from '../services/index.js';
+
+export interface ToolRouting {
+  /** Regex patterns for exact matching (Layer 1) */
+  patterns?: RegExp[];
+
+  /** Keywords for combinatorial matching (Layer 2) */
+  keywords?: {
+    verbs?: string[];
+    nouns?: string[];
+  };
+
+  /** Example phrases for semantic matching (Layer 3) */
+  examples?: string[];
+
+  /** Priority hint (higher = checked first) */
+  priority?: number;
+}
+
+export interface Tool {
+  name: string;
+  description: string;
+  routing?: ToolRouting;
+  parseArgs?: (input: string, match: RegExpMatchArray | null) => Record<string, unknown>;
+  execute: (args: Record<string, unknown>, context: ToolContext) => Promise<string>;
+}
+
+export interface ToolContext {
+  input: string;
+  services: ServiceContainer;
+  match?: RegExpMatchArray;
+}
+
+export interface RouteResult {
+  tool: string;
+  args: Record<string, unknown>;
+  match?: RegExpMatchArray;
+  confidence: number;
+  source: 'pattern' | 'keyword' | 'semantic' | 'llm';
+}
+```
+
+### Step 3.2: Create `src/tools/gtd.ts`
+
+```typescript
+// src/tools/gtd.ts
+import { Tool } from './types.js';
+
+export const viewNextActions: Tool = {
+  name: 'viewNextActions',
+  description: 'Display the current list of next actions',
+
+  routing: {
+    patterns: [
+      /^(show|list|view|display)\s+(my\s+)?(next\s+)?actions?$/i,
+      /^next\s+actions?$/i,
+      /^what('s| is| are)\s+(on\s+)?(my\s+)?(plate|list|todo)/i,
+      /^tasks?$/i,
+    ],
+    keywords: {
+      verbs: ['show', 'list', 'view', 'display', 'see', 'get'],
+      nouns: ['next actions', 'tasks', 'todos', 'to-dos', 'actions', 'todo list'],
+    },
+    examples: [
+      'show next actions',
+      "what's on my plate",
+      'what do I need to do',
+      'list my tasks',
+    ],
+    priority: 100,
+  },
+
+  execute: async (args, context) => {
+    const tasks = context.services.garden.getTasks({ status: 'active' });
+
+    if (tasks.length === 0) {
+      return 'No next actions found. Your list is clear! 🎉';
+    }
+
+    // Group by context
+    const byContext = new Map<string, typeof tasks>();
+    for (const task of tasks) {
+      const ctx = task.context || '@uncategorized';
+      if (!byContext.has(ctx)) byContext.set(ctx, []);
+      byContext.get(ctx)!.push(task);
+    }
+
+    const lines: string[] = [`**Next Actions** (${tasks.length})`];
+    let num = 1;
+
+    for (const [ctx, ctxTasks] of byContext) {
+      lines.push(`\n${ctx}`);
+      for (const task of ctxTasks) {
+        const proj = task.project ? ` (${task.project})` : '';
+        const due = task.due_date ? ` [due: ${task.due_date}]` : '';
+        lines.push(`  ${num}. ${task.title}${proj}${due}`);
+        num++;
+      }
+    }
+
+    return lines.join('\n');
+  },
+};
+
+export const addTask: Tool = {
+  name: 'addTask',
+  description: 'Add a new task',
+
+  routing: {
+    patterns: [
+      /^add\s+(task|action|todo)\s+(.+)$/i,
+      /^(new|create)\s+(task|action|todo)\s+(.+)$/i,
+      /^add\s+to\s+(tasks?|actions?|list)\s*:?\s*(.+)$/i,
+    ],
+    keywords: {
+      verbs: ['add', 'create', 'new', 'make'],
+      nouns: ['task', 'action', 'todo', 'item'],
+    },
+    examples: ['add task buy milk', 'new action call dentist'],
+    priority: 90,
+  },
+
+  parseArgs: (input, match) => {
+    let description = '';
+
+    if (match) {
+      description = match[match.length - 1] || '';
+    } else {
+      description = input.replace(/^(add|create|new)\s+(task|action|todo|to\s+list)\s*/i, '').trim();
+    }
+
+    // Parse inline context (@) and project (+)
+    let context: string | undefined;
+    let project: string | undefined;
+
+    const contextMatch = description.match(/@(\w+)/);
+    if (contextMatch) {
+      context = `@${contextMatch[1]}`;
+      description = description.replace(/@\w+/, '').trim();
+    }
+
+    const projectMatch = description.match(/\+(\w+)/);
+    if (projectMatch) {
+      project = projectMatch[1];
+      description = description.replace(/\+\w+/, '').trim();
+    }
+
+    return { description, context, project };
+  },
+
+  execute: async (args, context) => {
+    const { description, context: ctx, project } = args as {
+      description: string;
+      context?: string;
+      project?: string;
+    };
+
+    if (!description) {
+      return 'Please provide a task description. Example: add task buy milk @errands';
+    }
+
+    const task = context.services.garden.addTask(description, ctx || '@inbox', project);
+
+    let response = `✓ Added: "${task.title}"`;
+    if (task.context) response += ` (${task.context})`;
+    if (task.project) response += ` [${task.project}]`;
+
+    return response;
+  },
+};
+
+export const markDone: Tool = {
+  name: 'markDone',
+  description: 'Mark a task as complete',
+
+  routing: {
+    patterns: [
+      /^(done|complete|finish|finished|check)\s+(\d+)$/i,
+      /^(done|complete|finish|finished)\s+(.+)$/i,
+      /^(\d+)\s+(done|complete|finished)$/i,
+    ],
+    keywords: {
+      verbs: ['done', 'complete', 'finish', 'mark', 'check'],
+      nouns: ['task', 'action', 'item'],
+    },
+    examples: ['done 1', 'complete 3', 'mark done buy milk'],
+    priority: 95,
+  },
+
+  parseArgs: (input, match) => {
+    if (match) {
+      for (let i = match.length - 1; i >= 1; i--) {
+        const val = match[i];
+        if (val && !['done', 'complete', 'finish', 'finished', 'check'].includes(val.toLowerCase())) {
+          const num = parseInt(val);
+          if (!isNaN(num)) return { identifier: num };
+          return { identifier: val };
+        }
+      }
+    }
+
+    const cleaned = input.replace(/^(done|complete|finish|finished|check)\s*/i, '').trim();
+    const num = parseInt(cleaned);
+    return { identifier: isNaN(num) ? cleaned : num };
+  },
+
+  execute: async (args, context) => {
+    const { identifier } = args as { identifier: string | number };
+
+    if (!identifier) {
+      return 'Please specify which task to complete. Example: done 1';
+    }
+
+    const completed = context.services.garden.completeTask(identifier);
+
+    if (!completed) {
+      return `Task not found: "${identifier}". Try "show next actions" to see the list.`;
+    }
+
+    return `✓ Completed: "${completed.title}"`;
+  },
+};
+
+export const capture: Tool = {
+  name: 'capture',
+  description: 'Quick capture to inbox',
+
+  routing: {
+    patterns: [
+      /^capture\s+(.+)$/i,
+      /^inbox\s+(.+)$/i,
+      /^remember\s+(.+)$/i,
+      /^note\s+to\s+self\s*:?\s*(.+)$/i,
+    ],
+    keywords: {
+      verbs: ['capture', 'remember', 'note', 'jot'],
+      nouns: ['inbox', 'self', 'down'],
+    },
+    examples: ['capture call mom', 'inbox review article'],
+    priority: 85,
+  },
+
+  parseArgs: (input, match) => {
+    if (match && match[1]) return { text: match[1].trim() };
+    return { text: input.replace(/^(capture|inbox|remember|note\s+to\s+self)\s*:?\s*/i, '').trim() };
+  },
+
+  execute: async (args, context) => {
+    const { text } = args as { text: string };
+
+    if (!text) {
+      return 'Please provide something to capture. Example: capture call dentist';
+    }
+
+    const task = context.services.garden.captureToInbox(text);
+    return `✓ Captured: "${task.title}"`;
+  },
+};
+
+export const showWaitingFor: Tool = {
+  name: 'showWaitingFor',
+  description: 'Show delegated items',
+
+  routing: {
+    patterns: [
+      /^(show|list|view)\s+(waiting\s+for|delegated)/i,
+      /^waiting\s+for$/i,
+    ],
+    keywords: {
+      verbs: ['show', 'list'],
+      nouns: ['waiting', 'delegated'],
+    },
+    priority: 80,
+  },
+
+  execute: async (args, context) => {
+    const tasks = context.services.garden.getTasks({ status: 'waiting' });
+
+    if (tasks.length === 0) {
+      return 'No items in Waiting For.';
+    }
+
+    const lines = ['**Waiting For**'];
+    tasks.forEach((t, i) => {
+      lines.push(`  ${i + 1}. ${t.title}${t.project ? ` (${t.project})` : ''}`);
+    });
+
+    return lines.join('\n');
+  },
+};
+
+export const gtdTools: Tool[] = [
+  viewNextActions,
+  addTask,
+  markDone,
+  capture,
+  showWaitingFor,
+];
+```
+
+### Step 3.3: Create `src/tools/calendar.ts`
+
+```typescript
+// src/tools/calendar.ts
+import { Tool } from './types.js';
+
+export const showCalendar: Tool = {
+  name: 'showCalendar',
+  description: 'Show upcoming calendar events',
+
+  routing: {
+    patterns: [
+      /^(show|view|list)?\s*calendar$/i,
+      /^upcoming\s+events?$/i,
+      /^what('s| is)\s+(on\s+)?(my\s+)?calendar/i,
+    ],
+    keywords: {
+      verbs: ['show', 'view', 'list'],
+      nouns: ['calendar', 'events', 'schedule'],
+    },
+    priority: 90,
+  },
+
+  execute: async (args, context) => {
+    const events = context.services.calendar.getUpcoming(10);
+
+    if (events.length === 0) {
+      return 'No upcoming events.';
+    }
+
+    const lines = ['**Upcoming Events**'];
+    for (const event of events) {
+      const date = new Date(event.start_time);
+      const dateStr = date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+      const timeStr = event.all_day ? 'all day' : date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+      lines.push(`  ${dateStr} ${timeStr} - ${event.title}`);
+    }
+
+    return lines.join('\n');
+  },
+};
+
+export const showToday: Tool = {
+  name: 'showToday',
+  description: "Show today's schedule",
+
+  routing: {
+    patterns: [
+      /^today$/i,
+      /^today('s)?\s+(schedule|events?|calendar)?$/i,
+      /^what('s| is)\s+(happening\s+)?today/i,
+    ],
+    keywords: {
+      verbs: ['show', 'what'],
+      nouns: ['today', 'schedule'],
+    },
+    priority: 95,
+  },
+
+  execute: async (args, context) => {
+    const events = context.services.calendar.getForDay(new Date());
+
+    if (events.length === 0) {
+      return "Nothing on today's calendar.";
+    }
+
+    const lines = ["**Today's Schedule**"];
+    for (const event of events) {
+      const date = new Date(event.start_time);
+      const timeStr = event.all_day ? 'All day' : date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+      lines.push(`  ${timeStr} - ${event.title}`);
+    }
+
+    return lines.join('\n');
+  },
+};
+
+export const addEvent: Tool = {
+  name: 'addEvent',
+  description: 'Create a calendar event',
+
+  routing: {
+    patterns: [
+      /^add\s+event\s+["']?(.+?)["']?\s+(on|at|tomorrow|today)\s+(.+)$/i,
+      /^schedule\s+["']?(.+?)["']?\s+(for|on|at|tomorrow)\s+(.+)$/i,
+    ],
+    keywords: {
+      verbs: ['add', 'schedule', 'create'],
+      nouns: ['event', 'meeting', 'appointment'],
+    },
+    priority: 85,
+  },
+
+  parseArgs: (input) => {
+    let title = input.replace(/^(add\s+event|schedule)\s*/i, '');
+    let startTime = new Date();
+
+    const lower = input.toLowerCase();
+
+    // Check for "tomorrow"
+    if (lower.includes('tomorrow')) {
+      startTime.setDate(startTime.getDate() + 1);
+      title = title.replace(/\s*tomorrow\s*/i, ' ');
+    }
+
+    // Check for time like "at 3pm"
+    const timeMatch = lower.match(/at\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)?/i);
+    if (timeMatch) {
+      let hour = parseInt(timeMatch[1]);
+      const minute = timeMatch[2] ? parseInt(timeMatch[2]) : 0;
+      const ampm = timeMatch[3]?.toLowerCase();
+
+      if (ampm === 'pm' && hour < 12) hour += 12;
+      if (ampm === 'am' && hour === 12) hour = 0;
+
+      startTime.setHours(hour, minute, 0, 0);
+      title = title.replace(/\s*at\s+\d{1,2}(?::\d{2})?\s*(am|pm)?/i, '');
+    }
+
+    title = title.replace(/\s+(on|for)\s*/i, ' ').trim();
+
+    const endTime = new Date(startTime);
+    endTime.setHours(endTime.getHours() + 1);
+
+    return {
+      title,
+      start_time: startTime.toISOString(),
+      end_time: endTime.toISOString(),
+    };
+  },
+
+  execute: async (args, context) => {
+    const { title, start_time, end_time } = args as {
+      title: string;
+      start_time: string;
+      end_time: string;
+    };
+
+    if (!title) {
+      return 'Please provide an event title. Example: add event "Meeting" at 3pm';
+    }
+
+    const event = context.services.calendar.create({
+      title,
+      start_time,
+      end_time,
+      all_day: false,
+    });
+
+    const date = new Date(event.start_time);
+    const dateStr = date.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+    const timeStr = date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+
+    return `✓ Created: ${event.title}\n  ${dateStr} at ${timeStr}`;
+  },
+};
+
+export const calendarTools: Tool[] = [showCalendar, showToday, addEvent];
+```
+
+### Step 3.4: Create `src/tools/contacts.ts`
+
+```typescript
+// src/tools/contacts.ts
+import { Tool } from './types.js';
+
+export const addContact: Tool = {
+  name: 'addContact',
+  description: 'Create a new contact',
+
+  routing: {
+    patterns: [
+      /^add\s+contact\s+(.+)$/i,
+      /^new\s+contact\s+(.+)$/i,
+    ],
+    keywords: {
+      verbs: ['add', 'create', 'new'],
+      nouns: ['contact', 'person'],
+    },
+    priority: 85,
+  },
+
+  parseArgs: (input) => {
+    let text = input.replace(/^(add|new)\s+contact\s*/i, '');
+
+    // Parse "name, email xxx, phone xxx"
+    const parts = text.split(/,\s*/);
+    const name = parts[0]?.trim();
+
+    let email: string | undefined;
+    let phone: string | undefined;
+    let notes: string[] = [];
+
+    for (let i = 1; i < parts.length; i++) {
+      const part = parts[i].trim().toLowerCase();
+      if (part.startsWith('email ')) {
+        email = parts[i].replace(/^email\s*/i, '').trim();
+      } else if (part.startsWith('phone ')) {
+        phone = parts[i].replace(/^phone\s*/i, '').trim();
+      } else {
+        notes.push(parts[i].trim());
+      }
+    }
+
+    return { name, email, phone, content: notes.join('\n') };
+  },
+
+  execute: async (args, context) => {
+    const { name, email, phone, content } = args as {
+      name: string;
+      email?: string;
+      phone?: string;
+      content?: string;
+    };
+
+    if (!name) {
+      return 'Please provide a name. Example: add contact Sarah Chen, email sarah@example.com';
+    }
+
+    const contact = context.services.garden.addContact(name, { email, phone, content });
+
+    let response = `✓ Created contact: ${contact.title}`;
+    if (email) response += `\n  Email: ${email}`;
+    if (phone) response += `\n  Phone: ${phone}`;
+
+    return response;
+  },
+};
+
+export const findContact: Tool = {
+  name: 'findContact',
+  description: 'Search for a contact',
+
+  routing: {
+    patterns: [
+      /^find\s+(contact\s+)?(.+)$/i,
+      /^search\s+(contact|contacts)\s+(.+)$/i,
+      /^who\s+is\s+(.+)$/i,
+    ],
+    keywords: {
+      verbs: ['find', 'search', 'lookup', 'who'],
+      nouns: ['contact', 'person'],
+    },
+    priority: 80,
+  },
+
+  parseArgs: (input) => {
+    const query = input
+      .replace(/^(find|search|who\s+is)\s+(contact\s+)?/i, '')
+      .trim();
+    return { query };
+  },
+
+  execute: async (args, context) => {
+    const { query } = args as { query: string };
+
+    if (!query) {
+      return 'Please provide a name to search. Example: find sarah';
+    }
+
+    const contacts = context.services.garden.searchContacts(query);
+
+    if (contacts.length === 0) {
+      return `No contacts found matching "${query}"`;
+    }
+
+    const lines = [`Found ${contacts.length} contact(s):`];
+    for (const c of contacts) {
+      lines.push(`\n**${c.title}**`);
+      if (c.email) lines.push(`  Email: ${c.email}`);
+      if (c.phone) lines.push(`  Phone: ${c.phone}`);
+    }
+
+    return lines.join('\n');
+  },
+};
+
+export const contactTools: Tool[] = [addContact, findContact];
+```
+
+### Step 3.5: Create `src/tools/memory.ts`
+
+```typescript
+// src/tools/memory.ts
+import { Tool } from './types.js';
+
+export const recallConversation: Tool = {
+  name: 'recallConversation',
+  description: 'Search past conversations',
+
+  routing: {
+    patterns: [
+      /^what did we (talk|discuss|say) about\s+(.+)/i,
+      /^remind me (what|about)\s+(.+)/i,
+      /^when did (i|we) (mention|discuss)\s+(.+)/i,
+    ],
+    keywords: {
+      verbs: ['recall', 'remember', 'remind', 'talked'],
+      nouns: ['conversation', 'discussion', 'about'],
+    },
+    examples: ['what did we talk about last week', 'remind me about the website discussion'],
+    priority: 75,
+  },
+
+  parseArgs: (input) => {
+    const topic = input
+      .replace(/^(what did we (talk|discuss|say) about|remind me (what|about)|when did (i|we) (mention|discuss))\s*/i, '')
+      .trim();
+    return { topic };
+  },
+
+  execute: async (args, context) => {
+    const { topic } = args as { topic: string };
+
+    if (!topic) {
+      return 'Please specify what to recall. Example: what did we talk about the website';
+    }
+
+    const episodes = context.services.memory.recallRelevant(topic, 5);
+
+    if (episodes.length === 0) {
+      return "I don't have any conversations about that in my memory.";
+    }
+
+    const lines = [`Found ${episodes.length} related conversation(s):\n`];
+    for (const ep of episodes) {
+      const date = new Date(ep.timestamp);
+      const ago = formatTimeAgo(date);
+      lines.push(`**${ago}**: ${ep.summary}`);
+      if (ep.topics.length) lines.push(`  Topics: ${ep.topics.join(', ')}`);
+      lines.push('');
+    }
+
+    return lines.join('\n');
+  },
+};
+
+export const setPreference: Tool = {
+  name: 'setPreference',
+  description: 'Set a user preference',
+
+  routing: {
+    patterns: [
+      /^(remember|note) that i (prefer|like|want)\s+(.+)/i,
+      /^i (prefer|always|never)\s+(.+)/i,
+    ],
+    keywords: {
+      verbs: ['remember', 'note', 'prefer'],
+      nouns: ['preference', 'like', 'always'],
+    },
+    priority: 70,
+  },
+
+  parseArgs: (input) => {
+    const preference = input
+      .replace(/^(remember|note) that i (prefer|like|want)\s*/i, '')
+      .replace(/^i (prefer|always|never)\s*/i, '')
+      .trim();
+    return { preference };
+  },
+
+  execute: async (args, context) => {
+    const { preference } = args as { preference: string };
+
+    if (!preference) {
+      return 'Please specify a preference. Example: I prefer morning meetings';
+    }
+
+    context.services.memory.setFact('preference', preference, true, {
+      source: 'explicit',
+      confidence: 1.0,
+    });
+
+    return `✓ Got it! I'll remember that.`;
+  },
+};
+
+export const viewProfile: Tool = {
+  name: 'viewProfile',
+  description: 'Show what Bartleby knows about the user',
+
+  routing: {
+    patterns: [
+      /^what do you know about me/i,
+      /^show (my )?profile/i,
+      /^(my )?preferences/i,
+    ],
+    keywords: {
+      verbs: ['show', 'view', 'what'],
+      nouns: ['profile', 'preferences', 'about me', 'know'],
+    },
+    priority: 80,
+  },
+
+  execute: async (args, context) => {
+    const summary = context.services.memory.getProfileSummary();
+    const episodeCount = context.services.memory.getEpisodeCount();
+
+    if (!summary && episodeCount === 0) {
+      return "I don't know much about you yet. As we chat, I'll learn your preferences and remember our conversations.";
+    }
+
+    let response = '## What I Know About You\n\n';
+    if (summary) response += summary;
+    response += `\n\n*Based on ${episodeCount} conversation(s).*`;
+
+    return response;
+  },
+};
+
+export const clearFollowup: Tool = {
+  name: 'clearFollowup',
+  description: 'Mark a follow-up as done',
+
+  routing: {
+    patterns: [
+      /^(done|completed?|finished?)\s+checking\s+(.+)/i,
+      /^i (did|completed?|finished?)\s+(.+)/i,
+    ],
+    priority: 60,
+  },
+
+  parseArgs: (input) => {
+    const description = input
+      .replace(/^(done|completed?|finished?|i (did|completed?|finished?))\s*(checking\s+)?/i, '')
+      .trim();
+    return { description };
+  },
+
+  execute: async (args, context) => {
+    const { description } = args as { description: string };
+
+    const cleared = context.services.memory.clearMatchingFollowup(description);
+
+    if (cleared) {
+      return `✓ Cleared follow-up: "${cleared}"`;
+    }
+    return `No pending follow-up found matching "${description}"`;
+  },
+};
+
+function formatTimeAgo(date: Date): string {
+  const seconds = Math.floor((Date.now() - date.getTime()) / 1000);
+
+  if (seconds < 60) return 'just now';
+  if (seconds < 3600) return `${Math.floor(seconds / 60)} minutes ago`;
+  if (seconds < 86400) return `${Math.floor(seconds / 3600)} hours ago`;
+  if (seconds < 604800) return `${Math.floor(seconds / 86400)} days ago`;
+
+  return date.toLocaleDateString();
+}
+
+export const memoryTools: Tool[] = [
+  recallConversation,
+  setPreference,
+  viewProfile,
+  clearFollowup,
+];
+```
+
+### Step 3.6: Create `src/tools/weather.ts`
+
+```typescript
+// src/tools/weather.ts
+import { Tool } from './types.js';
+
+export const getWeather: Tool = {
+  name: 'getWeather',
+  description: 'Get current weather',
+
+  routing: {
+    patterns: [
+      /^weather$/i,
+      /^what('s| is) the weather/i,
+      /^how('s| is) the weather/i,
+    ],
+    keywords: {
+      verbs: ['show', 'get', 'what'],
+      nouns: ['weather', 'temperature', 'forecast'],
+    },
+    priority: 50,
+  },
+
+  execute: async (args, context) => {
+    const weather = await context.services.weather.getCurrent();
+
+    if (!weather) {
+      return 'Weather service not configured. Set WEATHER_CITY and OPENWEATHERMAP_API_KEY in .env';
+    }
+
+    return `**${weather.city}** - ${weather.temp}°, ${weather.description}\nHigh: ${weather.high}° | Low: ${weather.low}°`;
+  },
+};
+
+export const weatherTools: Tool[] = [getWeather];
+```
+
+### Step 3.7: Create `src/tools/system.ts`
+
+```typescript
+// src/tools/system.ts
+import { Tool } from './types.js';
+
+export const help: Tool = {
+  name: 'help',
+  description: 'Show available commands',
+
+  routing: {
+    patterns: [/^help$/i, /^commands?$/i, /^\?$/],
+    keywords: { verbs: ['help'], nouns: ['commands'] },
+    priority: 100,
+  },
+
+  execute: async () => {
+    return `
+**Bartleby Commands**
+
+**GTD**
+  show next actions     List tasks
+  add task <text>       Add task (use @context +project)
+  done <n>              Complete task by number
+  capture <text>        Quick capture to inbox
+  waiting for           Show delegated items
+
+**Calendar**
+  calendar              Upcoming events
+  today                 Today's schedule
+  add event <details>   Create event
+
+**Contacts**
+  add contact <name>    Create contact
+  find <name>           Search contacts
+
+**Memory**
+  what did we talk about <topic>   Search conversations
+  I prefer <preference>            Set preference
+  what do you know about me        View profile
+
+**System**
+  help                  This help
+  status                System status
+  weather               Current weather
+  quit                  Exit
+`.trim();
+  },
+};
+
+export const status: Tool = {
+  name: 'status',
+  description: 'Show system status',
+
+  routing: {
+    patterns: [/^status$/i, /^sys(tem)?\s*status$/i],
+    priority: 50,
+  },
+
+  execute: async (args, context) => {
+    const tasks = context.services.garden.getTasks({ status: 'active' });
+    const inbox = tasks.filter(t => t.context === '@inbox');
+    const episodes = context.services.memory.getEpisodeCount();
+
+    const llmRouter = context.services.llm.isHealthy('router') ? '✓' : '✗';
+    const llmFast = context.services.llm.isHealthy('fast') ? '✓' : '✗';
+    const llmThinking = context.services.llm.isHealthy('thinking') ? '✓' : '✗';
+    const embeddings = context.services.embeddings.isAvailable() ? '✓' : '✗';
+
+    return `
+**Bartleby Status**
+─────────────────
+Tasks: ${tasks.length} active (${inbox.length} in inbox)
+Memory: ${episodes} conversations
+LLM: Router ${llmRouter} | Fast ${llmFast} | Thinking ${llmThinking}
+Embeddings: ${embeddings}
+`.trim();
+  },
+};
+
+export const quit: Tool = {
+  name: 'quit',
+  description: 'Exit Bartleby',
+
+  routing: {
+    patterns: [/^(quit|exit|bye|goodbye)$/i],
+    priority: 100,
+  },
+
+  execute: async () => '__EXIT__',
+};
+
+export const systemTools: Tool[] = [help, status, quit];
+```
+
+### Step 3.8: Create `src/tools/shed.ts`
+
+Tools for document ingestion and RAG queries.
+
+```typescript
+// src/tools/shed.ts
+import { Tool } from './types.js';
+
+export const ingestDocument: Tool = {
+  name: 'ingestDocument',
+  description: 'Ingest a document into the Shed (reference library)',
+
+  routing: {
+    patterns: [
+      /^ingest\s+(.+)$/i,
+      /^add\s+(to\s+)?shed\s+(.+)$/i,
+      /^import\s+(document|file)\s+(.+)$/i,
+    ],
+    keywords: {
+      verbs: ['ingest', 'import', 'add'],
+      nouns: ['shed', 'document', 'file', 'library'],
+    },
+    examples: ['ingest notes.md', 'add to shed article.txt'],
+    priority: 80,
+  },
+
+  parameters: {
+    type: 'object',
+    properties: {
+      filepath: { type: 'string', description: 'Path to the document file' },
+    },
+    required: ['filepath'],
+  },
+
+  parseArgs: (input, match) => {
+    let filepath = '';
+    if (match) {
+      filepath = match[match.length - 1]?.trim() || '';
+    } else {
+      filepath = input.replace(/^(ingest|add\s+to\s+shed|import\s+(document|file))\s*/i, '').trim();
+    }
+    return { filepath };
+  },
+
+  execute: async (args, context) => {
+    const { filepath } = args as { filepath: string };
+
+    if (!filepath) {
+      return 'Please provide a file path. Example: ingest notes.md';
+    }
+
+    try {
+      const source = await context.services.shed.ingestDocument(filepath);
+      return `✓ Ingested: "${source.title}"\n  File: ${source.filename}\n  Chunks: ${source.chunkCount}`;
+    } catch (err) {
+      return `Failed to ingest document: ${err instanceof Error ? err.message : String(err)}`;
+    }
+  },
+};
+
+export const askShed: Tool = {
+  name: 'askShed',
+  description: 'Ask a question about your ingested documents',
+
+  routing: {
+    patterns: [
+      /^ask\s+shed\s+(.+)$/i,
+      /^shed\s+(.+)$/i,
+      /^what\s+do\s+(my\s+)?(documents?|notes?|files?)\s+say\s+about\s+(.+)$/i,
+    ],
+    keywords: {
+      verbs: ['ask', 'query', 'search'],
+      nouns: ['shed', 'documents', 'library', 'reference'],
+    },
+    examples: [
+      'ask shed about machine learning',
+      'what do my documents say about project management',
+      'shed what are the main themes',
+    ],
+    priority: 75,
+  },
+
+  parameters: {
+    type: 'object',
+    properties: {
+      question: { type: 'string', description: 'Question to ask about ingested documents' },
+    },
+    required: ['question'],
+  },
+
+  parseArgs: (input, match) => {
+    let question = '';
+    if (match) {
+      question = match[match.length - 1]?.trim() || '';
+    } else {
+      question = input
+        .replace(/^(ask\s+shed|shed|what\s+do\s+(my\s+)?(documents?|notes?|files?)\s+say\s+about)\s*/i, '')
+        .trim();
+    }
+    return { question };
+  },
+
+  execute: async (args, context) => {
+    const { question } = args as { question: string };
+
+    if (!question) {
+      return 'Please provide a question. Example: ask shed about machine learning';
+    }
+
+    try {
+      const answer = await context.services.shed.query(question);
+      return answer;
+    } catch (err) {
+      return `Failed to query shed: ${err instanceof Error ? err.message : String(err)}`;
+    }
+  },
+};
+
+export const listSources: Tool = {
+  name: 'listSources',
+  description: 'List all documents in the Shed',
+
+  routing: {
+    patterns: [
+      /^(list|show)\s+(shed|sources|documents)$/i,
+      /^what('s| is)\s+in\s+(the\s+)?shed$/i,
+    ],
+    keywords: {
+      verbs: ['list', 'show'],
+      nouns: ['shed', 'sources', 'documents', 'library'],
+    },
+    priority: 70,
+  },
+
+  parameters: {
+    type: 'object',
+    properties: {},
+    required: [],
+  },
+
+  execute: async (args, context) => {
+    const sources = context.services.shed.listSources();
+
+    if (sources.length === 0) {
+      return 'No documents in the Shed yet. Use "ingest <filepath>" to add documents.';
+    }
+
+    const lines = [`**Shed Library** (${sources.length} documents)\n`];
+    for (const source of sources) {
+      const date = new Date(source.ingestedAt).toLocaleDateString();
+      lines.push(`- **${source.title}** (${source.chunkCount} chunks)`);
+      lines.push(`  File: ${source.filename} | Added: ${date}`);
+    }
+
+    return lines.join('\n');
+  },
+};
+
+export const shedTools: Tool[] = [ingestDocument, askShed, listSources];
+```
+
+### Step 3.9: Create `src/tools/scheduler.ts`
+
+Tools for scheduled reminders and recurring tasks.
+
+```typescript
+// src/tools/scheduler.ts
+import { Tool } from './types.js';
+
+export const scheduleReminder: Tool = {
+  name: 'scheduleReminder',
+  description: 'Set a reminder for a specific time',
+
+  routing: {
+    patterns: [
+      /^remind\s+me\s+(.+?)\s+(at|on|in)\s+(.+)$/i,
+      /^set\s+reminder\s+(.+?)\s+(for|at|on|in)\s+(.+)$/i,
+      /^schedule\s+reminder\s+(.+)$/i,
+    ],
+    keywords: {
+      verbs: ['remind', 'schedule', 'set'],
+      nouns: ['reminder', 'alert', 'notification'],
+    },
+    examples: [
+      'remind me to call dentist at 3pm',
+      'set reminder check email in 2 hours',
+      'remind me about meeting tomorrow at 9am',
+    ],
+    priority: 85,
+  },
+
+  parameters: {
+    type: 'object',
+    properties: {
+      message: { type: 'string', description: 'Reminder message' },
+      when: { type: 'string', description: 'When to remind (date/time or relative)' },
+    },
+    required: ['message', 'when'],
+  },
+
+  parseArgs: (input) => {
+    // Try to extract message and time
+    let message = '';
+    let when = '';
+
+    // Pattern: "remind me <message> at/in/on <time>"
+    const match = input.match(/^(?:remind\s+me|set\s+reminder)\s+(.+?)\s+(?:at|on|in|for)\s+(.+)$/i);
+    if (match) {
+      message = match[1].replace(/^to\s+/i, '').trim();
+      when = match[2].trim();
+    } else {
+      // Fallback: everything after "remind me"
+      message = input.replace(/^(remind\s+me|set\s+reminder|schedule\s+reminder)\s*/i, '').trim();
+      when = 'in 1 hour'; // Default
+    }
+
+    // Parse relative times
+    const whenDate = parseTimeString(when);
+
+    return { message, when: whenDate.toISOString() };
+  },
+
+  execute: async (args, context) => {
+    const { message, when } = args as { message: string; when: string };
+
+    if (!message) {
+      return 'Please provide a reminder message. Example: remind me to call dentist at 3pm';
+    }
+
+    const task = context.services.scheduler.scheduleReminder(message, when);
+    const whenDate = new Date(task.nextRun);
+    const formattedTime = whenDate.toLocaleString('en-US', {
+      weekday: 'short',
+      month: 'short',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+    });
+
+    return `✓ Reminder set: "${message}"\n  When: ${formattedTime}`;
+  },
+};
+
+export const showScheduled: Tool = {
+  name: 'showScheduled',
+  description: 'Show all scheduled reminders',
+
+  routing: {
+    patterns: [
+      /^(show|list|view)\s+(scheduled|reminders?)$/i,
+      /^reminders?$/i,
+      /^what('s| is)\s+scheduled$/i,
+    ],
+    keywords: {
+      verbs: ['show', 'list', 'view'],
+      nouns: ['scheduled', 'reminders', 'alerts'],
+    },
+    priority: 80,
+  },
+
+  parameters: {
+    type: 'object',
+    properties: {},
+    required: [],
+  },
+
+  execute: async (args, context) => {
+    const tasks = context.services.scheduler.list();
+
+    if (tasks.length === 0) {
+      return 'No scheduled reminders. Use "remind me <message> at <time>" to create one.';
+    }
+
+    const lines = [`**Scheduled Reminders** (${tasks.length})\n`];
+    for (const task of tasks) {
+      const whenDate = new Date(task.nextRun);
+      const formattedTime = whenDate.toLocaleString('en-US', {
+        weekday: 'short',
+        month: 'short',
+        day: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit',
+      });
+
+      const status = task.enabled ? '' : ' [disabled]';
+      const recurring = task.scheduleType !== 'once' ? ' (recurring)' : '';
+
+      lines.push(`- ${formattedTime}${recurring}${status}`);
+      lines.push(`  "${task.actionPayload}"`);
+    }
+
+    return lines.join('\n');
+  },
+};
+
+export const cancelReminder: Tool = {
+  name: 'cancelReminder',
+  description: 'Cancel a scheduled reminder',
+
+  routing: {
+    patterns: [
+      /^cancel\s+reminder\s+(\d+|.+)$/i,
+      /^delete\s+reminder\s+(\d+|.+)$/i,
+      /^remove\s+reminder\s+(\d+|.+)$/i,
+    ],
+    keywords: {
+      verbs: ['cancel', 'delete', 'remove'],
+      nouns: ['reminder', 'scheduled'],
+    },
+    priority: 75,
+  },
+
+  parameters: {
+    type: 'object',
+    properties: {
+      identifier: { type: 'string', description: 'Reminder number or partial message' },
+    },
+    required: ['identifier'],
+  },
+
+  parseArgs: (input) => {
+    const identifier = input
+      .replace(/^(cancel|delete|remove)\s+reminder\s*/i, '')
+      .trim();
+    return { identifier };
+  },
+
+  execute: async (args, context) => {
+    const { identifier } = args as { identifier: string };
+
+    if (!identifier) {
+      return 'Please specify which reminder to cancel. Use "show reminders" to see the list.';
+    }
+
+    const tasks = context.services.scheduler.list();
+
+    // Try to find by number
+    const num = parseInt(identifier);
+    if (!isNaN(num) && num > 0 && num <= tasks.length) {
+      const task = tasks[num - 1];
+      context.services.scheduler.cancel(task.id);
+      return `✓ Cancelled reminder: "${task.actionPayload}"`;
+    }
+
+    // Try to find by message content
+    const match = tasks.find(t =>
+      String(t.actionPayload).toLowerCase().includes(identifier.toLowerCase())
+    );
+
+    if (match) {
+      context.services.scheduler.cancel(match.id);
+      return `✓ Cancelled reminder: "${match.actionPayload}"`;
+    }
+
+    return `No reminder found matching "${identifier}". Use "show reminders" to see the list.`;
+  },
+};
+
+export const scheduleDailyReminder: Tool = {
+  name: 'scheduleDailyReminder',
+  description: 'Set a daily recurring reminder',
+
+  routing: {
+    patterns: [
+      /^(daily|every\s+day)\s+at\s+(\d+(?::\d+)?)\s*(?:am|pm)?\s+(.+)$/i,
+      /^remind\s+me\s+daily\s+(.+)$/i,
+    ],
+    keywords: {
+      verbs: ['remind', 'schedule'],
+      nouns: ['daily', 'every day', 'recurring'],
+    },
+    priority: 70,
+  },
+
+  parameters: {
+    type: 'object',
+    properties: {
+      message: { type: 'string', description: 'Daily reminder message' },
+      hour: { type: 'number', description: 'Hour of day (0-23)' },
+    },
+    required: ['message', 'hour'],
+  },
+
+  parseArgs: (input) => {
+    // Parse "daily at 9am check email" or "remind me daily to exercise"
+    const match = input.match(/(?:daily|every\s+day)\s+at\s+(\d+)(?::(\d+))?\s*(am|pm)?\s+(.+)$/i);
+    if (match) {
+      let hour = parseInt(match[1]);
+      const ampm = match[3]?.toLowerCase();
+      const message = match[4].trim();
+
+      if (ampm === 'pm' && hour < 12) hour += 12;
+      if (ampm === 'am' && hour === 12) hour = 0;
+
+      return { message, hour };
+    }
+
+    // Fallback: default to 9am
+    const message = input
+      .replace(/^(daily|every\s+day|remind\s+me\s+daily)\s*(to\s+)?/i, '')
+      .trim();
+    return { message, hour: 9 };
+  },
+
+  execute: async (args, context) => {
+    const { message, hour } = args as { message: string; hour: number };
+
+    if (!message) {
+      return 'Please provide a message. Example: daily at 9am check email';
+    }
+
+    const task = context.services.scheduler.scheduleDaily(message, hour);
+    const hourStr = hour === 0 ? '12am' : hour < 12 ? `${hour}am` : hour === 12 ? '12pm' : `${hour - 12}pm`;
+
+    return `✓ Daily reminder set: "${message}"\n  Time: ${hourStr} every day`;
+  },
+};
+
+// Helper function to parse time strings
+function parseTimeString(str: string): Date {
+  const now = new Date();
+  const lower = str.toLowerCase().trim();
+
+  // Relative: "in X hours/minutes"
+  const relativeMatch = lower.match(/^in\s+(\d+)\s+(minute|hour|day|week)s?$/);
+  if (relativeMatch) {
+    const amount = parseInt(relativeMatch[1]);
+    const unit = relativeMatch[2];
+    const ms = {
+      minute: 60 * 1000,
+      hour: 60 * 60 * 1000,
+      day: 24 * 60 * 60 * 1000,
+      week: 7 * 24 * 60 * 60 * 1000,
+    }[unit] || 60 * 60 * 1000;
+    return new Date(now.getTime() + amount * ms);
+  }
+
+  // Time today: "at 3pm", "at 15:30"
+  const timeMatch = lower.match(/^(?:at\s+)?(\d{1,2})(?::(\d{2}))?\s*(am|pm)?$/);
+  if (timeMatch) {
+    let hour = parseInt(timeMatch[1]);
+    const minute = timeMatch[2] ? parseInt(timeMatch[2]) : 0;
+    const ampm = timeMatch[3];
+
+    if (ampm === 'pm' && hour < 12) hour += 12;
+    if (ampm === 'am' && hour === 12) hour = 0;
+
+    const result = new Date(now);
+    result.setHours(hour, minute, 0, 0);
+
+    // If time has passed today, schedule for tomorrow
+    if (result <= now) {
+      result.setDate(result.getDate() + 1);
+    }
+
+    return result;
+  }
+
+  // Tomorrow
+  if (lower.includes('tomorrow')) {
+    const result = new Date(now);
+    result.setDate(result.getDate() + 1);
+
+    // Check for time component: "tomorrow at 3pm"
+    const tomorrowTimeMatch = lower.match(/tomorrow\s+(?:at\s+)?(\d{1,2})(?::(\d{2}))?\s*(am|pm)?/);
+    if (tomorrowTimeMatch) {
+      let hour = parseInt(tomorrowTimeMatch[1]);
+      const minute = tomorrowTimeMatch[2] ? parseInt(tomorrowTimeMatch[2]) : 0;
+      const ampm = tomorrowTimeMatch[3];
+
+      if (ampm === 'pm' && hour < 12) hour += 12;
+      if (ampm === 'am' && hour === 12) hour = 0;
+
+      result.setHours(hour, minute, 0, 0);
+    } else {
+      result.setHours(9, 0, 0, 0); // Default to 9am
+    }
+
+    return result;
+  }
+
+  // Fallback: 1 hour from now
+  return new Date(now.getTime() + 60 * 60 * 1000);
+}
+
+export const schedulerTools: Tool[] = [
+  scheduleReminder,
+  showScheduled,
+  cancelReminder,
+  scheduleDailyReminder,
+];
+```
+
+### Step 3.10: Create `src/tools/index.ts` (Tool Registry)
+
+```typescript
+// src/tools/index.ts
+import { Tool } from './types.js';
+import { gtdTools } from './gtd.js';
+import { calendarTools } from './calendar.js';
+import { contactTools } from './contacts.js';
+import { memoryTools } from './memory.js';
+import { shedTools } from './shed.js';
+import { schedulerTools } from './scheduler.js';
+import { weatherTools } from './weather.js';
+import { systemTools } from './system.js';
+
+// Aggregate all tools
+export const allTools: Tool[] = [
+  ...gtdTools,
+  ...calendarTools,
+  ...contactTools,
+  ...memoryTools,
+  ...shedTools,
+  ...schedulerTools,
+  ...weatherTools,
+  ...systemTools,
+];
+
+export function getToolByName(name: string): Tool | undefined {
+  return allTools.find(t => t.name === name);
+}
+
+export function getToolsByPriority(): Tool[] {
+  return [...allTools].sort((a, b) => {
+    const pa = a.routing?.priority ?? 0;
+    const pb = b.routing?.priority ?? 0;
+    return pb - pa;
+  });
+}
+
+export function getToolDescriptions(): string {
+  return allTools.map(t => `- ${t.name}: ${t.description}`).join('\n');
+}
+
+// Re-export
+export * from './types.js';
+```
+
+### ✓ Phase 3 Checkpoint
+
+Verify:
+```bash
+pnpm typecheck
+# Should pass
+
+# Count tools
+grep -c "export const.*: Tool" src/tools/*.ts
+# Should show ~18 tools total
+```
+
+Commit:
+```bash
+git add -A
+git commit -m 'feat: add all tools (gtd, calendar, contacts, memory, weather, system)'
+```
+
+---
+
+## Phase 4: Router & Agent
+
+The Command Router matches user input to tools in layers. The Agent handles complex queries that need LLM reasoning.
+
+### Step 4.1: Create `src/router/semantic.ts`
+
+Semantic matching using embeddings (Layer 3).
+
+```typescript
+// src/router/semantic.ts
+import { EmbeddingService } from '../services/embeddings.js';
+import { Tool } from '../tools/types.js';
+import { cosineSimilarity, topK } from '../utils/math.js';
+import { debug } from '../utils/logger.js';
+
+interface ToolExample {
+  tool: Tool;
+  example: string;
+  embedding?: number[];
+}
+
+export class SemanticMatcher {
+  private embeddings: EmbeddingService;
+  private examples: ToolExample[] = [];
+  private initialized = false;
+
+  constructor(embeddings: EmbeddingService) {
+    this.embeddings = embeddings;
+  }
+
+  async initialize(tools: Tool[]): Promise<void> {
+    if (!this.embeddings.isAvailable()) {
+      debug('SemanticMatcher: embeddings not available, skipping');
+      return;
+    }
+
+    // Collect examples from tools
+    for (const tool of tools) {
+      if (tool.routing?.examples) {
+        for (const example of tool.routing.examples) {
+          this.examples.push({ tool, example });
+        }
+      }
+    }
+
+    // Pre-compute embeddings
+    try {
+      for (const ex of this.examples) {
+        ex.embedding = await this.embeddings.embed(ex.example);
+      }
+      this.initialized = true;
+      debug('SemanticMatcher initialized', { examples: this.examples.length });
+    } catch (err) {
+      debug('SemanticMatcher initialization failed', { error: String(err) });
+    }
+  }
+
+  async match(input: string, threshold = 0.75): Promise<{ tool: Tool; confidence: number } | null> {
+    if (!this.initialized || this.examples.length === 0) {
+      return null;
+    }
+
+    try {
+      const inputEmbedding = await this.embeddings.embed(input);
+
+      const scores = this.examples.map(ex => {
+        if (!ex.embedding) return 0;
+        return cosineSimilarity(inputEmbedding, ex.embedding);
+      });
+
+      const best = topK(this.examples, scores, 1)[0];
+
+      if (best && best.score >= threshold) {
+        debug('Semantic match', { tool: best.item.tool.name, score: best.score.toFixed(3) });
+        return { tool: best.item.tool, confidence: best.score };
+      }
+    } catch (err) {
+      debug('Semantic match failed', { error: String(err) });
+    }
+
+    return null;
+  }
+}
+```
+
+### Step 4.2: Create `src/router/index.ts`
+
+The main Command Router. **Key change**: Complexity classification happens FIRST, before pattern matching. Complex requests go directly to the Thinking model's agentic loop.
+
+```typescript
+// src/router/index.ts
+import { Tool, ToolContext, RouteResult } from '../tools/types.js';
+import { allTools, getToolsByPriority, getToolByName, getToolDescriptions } from '../tools/index.js';
+import { ServiceContainer } from '../services/index.js';
+import { SemanticMatcher } from './semantic.js';
+import { Complexity } from '../services/llm.js';
+import { debug, info } from '../utils/logger.js';
+
+export interface RouterResult {
+  /** How the request was handled */
+  type: 'routed' | 'llm-simple' | 'llm-complex';
+  /** Tool route if matched */
+  route?: RouteResult;
+  /** Complexity classification */
+  complexity: Complexity;
+}
+
+export class CommandRouter {
+  private tools: Tool[];
+  private semantic: SemanticMatcher | null = null;
+  private services?: ServiceContainer;
+
+  constructor() {
+    this.tools = getToolsByPriority();
+  }
+
+  async initialize(services: ServiceContainer): Promise<void> {
+    this.services = services;
+
+    // Initialize semantic matcher if embeddings available
+    this.semantic = new SemanticMatcher(services.embeddings);
+    await this.semantic.initialize(this.tools);
+
+    info(`CommandRouter initialized with ${this.tools.length} tools`);
+  }
+
+  /**
+   * Main routing method. Returns routing result with complexity info.
+   * 
+   * Flow:
+   * 1. Classify complexity (Router model or heuristics)
+   * 2. If COMPLEX → skip to LLM (Thinking model with agentic loop)
+   * 3. If SIMPLE → try pattern → keyword → semantic → LLM (Fast model)
+   */
+  async route(input: string): Promise<RouterResult> {
+    const normalized = input.trim();
+    if (!normalized) {
+      return { type: 'routed', complexity: 'SIMPLE' };
+    }
+
+    // === Step 1: Classify complexity FIRST ===
+    const complexity = await this.services!.llm.classifyComplexity(normalized);
+    debug('Complexity classification', { complexity, input: input.slice(0, 50) });
+
+    // === Step 2: Complex requests skip router entirely ===
+    if (complexity === 'COMPLEX') {
+      debug('Complex request - routing to Thinking model agentic loop');
+      return { type: 'llm-complex', complexity };
+    }
+
+    // === Step 3: Simple requests go through deterministic router ===
+
+    // Layer 1: Pattern matching (regex)
+    const patternResult = this.matchPattern(normalized);
+    if (patternResult) {
+      debug('Layer 1 match (pattern)', { tool: patternResult.tool });
+      return { type: 'routed', route: patternResult, complexity };
+    }
+
+    // Layer 2: Keyword matching
+    const keywordResult = this.matchKeywords(normalized);
+    if (keywordResult && keywordResult.confidence >= 0.7) {
+      debug('Layer 2 match (keyword)', { tool: keywordResult.tool, confidence: keywordResult.confidence.toFixed(2) });
+      return { type: 'routed', route: keywordResult, complexity };
+    }
+
+    // Layer 3: Semantic matching (embeddings)
+    if (this.semantic) {
+      const semanticResult = await this.matchSemantic(normalized);
+      if (semanticResult) {
+        debug('Layer 3 match (semantic)', { tool: semanticResult.tool, confidence: semanticResult.confidence.toFixed(2) });
+        return { type: 'routed', route: semanticResult, complexity };
+      }
+    }
+
+    // Layer 4: No match - use Fast LLM for simple single-tool call
+    debug('No router match - using Fast model for simple LLM fallback');
+    return { type: 'llm-simple', complexity };
+  }
+
+  async execute(result: RouteResult, input: string): Promise<string> {
+    if (!this.services) {
+      throw new Error('Router not initialized');
+    }
+
+    const tool = getToolByName(result.tool);
+    if (!tool) {
+      throw new Error(`Tool not found: ${result.tool}`);
+    }
+
+    const context: ToolContext = {
+      input,
+      services: this.services,
+      match: result.match,
+    };
+
+    return tool.execute(result.args, context);
+  }
+
+  // Layer 1: Pattern matching
+  private matchPattern(input: string): RouteResult | null {
+    for (const tool of this.tools) {
+      if (!tool.routing?.patterns) continue;
+
+      for (const pattern of tool.routing.patterns) {
+        const match = input.match(pattern);
+        if (match) {
+          const args = tool.parseArgs ? tool.parseArgs(input, match) : {};
+          return {
+            tool: tool.name,
+            args,
+            match,
+            confidence: 1.0,
+            source: 'pattern',
+          };
+        }
+      }
+    }
+    return null;
+  }
+
+  // Layer 2: Keyword matching
+  private matchKeywords(input: string): RouteResult | null {
+    const words = input.toLowerCase().split(/\s+/);
+    const inputLower = input.toLowerCase();
+
+    let bestMatch: { tool: Tool; score: number } | null = null;
+
+    for (const tool of this.tools) {
+      if (!tool.routing?.keywords) continue;
+
+      const { verbs = [], nouns = [] } = tool.routing.keywords;
+      let verbMatch = false;
+      let nounMatch = false;
+
+      // Single word matching
+      for (const word of words) {
+        if (verbs.some(v => v.toLowerCase() === word)) verbMatch = true;
+        if (nouns.some(n => n.toLowerCase() === word)) nounMatch = true;
+      }
+
+      // Multi-word noun matching
+      for (const noun of nouns) {
+        if (inputLower.includes(noun.toLowerCase())) nounMatch = true;
+      }
+
+      // Score
+      let score = 0;
+      if (verbMatch && nounMatch) score = 0.9;
+      else if (nounMatch) score = 0.7;
+      else if (verbMatch) score = 0.5;
+
+      if (score > 0 && (!bestMatch || score > bestMatch.score)) {
+        bestMatch = { tool, score };
+      }
+    }
+
+    if (bestMatch && bestMatch.score >= 0.7) {
+      const args = bestMatch.tool.parseArgs ? bestMatch.tool.parseArgs(input, null) : {};
+      return {
+        tool: bestMatch.tool.name,
+        args,
+        confidence: bestMatch.score,
+        source: 'keyword',
+      };
+    }
+
+    return null;
+  }
+
+  // Layer 3: Semantic matching
+  private async matchSemantic(input: string): Promise<RouteResult | null> {
+    if (!this.semantic) return null;
+
+    const result = await this.semantic.match(input, 0.75);
+
+    if (result) {
+      const args = result.tool.parseArgs ? result.tool.parseArgs(input, null) : {};
+      return {
+        tool: result.tool.name,
+        args,
+        confidence: result.confidence,
+        source: 'semantic',
+      };
+    }
+
+    return null;
+  }
+
+  getToolDescriptions(): string {
+    return getToolDescriptions();
+  }
+}
+```
+
+### Step 4.3: Create `src/agent/prompts.ts`
+
+System prompts for both simple (Fast model) and complex (Thinking model) queries.
+
+```typescript
+// src/agent/prompts.ts
+
+/**
+ * Simple prompt for Fast model - single tool selection
+ */
+export const SIMPLE_SYSTEM_PROMPT = `You are Bartleby, a helpful personal assistant. You help the user manage tasks, calendar, contacts, and remember conversations.
+
+Available tools:
+{tools}
+
+When the user asks something that matches a tool, respond with:
+TOOL: <tool_name>
+ARGS: <json_args>
+
+If no tool fits, respond conversationally.
+
+Examples:
+User: "I need to buy groceries"
+TOOL: capture
+ARGS: {"text": "buy groceries"}
+
+User: "What do I have to do?"
+TOOL: viewNextActions
+ARGS: {}
+
+User: "How are you?"
+(No tool needed - respond conversationally)
+`;
+
+/**
+ * Complex prompt for Thinking model - multi-step reasoning with function calling
+ */
+export const COMPLEX_SYSTEM_PROMPT = `You are Bartleby, a helpful personal assistant with the ability to perform multi-step tasks.
+
+Your capabilities include:
+- Managing tasks and GTD workflow
+- Calendar and scheduling
+- Contact management
+- Memory and conversation recall
+
+When given a complex request:
+1. Break it down into steps
+2. Use the available tools to gather information and perform actions
+3. Pass results between steps as needed
+4. Synthesize a final response
+
+Always explain what you're doing and ask for confirmation before taking destructive actions.
+
+## User Profile
+{profile}
+
+## Recent Context
+{context}
+`;
+
+export const CONTEXT_TEMPLATE = `
+## User Profile
+{profile}
+
+## Recent Context
+{context}
+`;
+
+export function buildSimplePrompt(tools: string, profile?: string, context?: string): string {
+  let prompt = SIMPLE_SYSTEM_PROMPT.replace('{tools}', tools);
+
+  if (profile || context) {
+    prompt += '\n' + CONTEXT_TEMPLATE
+      .replace('{profile}', profile || 'No profile yet')
+      .replace('{context}', context || 'First interaction');
+  }
+
+  return prompt;
+}
+
+export function buildComplexPrompt(profile?: string, context?: string): string {
+  return COMPLEX_SYSTEM_PROMPT
+    .replace('{profile}', profile || 'No profile yet')
+    .replace('{context}', context || 'First interaction');
+}
+```
+
+### Step 4.4: Create `src/agent/index.ts`
+
+The Agent handles LLM fallback with two modes:
+- **Simple**: Fast model, single tool call (traditional prompt-based)
+- **Complex**: Thinking model, agentic loop with OpenAI function calling
+
+```typescript
+// src/agent/index.ts
+import OpenAI from 'openai';
+import { ServiceContainer } from '../services/index.js';
+import { allTools, getToolByName, getToolDescriptions } from '../tools/index.js';
+import { Tool, ToolContext } from '../tools/types.js';
+import { buildSimplePrompt, buildComplexPrompt } from './prompts.js';
+import { debug, warn, info, error } from '../utils/logger.js';
+
+export class Agent {
+  private services: ServiceContainer;
+  private toolSchemas: OpenAI.ChatCompletionTool[];
+
+  constructor(services: ServiceContainer) {
+    this.services = services;
+    this.toolSchemas = this.buildToolSchemas();
+  }
+
+  /**
+   * Handle a simple request using Fast model with single tool call
+   */
+  async handleSimple(input: string): Promise<string> {
+    const profile = this.services.memory.getProfileSummary();
+    const lastSession = this.services.memory.getLastSession();
+    const contextStr = lastSession ? `Last conversation: ${lastSession.summary}` : undefined;
+
+    const tools = getToolDescriptions();
+    const systemPrompt = buildSimplePrompt(tools, profile, contextStr);
+
+    try {
+      const response = await this.services.llm.chat([
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: input },
+      ], { tier: 'fast' });
+
+      // Parse for tool call (text-based format for simple model)
+      const toolMatch = response.match(/TOOL:\s*(\w+)/i);
+      const argsMatch = response.match(/ARGS:\s*(\{.*?\})/is);
+
+      if (toolMatch) {
+        const toolName = toolMatch[1];
+        const tool = getToolByName(toolName);
+
+        if (tool) {
+          let args: Record<string, unknown> = {};
+          if (argsMatch) {
+            try {
+              args = JSON.parse(argsMatch[1]);
+            } catch {
+              debug('Failed to parse tool args', { raw: argsMatch[1] });
+            }
+          }
+
+          const context: ToolContext = { input, services: this.services };
+          debug('Simple agent tool call', { tool: toolName, args });
+          return tool.execute(args, context);
+        } else {
+          warn('Agent referenced unknown tool', { tool: toolName });
+        }
+      }
+
+      // No tool call - return conversational response
+      return response
+        .replace(/TOOL:.*$/gim, '')
+        .replace(/ARGS:.*$/gim, '')
+        .trim() || "I'm not sure how to help with that. Try 'help' for commands.";
+
+    } catch (err) {
+      warn('Simple LLM call failed', { error: String(err) });
+      return "I'm having trouble connecting. Try a simpler command or 'help'.";
+    }
+  }
+
+  /**
+   * Handle a complex request using Thinking model with agentic loop
+   * Uses OpenAI function calling for structured tool invocation
+   */
+  async handleComplex(input: string): Promise<string> {
+    const profile = this.services.memory.getProfileSummary();
+    const lastSession = this.services.memory.getLastSession();
+    const contextStr = lastSession ? `Last conversation: ${lastSession.summary}` : undefined;
+
+    const systemPrompt = buildComplexPrompt(profile, contextStr);
+    const maxIterations = this.services.llm.getMaxIterations();
+
+    const messages: OpenAI.ChatCompletionMessageParam[] = [
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: input },
+    ];
+
+    info('Starting agentic loop', { input: input.slice(0, 50), maxIterations });
+
+    try {
+      for (let iteration = 0; iteration < maxIterations; iteration++) {
+        debug('Agentic loop iteration', { iteration: iteration + 1 });
+
+        // Call Thinking model with function calling
+        const response = await this.services.llm.chatWithTools(
+          messages,
+          this.toolSchemas,
+          'thinking'
+        );
+
+        // Check if model wants to call tools
+        if (response.tool_calls && response.tool_calls.length > 0) {
+          // Add assistant message with tool calls
+          messages.push({
+            role: 'assistant',
+            content: response.content || '',
+            tool_calls: response.tool_calls,
+          });
+
+          // Execute each tool call
+          for (const toolCall of response.tool_calls) {
+            const toolName = toolCall.function.name;
+            const tool = getToolByName(toolName);
+
+            let result: string;
+            if (tool) {
+              try {
+                const args = JSON.parse(toolCall.function.arguments || '{}');
+                const context: ToolContext = { input, services: this.services };
+                
+                debug('Agentic tool call', { tool: toolName, args, iteration });
+                result = await tool.execute(args, context);
+              } catch (err) {
+                error('Tool execution failed', { tool: toolName, error: String(err) });
+                result = `Error executing ${toolName}: ${err}`;
+              }
+            } else {
+              result = `Unknown tool: ${toolName}`;
+              warn('Agentic loop referenced unknown tool', { tool: toolName });
+            }
+
+            // Add tool result to messages
+            messages.push({
+              role: 'tool',
+              tool_call_id: toolCall.id,
+              content: result,
+            });
+          }
+        } else {
+          // No tool calls - model is done, return final response
+          const finalResponse = response.content || "I've completed the task.";
+          info('Agentic loop complete', { iterations: iteration + 1 });
+          return finalResponse;
+        }
+      }
+
+      // Max iterations reached
+      warn('Agentic loop hit max iterations', { maxIterations });
+      return "I wasn't able to complete that task within the allowed steps. Please try breaking it down into smaller requests.";
+
+    } catch (err) {
+      error('Agentic loop failed', { error: String(err) });
+      return "I encountered an error while working on your request. Please try again or simplify the request.";
+    }
+  }
+
+  /**
+   * Build OpenAI function calling schemas from tools
+   */
+  private buildToolSchemas(): OpenAI.ChatCompletionTool[] {
+    return allTools.map(tool => ({
+      type: 'function' as const,
+      function: {
+        name: tool.name,
+        description: tool.description,
+        parameters: this.inferParameters(tool),
+      },
+    }));
+  }
+
+  /**
+   * Infer JSON schema parameters from tool's parseArgs function
+   * This is a simplified version - in production you'd want explicit schemas
+   */
+  private inferParameters(tool: Tool): Record<string, unknown> {
+    // Map known tools to their parameter schemas
+    const schemas: Record<string, Record<string, unknown>> = {
+      addTask: {
+        type: 'object',
+        properties: {
+          description: { type: 'string', description: 'Task description' },
+          context: { type: 'string', description: 'GTD context (e.g., @home, @errands)' },
+          project: { type: 'string', description: 'Project name' },
+        },
+        required: ['description'],
+      },
+      markDone: {
+        type: 'object',
+        properties: {
+          identifier: { 
+            oneOf: [{ type: 'string' }, { type: 'number' }],
+            description: 'Task number or title' 
+          },
+        },
+        required: ['identifier'],
+      },
+      capture: {
+        type: 'object',
+        properties: {
+          text: { type: 'string', description: 'Text to capture to inbox' },
+        },
+        required: ['text'],
+      },
+      findContact: {
+        type: 'object',
+        properties: {
+          query: { type: 'string', description: 'Name or email to search' },
+        },
+        required: ['query'],
+      },
+      addContact: {
+        type: 'object',
+        properties: {
+          name: { type: 'string', description: 'Contact name' },
+          email: { type: 'string', description: 'Email address' },
+          phone: { type: 'string', description: 'Phone number' },
+        },
+        required: ['name'],
+      },
+      addEvent: {
+        type: 'object',
+        properties: {
+          title: { type: 'string', description: 'Event title' },
+          start_time: { type: 'string', description: 'Start time (ISO 8601)' },
+          end_time: { type: 'string', description: 'End time (ISO 8601)' },
+        },
+        required: ['title', 'start_time', 'end_time'],
+      },
+      recallConversation: {
+        type: 'object',
+        properties: {
+          topic: { type: 'string', description: 'Topic to search for in past conversations' },
+        },
+        required: ['topic'],
+      },
+    };
+
+    return schemas[tool.name] || { type: 'object', properties: {} };
+  }
+}
+```
+
+### ✓ Phase 4 Checkpoint
+
+Verify:
+```bash
+pnpm typecheck
+# Should pass
+```
+
+Commit:
+```bash
+git add -A
+git commit -m 'feat: add command router (4 layers) and LLM agent fallback'
+```
+
+---
+
+## Phase 5: Application
+
+The REPL and main entry point.
+
+### Step 5.1: Create `src/repl.ts`
+
+The REPL now handles three paths: routed (deterministic), simple LLM (Fast model), and complex LLM (Thinking model with agentic loop).
+
+```typescript
+// src/repl.ts
+import readline from 'readline';
+import { CommandRouter } from './router/index.js';
+import { Agent } from './agent/index.js';
+import { ServiceContainer } from './services/index.js';
+import { info, warn, error, debug } from './utils/logger.js';
+
+export async function startRepl(
+  router: CommandRouter,
+  agent: Agent,
+  services: ServiceContainer
+): Promise<void> {
+  const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout,
+    prompt: '\n> ',
+  });
+
+  console.log('\n📋 Bartleby is ready. Type "help" for commands, "quit" to exit.\n');
+
+  // === Proactive Session Opener ===
+  try {
+    const opener = await services.proactive.getSessionOpener();
+    if (opener) {
+      console.log('─'.repeat(50));
+      console.log(opener);
+      console.log('─'.repeat(50));
+    }
+  } catch (err) {
+    warn('Proactive opener failed', { error: String(err) });
+  }
+
+  // Start memory session
+  services.memory.startSession();
+
+  rl.prompt();
+
+  rl.on('line', async (line) => {
+    const input = line.trim();
+
+    if (!input) {
+      rl.prompt();
+      return;
+    }
+
+    // Record user message
+    services.memory.recordMessage(input, true);
+
+    try {
+      // Route the input
+      const routerResult = await router.route(input);
+      let response: string;
+
+      switch (routerResult.type) {
+        case 'routed':
+          // Deterministic match - execute tool directly
+          if (routerResult.route) {
+            debug('Executing routed tool', { tool: routerResult.route.tool });
+            response = await router.execute(routerResult.route, input);
+          } else {
+            response = "I didn't understand that. Try 'help' for commands.";
+          }
+          break;
+
+        case 'llm-simple':
+          // Simple request, no router match - use Fast model
+          debug('Handling with Fast model (simple)');
+          response = await agent.handleSimple(input);
+          break;
+
+        case 'llm-complex':
+          // Complex request - use Thinking model with agentic loop
+          debug('Handling with Thinking model (complex agentic loop)');
+          console.log('\n🤔 This looks like a complex request. Let me work on it...\n');
+          response = await agent.handleComplex(input);
+          break;
+
+        default:
+          response = "I'm not sure how to help with that. Try 'help' for commands.";
+      }
+
+      // Check for exit
+      if (response === '__EXIT__') {
+        console.log('\nGoodbye! 👋\n');
+        await services.memory.endSession();
+        rl.close();
+        return;
+      }
+
+      // Record response
+      services.memory.recordMessage(response, false);
+
+      console.log(`\n${response}`);
+    } catch (err) {
+      error('REPL error', { error: String(err) });
+      console.log(`\nError: ${err}`);
+    }
+
+    rl.prompt();
+  });
+
+  rl.on('close', async () => {
+    info('Session ended');
+    await services.memory.endSession();
+    process.exit(0);
+  });
+
+  // Handle Ctrl+C
+  process.on('SIGINT', async () => {
+    console.log('\n\nGoodbye! 👋\n');
+    await services.memory.endSession();
+    rl.close();
+  });
+}
+```
+
+### Step 5.2: Create `src/index.ts`
+
+The main entry point.
+
+```typescript
+// src/index.ts
+import { loadConfig, Config } from './config.js';
+import { configureLogger, LogLevel, info, error } from './utils/logger.js';
+import { initServices, closeServices, ServiceContainer } from './services/index.js';
+import { CommandRouter } from './router/index.js';
+import { Agent } from './agent/index.js';
+import { startRepl } from './repl.js';
+
+async function main(): Promise<void> {
+  // 1. Load config
+  let config: Config;
+  try {
+    config = loadConfig();
+  } catch (err) {
+    console.error('Failed to load config:', err);
+    process.exit(1);
+  }
+
+  // 2. Configure logging
+  const levelMap: Record<string, LogLevel> = {
+    debug: LogLevel.DEBUG,
+    info: LogLevel.INFO,
+    warn: LogLevel.WARN,
+    error: LogLevel.ERROR,
+  };
+
+  configureLogger({
+    level: levelMap[config.logging.level] ?? LogLevel.INFO,
+    file: config.logging.file,
+    console: config.logging.console,
+  });
+
+  info('Bartleby starting...');
+
+  // 3. Initialize services
+  let services: ServiceContainer;
+  try {
+    services = await initServices(config);
+  } catch (err) {
+    error('Failed to initialize services', { error: String(err) });
+    process.exit(1);
+  }
+
+  // 4. Create router and agent
+  const router = new CommandRouter();
+  await router.initialize(services);
+
+  const agent = new Agent(services);
+
+  // 5. Handle shutdown
+  const shutdown = async () => {
+    info('Shutting down...');
+    closeServices(services);
+    process.exit(0);
+  };
+
+  process.on('SIGTERM', shutdown);
+
+  // 6. Start REPL
+  await startRepl(router, agent, services);
+}
+
+main().catch((err) => {
+  console.error('Fatal error:', err);
+  process.exit(1);
+});
+```
+
+### ✓ Phase 5 Checkpoint
+
+Verify:
+```bash
+pnpm typecheck
+# Should pass
+
+pnpm build
+# Should compile to dist/
+
+pnpm start
+# Should show Bartleby prompt
+# Try: help, show next actions, add task test, done 1, quit
+```
+
+Commit:
+```bash
+git add -A
+git commit -m 'feat: add REPL and main entry point'
+```
+
+---
+
+## Phase 6: Verification
+
+### Manual Testing Checklist
+
+Run through these tests:
+
+**Basic GTD (Pattern/Keyword Matching):**
+- [ ] `help` → shows help text (pattern match)
+- [ ] `show next actions` → shows list (pattern match)
+- [ ] `add task buy milk @errands` → creates task (pattern match)
+- [ ] `capture call dentist` → adds to inbox (pattern match)
+- [ ] `done 1` → marks first task complete (pattern match)
+- [ ] `waiting for` → shows waiting items (pattern match)
+
+**Calendar:**
+- [ ] `today` → shows today's events (pattern match)
+- [ ] `calendar` → shows upcoming (pattern match)
+- [ ] `add event meeting tomorrow at 3pm` → creates event (pattern match)
+
+**Contacts:**
+- [ ] `add contact Sarah, email sarah@example.com` → creates contact
+- [ ] `find sarah` → finds contact
+
+**Memory:**
+- [ ] `what do you know about me` → shows profile (pattern match)
+- [ ] `I prefer morning meetings` → stores preference
+- [ ] Exit and restart → proactive opener shows relevant info
+
+**Shed (Reference Library):**
+- [ ] `ingest notes.md` → ingests document, shows chunk count
+- [ ] `list sources` → shows ingested documents
+- [ ] `ask shed about <topic>` → RAG query returns relevant answer with citations
+
+**Scheduler (Reminders):**
+- [ ] `remind me to call dentist at 3pm` → creates reminder
+- [ ] `show reminders` → lists scheduled tasks
+- [ ] `daily at 9am check email` → creates recurring reminder
+- [ ] `cancel reminder 1` → cancels the reminder
+- [ ] Wait for reminder time → notification appears
+
+**System:**
+- [ ] `status` → shows system status
+- [ ] `weather` → shows weather (if configured)
+- [ ] `quit` → exits cleanly
+
+**Routing Verification:**
+
+Test each routing layer:
+
+| Input | Expected Route | Layer |
+|-------|---------------|-------|
+| `show tasks` | viewNextActions | Pattern |
+| `what's on my plate` | viewNextActions | Semantic |
+| `hello` | Simple LLM | Fast model |
+| `email Sarah about tomorrow's meeting` | Complex LLM | Thinking model |
+| `write a function to parse CSV` | Complex LLM | Thinking model |
+
+**Complex Request Testing (Agentic Loop):**
+- [ ] `email Sarah about our meeting tomorrow` → Should:
+  1. Show "🤔 This looks like a complex request..."
+  2. Look up Sarah's contact
+  3. Check tomorrow's calendar
+  4. Draft email (or ask for confirmation)
+
+- [ ] `compare my tasks with my calendar for this week` → Should:
+  1. Get active tasks
+  2. Get this week's events
+  3. Synthesize comparison
+
+**Edge Cases:**
+- [ ] Empty input → shows prompt again
+- [ ] Gibberish → LLM tries to help or says "try help"
+- [ ] Ctrl+C → exits cleanly
+- [ ] Router model down → Falls back to heuristics
+
+### Performance Targets
+
+| Metric | Target |
+|--------|--------|
+| Pattern match (Layer 1) | < 10ms |
+| Keyword match (Layer 2) | < 20ms |
+| Semantic match (Layer 3) | < 100ms |
+| Router classification | < 200ms |
+| Simple LLM (Fast model) | < 2s |
+| Complex LLM (Thinking model) | < 30s (multi-step) |
+| Startup time | < 3s |
+
+### Model Health Check
+
+Verify all 4 tiers are working:
+
+```bash
+# Router model
+curl http://127.0.0.1:8080/v1/models
+
+# Fast model
+curl http://127.0.0.1:8081/v1/models
+
+# Thinking model
+curl http://127.0.0.1:8083/v1/models
+
+# Embeddings
+curl http://127.0.0.1:8084/v1/models
+```
+
+Or check via Bartleby:
+```
+> status
+```
+
+Should show: `LLM: Router ✓ | Fast ✓ | Thinking ✓`
+
+### Final Commit
+
+```bash
+git add -A
+git commit -m 'feat: complete Bartleby implementation'
+git tag -a v0.0.1 -m 'Bartleby v0.0.1'
+```
+
+---
+
+## Summary
+
+**What You Built:**
+
+- **~4,500 lines** of TypeScript
+- **12 services**: Garden, Shed, Calendar, Memory, Proactive, LLM, Embeddings, Vectors, Scheduler, Weather, Signal
+- **26 tools**: GTD (5), Calendar (3), Contacts (2), Memory (4), Shed (3), Scheduler (4), Weather (1), System (3)
+- **4-tier model architecture**:
+  - Router Model (0.6B): Complexity classification
+  - Fast Model (30B MoE): Simple queries, single tool calls
+  - Thinking Model (30B-Thinking): Complex multi-step agentic reasoning
+  - Embedding Model (8B): Semantic matching, memory recall
+- **5-layer routing**:
+  1. Complexity classification (Router model → SIMPLE or COMPLEX)
+  2. Pattern matching (regex)
+  3. Keyword matching (verb + noun)
+  4. Semantic matching (embeddings)
+  5. LLM fallback (Fast or Thinking based on complexity)
+- **Agentic loop**: Multi-step reasoning with OpenAI function calling
+- **Bidirectional sync**: SQLite ↔ Markdown files
+- **Proactive intelligence**: Session openers with context, pattern detection
+
+**Architecture Highlights:**
+
+```
+User Input
+    ↓
+Router Model: "SIMPLE or COMPLEX?"
+    ↓
+├─→ COMPLEX
+│       ↓
+│   Thinking Model (agentic loop)
+│       ↓
+│   Plan → Tool 1 → Tool 2 → ... → Synthesize
+│
+└─→ SIMPLE
+        ↓
+    Command Router (Pattern → Keyword → Semantic)
+        ↓
+    ├─→ Match → Execute tool directly (~10-100ms)
+    └─→ No match → Fast Model (single tool, ~1-2s)
+```
+
+**Next Steps (Optional):**
+
+1. Health & habit tracking tools
+2. Web/API interface
+3. Mobile shortcuts integration
+4. Full cron expression support for scheduler
+5. PDF document parsing for Shed
+
+---
+
+*Document created: January 12, 2026*
+*Estimated build time: 5-6 hours*
