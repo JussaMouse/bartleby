@@ -58,19 +58,40 @@ export const setPreference: Tool = {
 
   routing: {
     patterns: [
-      /^(remember|note) that i (prefer|like|want)\s+(.+)/i,
+      /^(remember|note) that i (prefer|like|want|am|'m)\s+(.+)/i,
       /^i (prefer|always|never)\s+(.+)/i,
+      /^i('m| am) (a |an )?(\w+)\s+(person|type|kind)/i,  // "I am a morning person"
+      /^i('m| am) (a |an )?(.+)/i,  // "I am a vegetarian", "I'm lactose intolerant"
+      /^i (like|love|hate|enjoy|dislike)\s+(.+)/i,
     ],
     keywords: {
       verbs: ['remember', 'note', 'prefer'],
       nouns: ['preference', 'like', 'always'],
     },
-    priority: 70,
+    priority: 75,  // Higher than before to beat addContact
   },
 
   parseArgs: (input) => {
+    // Handle "I am a X person/type" → "morning person"
+    const personMatch = input.match(/^i('m| am) (a |an )?(\w+)\s+(person|type|kind)/i);
+    if (personMatch) {
+      return { preference: `${personMatch[3]} ${personMatch[4]}` };
+    }
+
+    // Handle "I am a X" → "vegetarian", "I'm lactose intolerant" 
+    const amMatch = input.match(/^i('m| am) (a |an )?(.+)$/i);
+    if (amMatch) {
+      return { preference: amMatch[3].trim() };
+    }
+
+    // Handle "I like/love/hate X"
+    const likeMatch = input.match(/^i (like|love|hate|enjoy|dislike)\s+(.+)$/i);
+    if (likeMatch) {
+      return { preference: `${likeMatch[1]} ${likeMatch[2]}` };
+    }
+
     const preference = input
-      .replace(/^(remember|note) that i (prefer|like|want)\s*/i, '')
+      .replace(/^(remember|note) that i (prefer|like|want|am|'m)\s*/i, '')
       .replace(/^i (prefer|always|never)\s*/i, '')
       .trim();
     return { preference };

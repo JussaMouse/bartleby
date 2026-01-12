@@ -9,10 +9,11 @@ export const addContact: Tool = {
     patterns: [
       /^add\s+contact\s+(.+)$/i,
       /^new\s+contact\s+(.+)$/i,
+      /^create\s+contact\s+(.+)$/i,
     ],
     keywords: {
       verbs: ['add', 'create', 'new'],
-      nouns: ['contact', 'person'],
+      nouns: ['contact'],  // Removed 'person' - too generic, causes false matches
     },
     priority: 85,
   },
@@ -112,4 +113,54 @@ export const findContact: Tool = {
   },
 };
 
-export const contactTools: Tool[] = [addContact, findContact];
+export const deleteContact: Tool = {
+  name: 'deleteContact',
+  description: 'Remove a contact',
+
+  routing: {
+    patterns: [
+      /^(delete|remove)\s+contact\s+(.+)$/i,
+    ],
+    keywords: {
+      verbs: ['delete', 'remove'],
+      nouns: ['contact'],
+    },
+    priority: 90,  // Higher than addContact to catch "remove contact" first
+  },
+
+  parseArgs: (input) => {
+    const query = input.replace(/^(delete|remove)\s+contact\s*/i, '').trim();
+    return { query };
+  },
+
+  execute: async (args, context) => {
+    const { query } = args as { query: string };
+
+    if (!query) {
+      return 'Please provide a contact name to remove. Example: remove contact John';
+    }
+
+    // Find the contact first
+    const contacts = context.services.garden.searchContacts(query);
+
+    if (contacts.length === 0) {
+      return `No contact found matching "${query}"`;
+    }
+
+    if (contacts.length > 1) {
+      const names = contacts.map(c => c.title).join(', ');
+      return `Multiple contacts match "${query}": ${names}\nPlease be more specific.`;
+    }
+
+    // Delete the single match
+    const contact = contacts[0];
+    const deleted = context.services.garden.delete(contact.id);
+
+    if (deleted) {
+      return `✓ Removed contact: ${contact.title}`;
+    }
+    return `Failed to remove contact: ${contact.title}`;
+  },
+};
+
+export const contactTools: Tool[] = [addContact, findContact, deleteContact];
