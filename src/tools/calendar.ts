@@ -44,12 +44,13 @@ export const showToday: Tool = {
   routing: {
     patterns: [
       /^today$/i,
-      /^today('s)?\s+(schedule|events?|calendar)?$/i,
-      /^what('s| is)\s+(happening\s+)?today/i,
+      /^today('s)?\s+(schedule|events?|calendar)$/i,
+      /^what('s| is)\s+(happening\s+)?today\??$/i,
+      /^(show|view)\s+today('s)?(\s+(schedule|events?|calendar))?$/i,
     ],
     keywords: {
-      verbs: ['show', 'what'],
-      nouns: ['today', 'schedule'],
+      verbs: ['show', 'view'],
+      nouns: ["today's schedule", "today's calendar", "today's events"],
     },
     priority: 95,
   },
@@ -92,16 +93,26 @@ export const addEvent: Tool = {
     let startTime = new Date();
     const lower = input.toLowerCase();
 
+    // Check for day of week
+    const days = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
+    const dayMatch = lower.match(/\b(sun|mon|tue|wed|thu|fri|sat)(?:day|s|nes|urs|ur)?\b/i);
+    if (dayMatch) {
+      const targetDay = days.findIndex(d => dayMatch[1].startsWith(d));
+      if (targetDay >= 0) {
+        const today = startTime.getDay();
+        let daysToAdd = targetDay - today;
+        if (daysToAdd <= 0) daysToAdd += 7; // Next week if today or past
+        startTime.setDate(startTime.getDate() + daysToAdd);
+      }
+    }
+
     // Check for "tomorrow"
     if (lower.includes('tomorrow')) {
       startTime.setDate(startTime.getDate() + 1);
     }
 
-    // Check for "today" (explicit, not needed but helps parsing)
-    // Already defaults to today
-
-    // Extract time: "at 10:30 am", "at 3pm", "at 15:00"
-    const timeMatch = lower.match(/at\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)?/i);
+    // Extract time - flexible: "at 3pm", "3pm", "3:30pm", "at 15:00", "8:00"
+    const timeMatch = lower.match(/\b(?:at\s+)?(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\b/i);
     if (timeMatch) {
       let hour = parseInt(timeMatch[1]);
       const minute = timeMatch[2] ? parseInt(timeMatch[2]) : 0;
@@ -109,26 +120,28 @@ export const addEvent: Tool = {
 
       if (ampm === 'pm' && hour < 12) hour += 12;
       if (ampm === 'am' && hour === 12) hour = 0;
-      // Handle 24-hour format (no am/pm)
-      if (!ampm && hour < 24) {
-        // Assume PM for hours 1-6 without am/pm
-        if (hour >= 1 && hour <= 6) hour += 12;
+      // Handle ambiguous times (no am/pm)
+      if (!ampm) {
+        // If hour looks like 24h format (>= 13), use as-is
+        // Otherwise assume PM for 1-6, AM for 7-12
+        if (hour < 13 && hour >= 1 && hour <= 6) hour += 12;
       }
 
       startTime.setHours(hour, minute, 0, 0);
     }
 
-    // Extract title - more robust parsing
-    // Remove command prefix
+    // Extract title - remove all the temporal stuff
     let title = input
       .replace(/^(add\s+event|create\s+event|schedule)\s*/i, '')
+      // Remove day of week
+      .replace(/\b(sun|mon|tue|wed|thu|fri|sat)(?:day|s|nes|urs|ur)?\b/gi, '')
       // Remove "today" and "tomorrow"
       .replace(/\b(today|tomorrow)\b/gi, '')
-      // Remove time expressions
-      .replace(/\bat\s+\d{1,2}(?::\d{2})?\s*(am|pm)?\b/gi, '')
+      // Remove time expressions (with or without "at")
+      .replace(/\b(?:at\s+)?\d{1,2}(?::\d{2})?\s*(am|pm)?\b/gi, '')
       // Remove prepositions
-      .replace(/\b(on|for)\b/gi, '')
-      // Stop at sentence boundary - only take first sentence/clause
+      .replace(/\b(on|for|at)\b/gi, '')
+      // Stop at sentence boundary
       .split(/[.!?]|,\s*(and|then|also)\s+/i)[0]
       // Clean up extra whitespace
       .replace(/\s+/g, ' ')
