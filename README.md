@@ -165,6 +165,10 @@ SHED_PATH=./shed              # Document library
 DATABASE_PATH=./database      # SQLite databases
 LOG_DIR=./logs
 
+# Logging
+LOG_LEVEL=info                # debug, info, warn, error
+LOG_LLM_VERBOSE=false         # Show LLM thinking/reasoning
+
 # Optional: Weather
 WEATHER_CITY=Seattle
 OPENWEATHERMAP_API_KEY=your-key
@@ -526,6 +530,10 @@ You need build tools:
 ### Slow first response
 
 Models may need to load into memory on first use. Subsequent requests are faster. You can "warm up" models by running them before starting Bartleby.
+
+### Want to see LLM reasoning?
+
+Set `LOG_LLM_VERBOSE=true` in `.env` to see the Thinking model's chain-of-thought. Useful for debugging or curiosity about how Bartleby reasons through complex requests.
 
 ## Development
 
