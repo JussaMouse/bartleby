@@ -177,8 +177,8 @@ export const addEvent: Tool = {
 
     // Check if we need to ask about ambiguous time
     if (ambiguousHour !== null) {
-      const ambiguousPref = context.services.memory.getFact('preference', 'ambiguous_time');
-      const pref = ambiguousPref?.value as string || 'afternoon';
+      // Read from config (source of truth from .env)
+      const pref = context.services.config.calendar.ambiguousTime;
       
       if (pref === 'ask') {
         // Store pending event data and ask for clarification
@@ -505,6 +505,7 @@ function completeSetup(context: import('./types.js').ToolContext, data: SetupDat
   context.services.memory.setFact('system', 'calendar_onboarded', true, { source: 'explicit' });
 
   const reminderDisplay = reminder === 'none' ? 'off' : reminder + ' before';
+  const reminderMinutes = reminder === 'none' ? '0' : reminder;
   
   return `
 ✓ **Calendar configured!**
@@ -517,18 +518,18 @@ Your settings:
 • Reminders: ${reminderDisplay}
 
 ───────────────────────────────────────────
-**Copy to .env (optional):**
+**Add to .env** (then restart Bartleby):
 
 # Calendar Preferences
 CALENDAR_TIMEZONE=${timezone}
 CALENDAR_DEFAULT_DURATION=${duration}
 CALENDAR_AMBIGUOUS_TIME=${ambiguousTime}
 CALENDAR_WEEK_START=${weekStart}
-CALENDAR_REMINDER_MINUTES=${reminder === 'none' ? '0' : reminder}
-SIGNAL_ENABLED=${reminder !== 'none' ? 'true' : 'false'}
+CALENDAR_REMINDER_MINUTES=${reminderMinutes}${reminder !== 'none' ? '\nSIGNAL_ENABLED=true' : ''}
 ───────────────────────────────────────────
 
-Settings saved! You can change these anytime with "change calendar settings".`;
+Copy these to your \`.env\` file. Bartleby reads settings from .env on startup.
+Change anytime with "change calendar settings".`;
 }
 
 export const resetCalendar: Tool = {

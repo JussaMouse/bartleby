@@ -59,6 +59,14 @@ const ConfigSchema = z.object({
     checkInterval: z.number().positive(),
   }),
 
+  calendar: z.object({
+    timezone: z.string(),
+    defaultDuration: z.number().positive(),
+    ambiguousTime: z.enum(['morning', 'afternoon', 'ask']),
+    weekStart: z.enum(['sunday', 'monday']),
+    reminderMinutes: z.number().min(0),
+  }),
+
   logging: z.object({
     level: z.enum(['debug', 'info', 'warn', 'error']),
     file: z.string(),
@@ -118,6 +126,13 @@ export function loadConfig(): Config {
     scheduler: {
       enabled: process.env.SCHEDULER_ENABLED !== 'false',
       checkInterval: parseInt(process.env.SCHEDULER_CHECK_INTERVAL || '60000'),
+    },
+    calendar: {
+      timezone: process.env.CALENDAR_TIMEZONE || Intl.DateTimeFormat().resolvedOptions().timeZone,
+      defaultDuration: parseInt(process.env.CALENDAR_DEFAULT_DURATION || '60'),
+      ambiguousTime: (process.env.CALENDAR_AMBIGUOUS_TIME as 'morning' | 'afternoon' | 'ask') || 'afternoon',
+      weekStart: (process.env.CALENDAR_WEEK_START as 'sunday' | 'monday') || 'sunday',
+      reminderMinutes: parseInt(process.env.CALENDAR_REMINDER_MINUTES || '0'),
     },
     logging: {
       level: (process.env.LOG_LEVEL as 'debug' | 'info' | 'warn' | 'error') || 'info',

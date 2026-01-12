@@ -14,6 +14,9 @@ import { SignalService } from './signal.js';
 import { info } from '../utils/logger.js';
 
 export interface ServiceContainer {
+  // Config (source of truth)
+  config: Config;
+  
   // Core data
   garden: GardenService;
   shed: ShedService;
@@ -74,6 +77,7 @@ export async function initServices(config: Config): Promise<ServiceContainer> {
   info('All services initialized');
 
   return {
+    config,
     garden,
     shed,
     calendar,
