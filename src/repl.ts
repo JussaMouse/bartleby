@@ -76,22 +76,32 @@ async function interactiveRemindersHandler(
   services: ServiceContainer,
   missed: Array<{ id: string; nextRun: string; actionPayload: unknown }>
 ): Promise<void> {
+  // Show the list again so user can see numbers
+  console.log('');
+  for (let i = 0; i < missed.length; i++) {
+    const task = missed[i];
+    const scheduledFor = new Date(task.nextRun).toLocaleString('en-US', {
+      weekday: 'short',
+      hour: 'numeric',
+      minute: '2-digit',
+    });
+    console.log(`  ${i + 1}. "${task.actionPayload}" (was ${scheduledFor})`);
+  }
+  
   console.log('\n**What would you like to do?**');
-  console.log('  → **fire** - Send all now');
-  console.log('  → **skip** - Dismiss without sending');
-  console.log('  → **#** - Fire just that one (e.g., "1")');
+  console.log('  **F** = Fire all   **S** = Skip all   **#** = Fire one (e.g. "1")');
   console.log('─'.repeat(50));
 
   return new Promise((resolve) => {
     const handleResponse = async (line: string) => {
       const input = line.trim().toLowerCase();
       
-      if (input === 'fire' || input === 'fire all' || input === 'send' || input === 'send all') {
+      if (input === 'f' || input === 'fire' || input === 'fire all' || input === 'send' || input === 'send all') {
         const count = await services.scheduler.fireAllMissed();
         console.log(`\n✓ Sent ${count} reminder(s)`);
         rl.removeListener('line', handleResponse);
         resolve();
-      } else if (input === 'skip' || input === 'skip all' || input === 'dismiss' || input === 'dismiss all') {
+      } else if (input === 's' || input === 'skip' || input === 'skip all' || input === 'dismiss' || input === 'dismiss all') {
         const count = services.scheduler.dismissAllMissed();
         console.log(`\n✓ Dismissed ${count} reminder(s)`);
         rl.removeListener('line', handleResponse);
@@ -110,15 +120,21 @@ async function interactiveRemindersHandler(
             rl.removeListener('line', handleResponse);
             resolve();
           } else {
-            console.log(`\n${remaining.length} remaining. Type another number, "fire", or "skip".`);
+            // Show remaining list
+            console.log(`\n${remaining.length} remaining:`);
+            for (let i = 0; i < remaining.length; i++) {
+              const t = remaining[i];
+              console.log(`  ${i + 1}. "${t.actionPayload}"`);
+            }
+            console.log('\n**F** = Fire all   **S** = Skip all   **#** = Fire one');
             rl.prompt();
           }
         } else {
-          console.log(`Invalid number. Choose 1-${missed.length}, "fire", or "skip".`);
+          console.log(`Invalid number. Choose 1-${missed.length}, F, or S.`);
           rl.prompt();
         }
       } else {
-        console.log('Please type "fire", "skip", or a number.');
+        console.log('Type F (fire all), S (skip all), or a number.');
         rl.prompt();
       }
     };
