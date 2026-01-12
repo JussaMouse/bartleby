@@ -10,15 +10,18 @@ export const scheduleReminder: Tool = {
       /^remind\s+me\s+(.+?)\s+(at|on|in)\s+(.+)$/i,
       /^set\s+reminder\s+(.+?)\s+(for|at|on|in)\s+(.+)$/i,
       /^schedule\s+reminder\s+(.+)$/i,
+      /^send\s+me\s+a?\s*message\s+in\s+(.+?)\s+['"](.+)['"]$/i,  // "send me a message in 2 minutes 'hey'"
+      /^message\s+me\s+in\s+(.+?)\s+['"]?(.+?)['"]?$/i,  // "message me in 5 min 'test'"
     ],
     keywords: {
-      verbs: ['remind', 'schedule', 'set'],
+      verbs: ['remind', 'schedule', 'set', 'send', 'message'],
       nouns: ['reminder', 'alert', 'notification'],
     },
     examples: [
       'remind me to call dentist at 3pm',
       'set reminder check email in 2 hours',
       'remind me about meeting tomorrow at 9am',
+      "send me a message in 5 minutes 'time to stretch'",
     ],
     priority: 85,
   },
@@ -27,7 +30,9 @@ export const scheduleReminder: Tool = {
     type: 'object',
     properties: {
       message: { type: 'string', description: 'Reminder message' },
+      text: { type: 'string', description: 'Reminder message (alias)' },
       when: { type: 'string', description: 'When to remind (date/time or relative)' },
+      time: { type: 'string', description: 'When to remind (alias)' },
     },
     required: ['message', 'when'],
   },
@@ -36,6 +41,15 @@ export const scheduleReminder: Tool = {
     // Try to extract message and time
     let message = '';
     let when = '';
+
+    // Pattern: "send me a message in <time> '<message>'"
+    const sendMatch = input.match(/^(?:send\s+me\s+a?\s*message|message\s+me)\s+in\s+(.+?)\s+['"](.+)['"]$/i);
+    if (sendMatch) {
+      when = sendMatch[1].trim();
+      message = sendMatch[2].trim();
+      const whenDate = parseTimeString('in ' + when);
+      return { message, when: whenDate.toISOString() };
+    }
 
     // Pattern: "remind me <message> at/in/on <time>"
     const match = input.match(/^(?:remind\s+me|set\s+reminder)\s+(.+?)\s+(?:at|on|in|for)\s+(.+)$/i);
@@ -55,10 +69,18 @@ export const scheduleReminder: Tool = {
   },
 
   execute: async (args, context) => {
-    const { message, when } = args as { message: string; when: string };
+    // Handle both message/when and text/time (LLM may use either)
+    const rawArgs = args as { message?: string; text?: string; when?: string; time?: string };
+    const message = rawArgs.message || rawArgs.text || '';
+    let when = rawArgs.when || rawArgs.time || '';
 
     if (!message) {
       return 'Please provide a reminder message. Example: remind me to call dentist at 3pm';
+    }
+
+    // If 'when' is a relative string like "in 2 minutes", parse it
+    if (when && !when.includes('T')) {
+      when = parseTimeString(when).toISOString();
     }
 
     const task = context.services.scheduler.scheduleReminder(message, when);
