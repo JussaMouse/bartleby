@@ -51,10 +51,7 @@ async function runMissedRemindersWizard(
       else if (input === '4' || input === 'show') choice = 'show';
 
       if (choice) {
-        console.log('\n' + '─'.repeat(50));
-        console.log(`✓ Got it! Add this to your .env to remember:\n`);
-        console.log(`SCHEDULER_MISSED_REMINDERS=${choice}`);
-        console.log('─'.repeat(50));
+        console.log(`\n✓ Got it! I'll use "${choice}" for now.\n`);
         rl.removeListener('line', handleChoice);
         resolve(choice);
       } else {
@@ -161,12 +158,14 @@ async function handleMissedReminders(
   if (missed.length === 0) return;
 
   let behavior = services.config.scheduler.missedReminders;
+  let wizardRan = false;
 
   // If 'default', run the one-time wizard
   if (behavior === 'default') {
     console.log('─'.repeat(50));
     showMissedReminders(missed);
     behavior = await runMissedRemindersWizard(rl);
+    wizardRan = true;
   } else {
     console.log('─'.repeat(50));
     showMissedReminders(missed);
@@ -177,24 +176,29 @@ async function handleMissedReminders(
     case 'fire':
       const firedCount = await services.scheduler.fireAllMissed();
       console.log(`\n✓ Sent ${firedCount} reminder(s)`);
-      console.log('─'.repeat(50));
-      return;
+      break;
 
     case 'skip':
       const skippedCount = services.scheduler.dismissAllMissed();
       console.log(`\n✓ Dismissed ${skippedCount} reminder(s)`);
-      console.log('─'.repeat(50));
-      return;
+      break;
 
     case 'show':
       console.log('\n(Use "show reminders" to manage these later.)');
-      console.log('─'.repeat(50));
-      return;
+      break;
 
     case 'ask':
     default:
       await interactiveRemindersHandler(rl, services, missed);
-      return;
+      break;
+  }
+
+  // If wizard ran, remind user to save the setting
+  if (wizardRan) {
+    console.log('\n' + '─'.repeat(50));
+    console.log('💾 **Save this setting** — add to your .env:\n');
+    console.log(`   SCHEDULER_MISSED_REMINDERS=${behavior}`);
+    console.log('─'.repeat(50));
   }
 }
 
