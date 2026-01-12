@@ -5,6 +5,82 @@ import { Agent } from './agent/index.js';
 import { ServiceContainer } from './services/index.js';
 import { info, warn, error, debug } from './utils/logger.js';
 
+/**
+ * Check for and handle missed reminders at startup.
+ * Returns when user has decided what to do with them.
+ */
+async function handleMissedReminders(
+  rl: readline.Interface,
+  services: ServiceContainer
+): Promise<void> {
+  const missed = services.scheduler.getMissedReminders();
+  if (missed.length === 0) return;
+
+  console.log('\n' + '─'.repeat(50));
+  console.log(`⏰ **${missed.length} reminder(s) fired while you were away:**\n`);
+  
+  for (let i = 0; i < missed.length; i++) {
+    const task = missed[i];
+    const scheduledFor = new Date(task.nextRun).toLocaleString('en-US', {
+      weekday: 'short',
+      hour: 'numeric',
+      minute: '2-digit',
+    });
+    console.log(`  ${i + 1}. "${task.actionPayload}" (was ${scheduledFor})`);
+  }
+  
+  console.log('\n**What would you like to do?**');
+  console.log('  → **fire** - Send all now');
+  console.log('  → **skip** - Dismiss without sending');
+  console.log('  → **#** - Fire just that one (e.g., "1")');
+  console.log('─'.repeat(50));
+
+  return new Promise((resolve) => {
+    const handleResponse = async (line: string) => {
+      const input = line.trim().toLowerCase();
+      
+      if (input === 'fire' || input === 'fire all' || input === 'send' || input === 'send all') {
+        const count = await services.scheduler.fireAllMissed();
+        console.log(`\n✓ Sent ${count} reminder(s)`);
+        rl.removeListener('line', handleResponse);
+        resolve();
+      } else if (input === 'skip' || input === 'skip all' || input === 'dismiss' || input === 'dismiss all') {
+        const count = services.scheduler.dismissAllMissed();
+        console.log(`\n✓ Dismissed ${count} reminder(s)`);
+        rl.removeListener('line', handleResponse);
+        resolve();
+      } else if (/^\d+$/.test(input)) {
+        const idx = parseInt(input) - 1;
+        if (idx >= 0 && idx < missed.length) {
+          const task = missed[idx];
+          await services.scheduler.fireReminder(task.id);
+          console.log(`\n✓ Sent: "${task.actionPayload}"`);
+          
+          // Check if more remain
+          const remaining = services.scheduler.getMissedReminders();
+          if (remaining.length === 0) {
+            console.log('All caught up!');
+            rl.removeListener('line', handleResponse);
+            resolve();
+          } else {
+            console.log(`\n${remaining.length} remaining. Type another number, "fire", or "skip".`);
+            rl.prompt();
+          }
+        } else {
+          console.log(`Invalid number. Choose 1-${missed.length}, "fire", or "skip".`);
+          rl.prompt();
+        }
+      } else {
+        console.log('Please type "fire", "skip", or a number.');
+        rl.prompt();
+      }
+    };
+
+    rl.on('line', handleResponse);
+    rl.prompt();
+  });
+}
+
 export async function startRepl(
   router: CommandRouter,
   agent: Agent,
@@ -17,6 +93,9 @@ export async function startRepl(
   });
 
   console.log('\n📋 Bartleby is ready. Type "help" for commands, "quit" to exit.\n');
+
+  // === Handle Missed Reminders First ===
+  await handleMissedReminders(rl, services);
 
   // === Startup Presence ===
   // Bartleby's initiative layer decides what to surface at startup

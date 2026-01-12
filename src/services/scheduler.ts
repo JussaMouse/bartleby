@@ -85,9 +85,7 @@ export class SchedulerService {
       this.config.scheduler.checkInterval
     );
 
-    // Run immediately
-    this.tick();
-
+    // Don't run tick immediately - let REPL handle missed reminders first
     info('Scheduler started', { interval: this.config.scheduler.checkInterval });
   }
 
@@ -252,6 +250,84 @@ export class SchedulerService {
       : 'SELECT * FROM tasks WHERE enabled = 1 ORDER BY next_run';
     const rows = this.db.prepare(sql).all() as any[];
     return rows.map(r => this.rowToTask(r));
+  }
+
+  /**
+   * Get reminders that were scheduled to fire while Bartleby was offline.
+   * These are "missed" reminders that need user attention.
+   */
+  getMissedReminders(): ScheduledTask[] {
+    const now = new Date().toISOString();
+    const rows = this.db.prepare(`
+      SELECT * FROM tasks
+      WHERE enabled = 1 AND next_run <= ? AND type = 'reminder'
+      ORDER BY next_run
+    `).all(now) as any[];
+    return rows.map(r => this.rowToTask(r));
+  }
+
+  /**
+   * Fire a specific missed reminder now.
+   */
+  async fireReminder(id: string): Promise<boolean> {
+    const task = this.get(id);
+    if (!task || !task.enabled) return false;
+
+    try {
+      await this.executeTask(task);
+      this.updateAfterRun(task);
+      return true;
+    } catch (err) {
+      error('Failed to fire reminder', { id, error: String(err) });
+      return false;
+    }
+  }
+
+  /**
+   * Dismiss a missed reminder without firing it.
+   */
+  dismissReminder(id: string): boolean {
+    const task = this.get(id);
+    if (!task || !task.enabled) return false;
+
+    // Disable it (like canceling, but it was already overdue)
+    this.db.prepare('UPDATE tasks SET enabled = 0 WHERE id = ?').run(id);
+    
+    // Remove from calendar
+    if (this.calendar) {
+      this.calendar.removeTemporal('scheduler', id);
+    }
+    
+    info('Dismissed missed reminder', { id });
+    return true;
+  }
+
+  /**
+   * Fire all missed reminders at once.
+   */
+  async fireAllMissed(): Promise<number> {
+    const missed = this.getMissedReminders();
+    let fired = 0;
+    for (const task of missed) {
+      if (await this.fireReminder(task.id)) {
+        fired++;
+      }
+    }
+    return fired;
+  }
+
+  /**
+   * Dismiss all missed reminders without firing.
+   */
+  dismissAllMissed(): number {
+    const missed = this.getMissedReminders();
+    let dismissed = 0;
+    for (const task of missed) {
+      if (this.dismissReminder(task.id)) {
+        dismissed++;
+      }
+    }
+    return dismissed;
   }
 
   cancel(id: string): boolean {
