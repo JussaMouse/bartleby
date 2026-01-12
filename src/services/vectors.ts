@@ -1,5 +1,6 @@
 // src/services/vectors.ts
-import { HierarchicalNSW } from 'hnswlib-node';
+import pkg from 'hnswlib-node';
+const { HierarchicalNSW } = pkg;
 import { v4 as uuidv4 } from 'uuid';
 import fs from 'fs';
 import path from 'path';
@@ -14,7 +15,7 @@ export interface VectorMetadata {
 }
 
 export class VectorService {
-  private index!: HierarchicalNSW;
+  private index!: InstanceType<typeof HierarchicalNSW>;
   private metadata: Map<number, VectorMetadata> = new Map();
   private idToLabel: Map<string, number> = new Map();
   private nextLabel = 0;
