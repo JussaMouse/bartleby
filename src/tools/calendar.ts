@@ -306,7 +306,6 @@ function handleResetConfirmation(context: import('./types.js').ToolContext, inpu
   
   // Clear calendar settings from memory
   context.services.memory.setFact('system', 'calendar_onboarded', false, { source: 'explicit' });
-  context.services.memory.setFact('system', 'calendar_setup_step', 0, { source: 'explicit' });
   context.services.memory.setFact('system', 'calendar_setup_pending', false, { source: 'explicit' });
   context.services.memory.setFact('system', 'calendar_setup_data', {}, { source: 'explicit' });
   
@@ -317,30 +316,27 @@ function handleResetConfirmation(context: import('./types.js').ToolContext, inpu
   context.services.memory.setFact('preference', 'week_start', null, { source: 'explicit' });
   context.services.memory.setFact('preference', 'event_reminder', null, { source: 'explicit' });
   
-  let response = `
-✓ **Calendar settings reset**
-
-• Onboarding will trigger on your next event
-• Settings cleared from memory`;
+  let response = `✓ **Calendar settings reset**\n`;
 
   if (deleteEvents) {
     response += `
-
-To delete events, remove the database file:
+To delete events, run:
   rm database/calendar.sqlite3
 
-Then restart Bartleby.`;
-  } else {
-    const eventCount = context.services.calendar.getUpcoming(100).length;
-    response += `
-• Your ${eventCount} event(s) are preserved`;
+Then restart Bartleby.
+
+`;
   }
 
   response += `
+**To restore old settings:** Copy your backed-up .env values and restart.
 
-**To restore settings:** Copy your backed-up .env values back and restart.`;
+───────────────────────────────────────────
+Let's set up your calendar preferences now.
+`;
 
-  return response;
+  // Start the setup flow immediately
+  return response + startSetup(context);
 }
 
 // Helper functions for setup flow
