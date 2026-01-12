@@ -228,23 +228,30 @@ export const calendarSetup: Tool = {
       /^change\s+calendar\s+settings?$/i,
       /^calendar\s+settings?$/i,
       /^setup\s+calendar$/i,
-      // Catch simple responses during setup
-      /^(yes|no|correct|y|n)$/i,
+      // Catch setup-specific responses (not bare yes/no to avoid conflicts)
       /^(30m?|1h|60m?|90m?)$/i,
       /^(morning|afternoon|am|pm)$/i,
       /^(sunday|monday|sun|mon)$/i,
-      /^(15m?|30m?|none|off)$/i,
+      /^(15m?|none|off)$/i,
       /^defaults?$/i,
+      // Timezone confirmations - more specific than bare "yes"
+      /^(yes|correct|y)$/i,
     ],
     keywords: {
       verbs: ['change', 'setup', 'configure'],
       nouns: ['calendar settings', 'calendar setup'],
     },
-    priority: 100,
+    priority: 85,  // Lower than resetCalendar (95) so reset confirmation works
   },
 
   execute: async (args, context) => {
     const input = context.input.toLowerCase().trim();
+    
+    // FIRST: Check if reset is pending - handle reset confirmations here
+    const resetPending = context.services.memory.getFact('system', 'calendar_reset_pending');
+    if (resetPending?.value) {
+      return handleResetConfirmation(context, input);
+    }
     
     // Get current setup state
     const setupStep = context.services.memory.getFact('system', 'calendar_setup_step');
@@ -266,15 +273,73 @@ export const calendarSetup: Tool = {
       });
     }
     
-    // Not in setup mode
+    // Not in setup mode - only respond to setup commands
     if (currentStep === 0) {
-      return "I'm not sure what you mean. Try 'change calendar settings' to configure your calendar.";
+      return "Try 'change calendar settings' to configure your calendar.";
     }
     
     // Process answer for current step and advance
     return processSetupStep(context, currentStep, input);
   },
 };
+
+// Helper function for reset confirmation (called from calendarSetup when reset is pending)
+function handleResetConfirmation(context: import('./types.js').ToolContext, input: string): string {
+  // Cancel
+  if (input === 'cancel' || input === 'no' || input === 'n') {
+    context.services.memory.setFact('system', 'calendar_reset_pending', false, { source: 'explicit' });
+    return "Calendar reset cancelled. Your settings are unchanged.";
+  }
+  
+  // Must be a "yes" to confirm
+  if (!input.startsWith('yes') && input !== 'y' && input !== 'confirm') {
+    return `Pending reset: type **yes**, **yes delete events**, or **cancel**.`;
+  }
+  
+  // Confirm - do the reset
+  const deleteEvents = input.includes('delete') && input.includes('event');
+  
+  // Clear the pending flag
+  context.services.memory.setFact('system', 'calendar_reset_pending', false, { source: 'explicit' });
+  
+  // Clear calendar settings from memory
+  context.services.memory.setFact('system', 'calendar_onboarded', false, { source: 'explicit' });
+  context.services.memory.setFact('system', 'calendar_setup_step', 0, { source: 'explicit' });
+  context.services.memory.setFact('system', 'calendar_setup_pending', false, { source: 'explicit' });
+  context.services.memory.setFact('system', 'calendar_setup_data', {}, { source: 'explicit' });
+  
+  // Clear preferences
+  context.services.memory.setFact('preference', 'timezone', null, { source: 'explicit' });
+  context.services.memory.setFact('preference', 'event_duration', null, { source: 'explicit' });
+  context.services.memory.setFact('preference', 'ambiguous_time', null, { source: 'explicit' });
+  context.services.memory.setFact('preference', 'week_start', null, { source: 'explicit' });
+  context.services.memory.setFact('preference', 'event_reminder', null, { source: 'explicit' });
+  
+  let response = `
+✓ **Calendar settings reset**
+
+• Onboarding will trigger on your next event
+• Settings cleared from memory`;
+
+  if (deleteEvents) {
+    response += `
+
+To delete events, remove the database file:
+  rm database/calendar.sqlite3
+
+Then restart Bartleby.`;
+  } else {
+    const eventCount = context.services.calendar.getUpcoming(100).length;
+    response += `
+• Your ${eventCount} event(s) are preserved`;
+  }
+
+  response += `
+
+**To restore settings:** Copy your backed-up .env values back and restart.`;
+
+  return response;
+}
 
 // Helper functions for setup flow
 function startSetup(context: import('./types.js').ToolContext): string {
@@ -435,83 +500,17 @@ export const resetCalendar: Tool = {
       /^reset\s+calendar$/i,
       /^clear\s+calendar\s+settings?$/i,
       /^reset\s+calendar\s+settings?$/i,
-      /^yes\s*$/i,  // Catch confirmation
-      /^yes\s+delete\s+events?$/i,
-      /^cancel$/i,
-      /^no$/i,
     ],
     keywords: {
       verbs: ['reset', 'clear'],
       nouns: ['calendar', 'calendar settings'],
     },
-    priority: 95,
+    priority: 90,
   },
 
   execute: async (args, context) => {
-    const input = context.input.toLowerCase().trim();
-    const pendingReset = context.services.memory.getFact('system', 'calendar_reset_pending');
-    
-    // Handle confirmation/cancellation if reset is pending
-    if (pendingReset?.value) {
-      // Cancel
-      if (input === 'cancel' || input === 'no' || (!input.startsWith('yes') && input !== 'confirm')) {
-        context.services.memory.setFact('system', 'calendar_reset_pending', false, { source: 'explicit' });
-        return "Calendar reset cancelled. Your settings are unchanged.";
-      }
-      
-      // Confirm - do the reset
-      const deleteEvents = input.includes('delete') && input.includes('event');
-      
-      // Clear the pending flag
-      context.services.memory.setFact('system', 'calendar_reset_pending', false, { source: 'explicit' });
-      
-      // Clear calendar settings from memory
-      context.services.memory.setFact('system', 'calendar_onboarded', false, { source: 'explicit' });
-      context.services.memory.setFact('system', 'calendar_setup_step', 0, { source: 'explicit' });
-      context.services.memory.setFact('system', 'calendar_setup_pending', false, { source: 'explicit' });
-      context.services.memory.setFact('system', 'calendar_setup_data', {}, { source: 'explicit' });
-      
-      // Clear preferences
-      context.services.memory.setFact('preference', 'timezone', null, { source: 'explicit' });
-      context.services.memory.setFact('preference', 'event_duration', null, { source: 'explicit' });
-      context.services.memory.setFact('preference', 'ambiguous_time', null, { source: 'explicit' });
-      context.services.memory.setFact('preference', 'week_start', null, { source: 'explicit' });
-      context.services.memory.setFact('preference', 'event_reminder', null, { source: 'explicit' });
-      
-      let response = `
-✓ **Calendar settings reset**
-
-• Onboarding will trigger on your next event
-• Settings cleared from memory`;
-
-      if (deleteEvents) {
-        response += `
-
-To delete events, remove the database file:
-  rm database/calendar.sqlite3
-
-Then restart Bartleby.`;
-      } else {
-        const eventCount = context.services.calendar.getUpcoming(100).length;
-        response += `
-• Your ${eventCount} event(s) are preserved`;
-      }
-
-      response += `
-
-**To restore settings:** Copy your backed-up .env values back and restart.`;
-
-      return response;
-    }
-    
-    // Not in pending state - only respond to reset commands
-    if (!input.includes('reset') && !input.includes('clear')) {
-      // Not a reset command and not in pending state - don't handle
-      // This prevents "yes" from triggering reset when not expected
-      return "I'm not sure what you mean. Try 'reset calendar' to reset calendar settings.";
-    }
-    
-    // Start the reset flow - show warning
+    // Start the reset flow - show warning and set pending flag
+    // Confirmations (yes/no/cancel) are handled by calendarSetup which has broader patterns
     context.services.memory.setFact('system', 'calendar_reset_pending', true, { source: 'explicit' });
     
     const eventCount = context.services.calendar.getUpcoming(100).length;
