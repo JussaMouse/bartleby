@@ -5,7 +5,7 @@ A local-first AI assistant that runs entirely on your machine. Privacy-respectin
 ## What is Bartleby?
 
 Bartleby is a personal assistant that combines:
-- **GTD task management** with contexts, projects, and inbox capture
+- **GTD workflow** with actions, contexts, projects, and inbox capture
 - **Personal knowledge base** (the "Garden") synced as markdown files
 - **Document library** (the "Shed") with semantic search and RAG
 - **Context** that remembers your conversations, preferences, and follow-ups
@@ -23,14 +23,14 @@ Most assistants only respond to commands. Bartleby is **present** — aware of y
 ──────────────────────────────────────────────────
 📅 4 event(s) today
 📝 Pending: "follow up with Sarah about the proposal"
-⚠️ 2 overdue task(s)
+⚠️ 2 overdue action(s)
 💭 Last: "review the Q3 budget numbers..."
 ──────────────────────────────────────────────────
 
 > 
 ```
 
-This "session opener" isn't scripted — Bartleby checks your calendar, tasks, follow-ups, and recent conversations to surface what's relevant *right now*.
+This "session opener" isn't scripted — Bartleby checks your calendar, actions, follow-ups, and recent conversations to surface what's relevant *right now*.
 
 ## Quick Start
 
@@ -64,9 +64,9 @@ pnpm start
 
 ```
 > help                    # See all commands
-> add task buy groceries  # Add a task
-> show next actions       # View tasks
-> done 1                  # Complete task #1
+> add task buy groceries  # Add an action
+> show next actions       # View actions
+> done 1                  # Complete action #1
 > capture call dentist    # Quick capture to inbox
 > status                  # Check system health
 > quit                    # Exit
@@ -74,7 +74,7 @@ pnpm start
 
 ## Configuration
 
-The `.env` file is Bartleby's **source of truth** for all configuration—like how the Garden's markdown files are the source of truth for your tasks and notes.
+The `.env` file is Bartleby's **source of truth** for all configuration—like how the Garden's markdown files are the source of truth for your actions and notes.
 
 ### The Settings Flow
 
@@ -217,13 +217,13 @@ Your events are preserved unless you explicitly say "yes delete events".
 
 ## Command Reference
 
-### GTD / Tasks
+### GTD / Actions
 
 | Command | Description |
 |---------|-------------|
-| `show next actions` | List active tasks grouped by context |
-| `add task <text>` | Add task (use `@context` and `+project`) |
-| `done <n>` | Complete task by number |
+| `show next actions` | List active actions grouped by context |
+| `add task <text>` | Add action (use `@context`, `+project`, `due:DATE`) |
+| `done <n>` | Complete action by number |
 | `capture <text>` | Quick capture to inbox |
 | `waiting for` | Show delegated items |
 
@@ -359,7 +359,7 @@ Bartleby learns about you over time from natural conversation.
 │                        Services                                   │
 │   ┌─────────────┐  ┌─────────────┐  ┌─────────────────────────┐  │
 │   │   Garden    │  │  Scheduler  │  │      Context            │  │
-│   │  (tasks)    │  │ (reminders) │  │  (memory, profile)      │  │
+│   │  (actions)  │  │ (reminders) │  │  (memory, profile)      │  │
 │   └──────┬──────┘  └──────┬──────┘  └───────────┬─────────────┘  │
 │          │                │                     │                │
 │          ▼                ▼                     │                │
@@ -393,7 +393,7 @@ Most requests hit the deterministic router (layers 1-3) and never need an LLM at
 
 Bartleby has a **Time System** — a unified way of handling everything temporal. Instead of events, reminders, and deadlines living in separate silos, they all flow into one place.
 
-A task has a *what* (the thing to do) and optionally a *when* (due date).  
+An action has a *what* (the thing to do) and optionally a *when* (due date).  
 A reminder has a *what* (the message) and a *when* (fire time).  
 An event has a *what* (title/notes) and a *when* (start/end time).
 
@@ -402,7 +402,7 @@ The Time System collects all the "whens" into a single view:
 | Type | Where it comes from | Example |
 |------|---------------------|---------|
 | **Event** | You create it | "Team meeting at 3pm" |
-| **Deadline** | Task with due date | "Report due Friday" |
+| **Deadline** | Action with due date | "Report due Friday" |
 | **Reminder** | Scheduled notification | "remind me in 30 min" |
 
 When you say `today` or `calendar`, the Time System shows them all:
@@ -462,9 +462,9 @@ The initiative layer that decides when Bartleby speaks unprompted:
 |--------|------|---------|
 | **Startup** | REPL starts | "📅 4 events today, 📝 follow up with Sarah pending" |
 | **Shutdown** | Before quit | "📅 Tomorrow: 2 events. Anything to capture?" |
-| **Morning** | Scheduled (8am) | "☀️ Morning Review: 3 events, 12 tasks" |
-| **Evening** | Scheduled (6pm) | "🌙 5 tasks done today, 2 events tomorrow" |
-| **Weekly** | Scheduled (Sun 9am) | "📋 Weekly Review: 15/20 tasks completed" |
+| **Morning** | Scheduled (8am) | "☀️ Morning Review: 3 events, 12 actions" |
+| **Evening** | Scheduled (6pm) | "🌙 5 actions done today, 2 events tomorrow" |
+| **Weekly** | Scheduled (Sun 9am) | "📋 Weekly Review: 15/20 actions completed" |
 
 Configure in `.env`:
 
