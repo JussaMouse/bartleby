@@ -61,6 +61,7 @@ export const setPreference: Tool = {
       /^(remember|note) that i (prefer|like|want|am|'m)\s+(.+)/i,
       /^my name is\s+(.+)$/i,  // "my name is Lon"
       /^(call me|i'm called|i go by)\s+(.+)$/i,  // "call me Lon", "I'm called Lon"
+      /^my (wife|husband|partner|sister|brother|mom|dad|mother|father|boss|friend|son|daughter|child|coworker|colleague)\s+(\w+)/i,  // "my wife Nicole..."
       /^i (prefer|always|never)\s+(.+)/i,
       /^i('m| am) (a |an )?(\w+)\s+(person|type|kind)/i,  // "I am a morning person"
       /^i('m| am) (a |an )?(.+)/i,  // "I am a vegetarian", "I'm lactose intolerant"
@@ -69,7 +70,7 @@ export const setPreference: Tool = {
     ],
     keywords: {
       verbs: ['remember', 'note', 'prefer'],
-      nouns: ['preference', 'like', 'always', 'name'],
+      nouns: ['preference', 'like', 'always', 'name', 'wife', 'husband', 'partner'],
     },
     priority: 80,  // Higher to beat scheduleReminder keyword matches
   },
@@ -85,6 +86,16 @@ export const setPreference: Tool = {
     const callMeMatch = input.match(/^(call me|i'm called|i go by)\s+(.+)$/i);
     if (callMeMatch) {
       return { preference: `name: ${callMeMatch[2].trim()}`, category: 'identity' };
+    }
+
+    // Handle "my wife Nicole..." → "wife: Nicole, wakes up late af"
+    const relationMatch = input.match(/^my (wife|husband|partner|sister|brother|mom|dad|mother|father|boss|friend|son|daughter|child|coworker|colleague)\s+(\w+)\s*(.*)$/i);
+    if (relationMatch) {
+      const relation = relationMatch[1].toLowerCase();
+      const name = relationMatch[2];
+      const extra = relationMatch[3]?.trim();
+      const fact = extra ? `${relation}: ${name} (${extra})` : `${relation}: ${name}`;
+      return { preference: fact, category: 'relationship' };
     }
 
     // Handle "I am a X person/type" → "morning person"
