@@ -385,17 +385,25 @@ Bartleby learns about you over time from natural conversation.
 
 Most requests hit the deterministic router (layers 1-3) and never need an LLM at all.
 
-### Calendar: Unified Temporal View
+### The Time System
 
-The Calendar isn't just for events—it's Bartleby's **temporal index** that shows everything time-related in one place:
+Bartleby has a **Time System** — a unified way of handling everything temporal. Instead of events, reminders, and deadlines living in separate silos, they all flow into one place.
 
-| Type | Source | Example |
-|------|--------|---------|
-| **Event** | Calendar | "Team meeting at 3pm" |
-| **Deadline** | Garden (GTD) | Task due dates: "Report due Friday" |
-| **Reminder** | Scheduler | "remind me in 30 min 'stretch'" |
+**The Principle:** *"When" is a dimension, not a destination.*
 
-When you say `today` or `calendar`, you see them all:
+A task has a *what* (the thing to do) and optionally a *when* (due date).  
+A reminder has a *what* (the message) and a *when* (fire time).  
+An event has a *what* (title/notes) and a *when* (start/end time).
+
+The Time System collects all the "whens" into a single view:
+
+| Type | Where it comes from | Example |
+|------|---------------------|---------|
+| **Event** | You create it | "Team meeting at 3pm" |
+| **Deadline** | Task with due date | "Report due Friday" |
+| **Reminder** | Scheduled notification | "remind me in 30 min" |
+
+When you say `today` or `calendar`, the Time System shows them all:
 
 ```
 **Today's Schedule**
@@ -411,7 +419,7 @@ When you say `today` or `calendar`, you see them all:
   4:00 PM - stretch break
 ```
 
-This unified view means you never miss something because it's in the "wrong system."
+**Why it matters:** You never miss something because it's in the "wrong system." Everything temporal is unified.
 
 ### Context & Presence
 

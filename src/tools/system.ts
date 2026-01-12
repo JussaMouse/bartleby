@@ -9,11 +9,11 @@ const HELP_OVERVIEW = `
 Type \`help <topic>\` for details and .env settings.
 
 **GTD** — Task management (help gtd)
-**Calendar** — Events & scheduling (help calendar)
+**Time System** — Events, deadlines, reminders unified (help calendar)
+**Reminders** — Scheduled notifications (help reminders)
 **Contacts** — People you know (help contacts)
 **Context** — What Bartleby learns about you (help context)
 **Shed** — Document library (help shed)
-**Reminders** — Scheduled notifications (help reminders)
 **Presence** — Proactive behaviors (help presence)
 **LLM** — Model configuration (help llm)
 **Weather** — Current conditions (help weather)
@@ -58,15 +58,18 @@ Bartleby implements David Allen's GTD methodology.
 `.trim();
 
 const HELP_CALENDAR = `
-**Calendar — Unified Temporal View**
+**Calendar — The Time System**
 
-The calendar shows everything time-based in one place:
-• **Events** — meetings, appointments, activities
-• **Deadlines** — task due dates from GTD
-• **Reminders** — scheduled notifications
+Bartleby's Time System shows everything temporal in one place.
+"When" is a dimension, not a destination.
+
+**What the Time System tracks:**
+• **📅 Events** — meetings, appointments, activities
+• **⚠️ Deadlines** — task due dates from GTD
+• **🔔 Reminders** — scheduled notifications
 
 **Commands**
-  calendar                Show upcoming (events, deadlines, reminders)
+  calendar                Show upcoming (all types)
   today                   Today's unified schedule
   add event <details>     Create an event
   change calendar settings   Configure preferences
@@ -77,18 +80,14 @@ The calendar shows everything time-based in one place:
   add event <title> <time> <day>
   add event <title> tomorrow at <time>
 
-**Examples**
-  add event dentist at 2pm
-  add event team standup 9am tomorrow
-  add event lunch with Sarah at noon wednesday
-
 **Reminders** (see "help reminders")
   remind me to stretch in 30 min
   send me a msg in 5 min 'time to move'
 
-**Task Due Dates** (from GTD)
-When you add a task with a due date, it appears in calendar:
+**Task Deadlines** (from GTD)
+Tasks with due dates flow into the Time System automatically:
   add task finish report due friday
+  → Shows in "today" when due
 
 **Time Formats**
   2pm, 2:30pm, 14:00, noon, midnight
@@ -102,10 +101,9 @@ When you add a task with a due date, it appears in calendar:
   CALENDAR_WEEK_START=sunday              sunday|monday
   CALENDAR_REMINDER_MINUTES=15            0=off, or minutes before
 
-**Tips**
-• "today" shows events, deadlines, and reminders together
-• Task due dates automatically appear in your calendar
-• Reminders from "remind me" also show in calendar view
+**The Time System Principle**
+Everything with a "when" shows up together. You never miss
+something because it's in the "wrong system."
 `.trim();
 
 const HELP_CONTACTS = `
@@ -406,6 +404,9 @@ const HELP_SECTIONS: Record<string, string> = {
   tasks: HELP_GTD,
   calendar: HELP_CALENDAR,
   events: HELP_CALENDAR,
+  time: HELP_CALENDAR,
+  'time system': HELP_CALENDAR,
+  temporal: HELP_CALENDAR,
   contacts: HELP_CONTACTS,
   people: HELP_CONTACTS,
   memory: HELP_CONTEXT,
