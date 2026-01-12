@@ -1,5 +1,5 @@
-// src/services/personal-context.ts
-// The Personal Context Service - Bartleby's memory of you and your interactions
+// src/services/context.ts
+// The Context Service - Bartleby's memory of you and your interactions
 
 import fs from 'fs';
 import path from 'path';
@@ -25,7 +25,7 @@ export interface UserFact {
   source: 'explicit' | 'inferred';
 }
 
-export class PersonalContextService {
+export class ContextService {
   private storagePath: string;
   private episodes: Episode[] = [];
   private facts = new Map<string, UserFact>();
@@ -61,7 +61,7 @@ export class PersonalContextService {
       }
     }
 
-    info('PersonalContextService initialized', {
+    info('ContextService initialized', {
       episodes: this.episodes.length,
       facts: this.facts.size,
     });

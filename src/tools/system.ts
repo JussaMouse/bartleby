@@ -11,7 +11,7 @@ Type \`help <topic>\` for details and .env settings.
 **GTD** — Task management (help gtd)
 **Calendar** — Events & scheduling (help calendar)
 **Contacts** — People you know (help contacts)
-**Personal Context** — What Bartleby learns about you (help context)
+**Context** — What Bartleby learns about you (help context)
 **Shed** — Document library (help shed)
 **Reminders** — Scheduled notifications (help reminders)
 **Presence** — Proactive behaviors (help presence)
@@ -127,8 +127,8 @@ Store and search contact information.
 • Bartleby learns relationships: "my sister Sarah" → remembers
 `.trim();
 
-const HELP_PERSONAL_CONTEXT = `
-**Personal Context — What Bartleby Learns About You**
+const HELP_CONTEXT = `
+**Context — What Bartleby Learns About You**
 
 Bartleby builds a profile of you over time: preferences, habits,
 goals, relationships, and conversation history.
@@ -161,7 +161,7 @@ goals, relationships, and conversation history.
   DATABASE_PATH=./database         Context stored in database/memory/
 
 **Related: Presence** (see help presence)
-Personal Context feeds the Presence system, which surfaces relevant info:
+Context feeds the Presence system, which surfaces relevant info:
   PRESENCE_STARTUP=true            Show follow-ups at startup
   PRESENCE_CONTEXTUAL=true         Surface related context during chat
 
@@ -319,10 +319,10 @@ Presence controls when Bartleby speaks unprompted.
 
 **What Gets Surfaced**
 • Today's events (from Calendar)
-• Pending follow-ups (from Personal Context)
+• Pending follow-ups (from Context)
 • Stale inbox items (from GTD)
 • Overdue tasks (from GTD)
-• Last conversation summary (from Personal Context)
+• Last conversation summary (from Context)
 `.trim();
 
 const HELP_LLM = `
@@ -400,11 +400,11 @@ const HELP_SECTIONS: Record<string, string> = {
   events: HELP_CALENDAR,
   contacts: HELP_CONTACTS,
   people: HELP_CONTACTS,
-  memory: HELP_PERSONAL_CONTEXT,
-  remember: HELP_PERSONAL_CONTEXT,
-  context: HELP_PERSONAL_CONTEXT,
-  'personal context': HELP_PERSONAL_CONTEXT,
-  profile: HELP_PERSONAL_CONTEXT,
+  memory: HELP_CONTEXT,
+  remember: HELP_CONTEXT,
+  context: HELP_CONTEXT,
+  'personal context': HELP_CONTEXT,
+  profile: HELP_CONTEXT,
   shed: HELP_SHED,
   documents: HELP_SHED,
   docs: HELP_SHED,
@@ -490,7 +490,7 @@ export const status: Tool = {
 **Data**
   Tasks: ${tasks.length} active (${inbox.length} in inbox)
   Events today: ${todayEvents.length}
-  Personal Context: ${episodes} conversation(s)
+  Context: ${episodes} conversation(s)
   Shed: ${sources.length} document(s)
 
 **LLM**

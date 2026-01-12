@@ -4,7 +4,7 @@
 
 import { GardenService } from './garden.js';
 import { CalendarService } from './calendar.js';
-import { PersonalContextService } from './personal-context.js';
+import { ContextService } from './context.js';
 import { Config } from '../config.js';
 import { debug } from '../utils/logger.js';
 
@@ -28,7 +28,7 @@ export class PresenceService {
 
   constructor(
     private config: Config,
-    private context: PersonalContextService,
+    private context: ContextService,
     private garden: GardenService,
     private calendar: CalendarService
   ) {

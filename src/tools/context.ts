@@ -1,4 +1,4 @@
-// src/tools/memory.ts
+// src/tools/context.ts
 import { Tool } from './types.js';
 
 export const recallConversation: Tool = {
@@ -188,7 +188,7 @@ function formatTimeAgo(date: Date): string {
   return date.toLocaleDateString();
 }
 
-export const memoryTools: Tool[] = [
+export const contextTools: Tool[] = [
   recallConversation,
   setPreference,
   viewProfile,

@@ -2,7 +2,7 @@
 import { Config } from '../config.js';
 import { GardenService } from './garden.js';
 import { CalendarService } from './calendar.js';
-import { PersonalContextService } from './personal-context.js';
+import { ContextService } from './context.js';
 import { PresenceService } from './presence.js';
 import { LLMService } from './llm.js';
 import { EmbeddingService } from './embeddings.js';
@@ -22,8 +22,8 @@ export interface ServiceContainer {
   shed: ShedService;
   calendar: CalendarService;
   
-  // Personal Context - Bartleby's memory of you
-  context: PersonalContextService;
+  // Context - Bartleby's memory of you
+  context: ContextService;
   
   // Presence - Bartleby's initiative layer (decides when to speak unprompted)
   presence: PresenceService;
@@ -59,7 +59,7 @@ export async function initServices(config: Config): Promise<ServiceContainer> {
   // Create data services (depend on infrastructure)
   const garden = new GardenService(config);
   const calendar = new CalendarService(config);
-  const context = new PersonalContextService(config);
+  const context = new ContextService(config);
   const shed = new ShedService(config, embeddings, vectors, llm);
   const scheduler = new SchedulerService(config, signal);
 
@@ -111,7 +111,7 @@ export function closeServices(services: ServiceContainer): void {
 // Re-export types
 export { GardenService, GardenRecord, RecordType, RecordStatus, TaskFilters } from './garden.js';
 export { CalendarService, CalendarEvent } from './calendar.js';
-export { PersonalContextService, Episode, UserFact } from './personal-context.js';
+export { ContextService, Episode, UserFact } from './context.js';
 export { PresenceService, PresenceConfig, MomentType } from './presence.js';
 export { LLMService, Tier, Complexity } from './llm.js';
 export { EmbeddingService } from './embeddings.js';

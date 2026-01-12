@@ -3,7 +3,7 @@ import { Tool } from './types.js';
 import { gtdTools } from './gtd.js';
 import { calendarTools } from './calendar.js';
 import { contactTools } from './contacts.js';
-import { memoryTools } from './memory.js';
+import { contextTools } from './context.js';
 import { shedTools } from './shed.js';
 import { schedulerTools } from './scheduler.js';
 import { weatherTools } from './weather.js';
@@ -14,7 +14,7 @@ export const allTools: Tool[] = [
   ...gtdTools,
   ...calendarTools,
   ...contactTools,
-  ...memoryTools,
+  ...contextTools,
   ...shedTools,
   ...schedulerTools,
   ...weatherTools,

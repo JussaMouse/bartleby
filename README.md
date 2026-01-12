@@ -8,7 +8,7 @@ Bartleby is a personal assistant that combines:
 - **GTD task management** with contexts, projects, and inbox capture
 - **Personal knowledge base** (the "Garden") synced as markdown files
 - **Document library** (the "Shed") with semantic search and RAG
-- **Personal Context** that remembers your conversations, preferences, and follow-ups
+- **Context** that remembers your conversations, preferences, and follow-ups
 - **Presence** — Bartleby's initiative layer that decides when to speak unprompted
 
 All powered by local LLMs. Your data stays on your machine.
@@ -257,7 +257,7 @@ Your events are preserved unless you explicitly say "yes delete events".
 > find sarah
 ```
 
-### Personal Context
+### Context
 
 Bartleby learns about you over time from natural conversation.
 
@@ -354,8 +354,8 @@ Bartleby learns about you over time from natural conversation.
 ┌──────────────────────────────────────────────────────────────────┐
 │                        Services                                   │
 │   ┌─────────────┐  ┌─────────────┐  ┌─────────────────────────┐  │
-│   │   Garden    │  │  Calendar   │  │   Personal Context      │  │
-│   │  (tasks)    │  │  (events)   │  │   (memory, profile)     │  │
+│   │   Garden    │  │  Calendar   │  │      Context            │  │
+│   │  (tasks)    │  │  (events)   │  │  (memory, profile)      │  │
 │   └──────┬──────┘  └──────┬──────┘  └───────────┬─────────────┘  │
 │          │                │                     │                │
 │          └────────────────┼─────────────────────┘                │
@@ -378,17 +378,17 @@ Bartleby learns about you over time from natural conversation.
 
 Most requests hit the deterministic router (layers 1-3) and never need an LLM at all.
 
-### Personal Context & Presence
+### Context & Presence
 
 Bartleby has two complementary systems for understanding and assisting you:
 
-**Personal Context Service** — The memory layer
+**Context Service** — The memory layer
 - Records every conversation as "episodes" with summaries, topics, and actions
 - Tracks facts about you: preferences, habits, goals, relationships
 - Enables recall: "What did we talk about last week?"
 
 **Presence Service** — The initiative layer
-- Queries Personal Context, Calendar, and Garden
+- Queries Context, Calendar, and Garden
 - Decides what (if anything) to surface at key moments
 - Configurable: enable/disable different "moments"
 
