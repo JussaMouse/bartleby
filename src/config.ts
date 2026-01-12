@@ -57,6 +57,7 @@ const ConfigSchema = z.object({
   scheduler: z.object({
     enabled: z.boolean(),
     checkInterval: z.number().positive(),
+    missedReminders: z.enum(['ask', 'fire', 'skip', 'show']),
   }),
 
   calendar: z.object({
@@ -139,6 +140,7 @@ export function loadConfig(): Config {
     scheduler: {
       enabled: process.env.SCHEDULER_ENABLED !== 'false',
       checkInterval: parseInt(process.env.SCHEDULER_CHECK_INTERVAL || '60000'),
+      missedReminders: (process.env.SCHEDULER_MISSED_REMINDERS || 'ask') as 'ask' | 'fire' | 'skip' | 'show',
     },
     calendar: {
       timezone: process.env.CALENDAR_TIMEZONE || Intl.DateTimeFormat().resolvedOptions().timeZone,

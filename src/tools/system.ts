@@ -237,14 +237,18 @@ Set one-time or recurring reminders.
 **Examples**
   remind me to call mom at 5pm
   remind me about standup in 30 minutes
-  remind me to take meds tomorrow at 8am
+  send me a msg in 5 min 'stretch'
   daily at 9am check email
-  show reminders
   cancel reminder 2
 
 **.env Settings**
   SCHEDULER_ENABLED=true          Enable/disable reminder system
   SCHEDULER_CHECK_INTERVAL=60000  How often to check (ms)
+  SCHEDULER_MISSED_REMINDERS=ask  What to do with missed reminders:
+    • ask  = summarize and ask (default)
+    • fire = send all immediately
+    • skip = dismiss silently
+    • show = show only, don't act
 
 **Signal Notifications** (optional)
   SIGNAL_ENABLED=true             Enable mobile notifications
@@ -252,11 +256,14 @@ Set one-time or recurring reminders.
   SIGNAL_NUMBER=+1234567890       Your Signal number
   SIGNAL_RECIPIENT=+0987654321    Who receives notifications
 
+**Missed Reminders**
+When you start Bartleby and reminders fired while offline,
+behavior depends on SCHEDULER_MISSED_REMINDERS setting.
+
 **Tips**
 • Console: Reminders always show in terminal
 • Signal: If configured, also sends to your phone
-• Calendar events can auto-schedule reminders (see help calendar)
-• Daily reminders repeat until cancelled
+• Reminders appear in the Time System (see "today")
 `.trim();
 
 const HELP_SETTINGS = `

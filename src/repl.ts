@@ -6,16 +6,9 @@ import { ServiceContainer } from './services/index.js';
 import { info, warn, error, debug } from './utils/logger.js';
 
 /**
- * Check for and handle missed reminders at startup.
- * Returns when user has decided what to do with them.
+ * Show the list of missed reminders.
  */
-async function handleMissedReminders(
-  rl: readline.Interface,
-  services: ServiceContainer
-): Promise<void> {
-  const missed = services.scheduler.getMissedReminders();
-  if (missed.length === 0) return;
-
+function showMissedReminders(missed: Array<{ nextRun: string; actionPayload: unknown }>): void {
   console.log('\n' + '─'.repeat(50));
   console.log(`⏰ **${missed.length} reminder(s) fired while you were away:**\n`);
   
@@ -28,57 +21,102 @@ async function handleMissedReminders(
     });
     console.log(`  ${i + 1}. "${task.actionPayload}" (was ${scheduledFor})`);
   }
-  
-  console.log('\n**What would you like to do?**');
-  console.log('  → **fire** - Send all now');
-  console.log('  → **skip** - Dismiss without sending');
-  console.log('  → **#** - Fire just that one (e.g., "1")');
-  console.log('─'.repeat(50));
+}
 
-  return new Promise((resolve) => {
-    const handleResponse = async (line: string) => {
-      const input = line.trim().toLowerCase();
-      
-      if (input === 'fire' || input === 'fire all' || input === 'send' || input === 'send all') {
-        const count = await services.scheduler.fireAllMissed();
-        console.log(`\n✓ Sent ${count} reminder(s)`);
-        rl.removeListener('line', handleResponse);
-        resolve();
-      } else if (input === 'skip' || input === 'skip all' || input === 'dismiss' || input === 'dismiss all') {
-        const count = services.scheduler.dismissAllMissed();
-        console.log(`\n✓ Dismissed ${count} reminder(s)`);
-        rl.removeListener('line', handleResponse);
-        resolve();
-      } else if (/^\d+$/.test(input)) {
-        const idx = parseInt(input) - 1;
-        if (idx >= 0 && idx < missed.length) {
-          const task = missed[idx];
-          await services.scheduler.fireReminder(task.id);
-          console.log(`\n✓ Sent: "${task.actionPayload}"`);
+/**
+ * Check for and handle missed reminders at startup.
+ * Behavior controlled by SCHEDULER_MISSED_REMINDERS config:
+ * - 'ask': Show summary and ask what to do (default)
+ * - 'fire': Fire all immediately
+ * - 'skip': Dismiss all silently
+ * - 'show': Show summary only, don't act
+ */
+async function handleMissedReminders(
+  rl: readline.Interface,
+  services: ServiceContainer
+): Promise<void> {
+  const missed = services.scheduler.getMissedReminders();
+  if (missed.length === 0) return;
+
+  const behavior = services.config.scheduler.missedReminders;
+
+  switch (behavior) {
+    case 'fire':
+      // Fire all immediately (old behavior)
+      showMissedReminders(missed);
+      const firedCount = await services.scheduler.fireAllMissed();
+      console.log(`\n✓ Auto-fired ${firedCount} reminder(s) (SCHEDULER_MISSED_REMINDERS=fire)`);
+      console.log('─'.repeat(50));
+      return;
+
+    case 'skip':
+      // Dismiss all silently
+      services.scheduler.dismissAllMissed();
+      info('Dismissed missed reminders silently', { count: missed.length });
+      return;
+
+    case 'show':
+      // Just show, user can handle manually later
+      showMissedReminders(missed);
+      console.log('\n(Showing only. Use "show reminders" to manage.)');
+      console.log('─'.repeat(50));
+      return;
+
+    case 'ask':
+    default:
+      // Interactive: ask user what to do
+      showMissedReminders(missed);
+      console.log('\n**What would you like to do?**');
+      console.log('  → **fire** - Send all now');
+      console.log('  → **skip** - Dismiss without sending');
+      console.log('  → **#** - Fire just that one (e.g., "1")');
+      console.log('─'.repeat(50));
+
+      return new Promise((resolve) => {
+        const handleResponse = async (line: string) => {
+          const input = line.trim().toLowerCase();
           
-          // Check if more remain
-          const remaining = services.scheduler.getMissedReminders();
-          if (remaining.length === 0) {
-            console.log('All caught up!');
+          if (input === 'fire' || input === 'fire all' || input === 'send' || input === 'send all') {
+            const count = await services.scheduler.fireAllMissed();
+            console.log(`\n✓ Sent ${count} reminder(s)`);
             rl.removeListener('line', handleResponse);
             resolve();
+          } else if (input === 'skip' || input === 'skip all' || input === 'dismiss' || input === 'dismiss all') {
+            const count = services.scheduler.dismissAllMissed();
+            console.log(`\n✓ Dismissed ${count} reminder(s)`);
+            rl.removeListener('line', handleResponse);
+            resolve();
+          } else if (/^\d+$/.test(input)) {
+            const idx = parseInt(input) - 1;
+            if (idx >= 0 && idx < missed.length) {
+              const task = missed[idx];
+              await services.scheduler.fireReminder(task.id);
+              console.log(`\n✓ Sent: "${task.actionPayload}"`);
+              
+              // Check if more remain
+              const remaining = services.scheduler.getMissedReminders();
+              if (remaining.length === 0) {
+                console.log('All caught up!');
+                rl.removeListener('line', handleResponse);
+                resolve();
+              } else {
+                console.log(`\n${remaining.length} remaining. Type another number, "fire", or "skip".`);
+                rl.prompt();
+              }
+            } else {
+              console.log(`Invalid number. Choose 1-${missed.length}, "fire", or "skip".`);
+              rl.prompt();
+            }
           } else {
-            console.log(`\n${remaining.length} remaining. Type another number, "fire", or "skip".`);
+            console.log('Please type "fire", "skip", or a number.');
             rl.prompt();
           }
-        } else {
-          console.log(`Invalid number. Choose 1-${missed.length}, "fire", or "skip".`);
-          rl.prompt();
-        }
-      } else {
-        console.log('Please type "fire", "skip", or a number.');
-        rl.prompt();
-      }
-    };
+        };
 
-    rl.on('line', handleResponse);
-    rl.prompt();
-  });
+        rl.on('line', handleResponse);
+        rl.prompt();
+      });
+  }
 }
 
 export async function startRepl(
