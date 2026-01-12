@@ -187,30 +187,45 @@ export const addEvent: Tool = {
 
     let response = `✓ Created: ${event.title}\n  ${dateStr} at ${timeStr}`;
 
-    // First-time onboarding
+    // First-time onboarding - start the setup flow
     if (isFirstEvent) {
-      context.services.memory.setFact('system', 'calendar_onboarded', true, { source: 'explicit' });
+      // Don't mark as onboarded yet - that happens after setup completes
+      context.services.memory.setFact('system', 'calendar_setup_pending', true, { source: 'explicit' });
+      
+      // Detect timezone
+      const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+      const tzOffset = new Date().getTimezoneOffset();
+      const tzHours = Math.abs(Math.floor(tzOffset / 60));
+      const tzSign = tzOffset <= 0 ? '+' : '-';
       
       response += `
 
 ───────────────────────────────────────────
 📅 **Welcome to Bartleby's Calendar!**
 
-Current defaults:
-• Event duration: 1 hour
-• Ambiguous times (1-6): afternoon
-• Week starts: Sunday
+Let me ask a few quick questions to set things up.
 
-To customize, just tell me naturally:
-• "I prefer 30 minute meetings"
-• "my week starts on Monday"
+**1. Timezone**
+   Detected: ${tz} (UTC${tzSign}${tzHours})
+   Is this correct? [yes / or tell me your timezone]
 
-Or say "change calendar settings" anytime.
+**2. Default event duration**
+   How long are your typical meetings?
+   [30m / 1h / 90m]
 
-**Tip:** Add events like:
-• "add event lunch 12pm"
-• "add event dentist 2pm wednesday"
-• "add event meeting tomorrow 9am"
+**3. Ambiguous times**
+   When you say "3" without am/pm, assume:
+   [morning / afternoon]
+
+**4. Week starts on**
+   [Sunday / Monday]
+
+**5. Event reminders via Signal**
+   Send a notification before events?
+   [no / 15m / 30m / 1h]
+
+Reply like: "yes, 1h, afternoon, Monday, 15m"
+Or just "defaults" to accept: 1h, afternoon, Sunday, no reminders
 ───────────────────────────────────────────`;
     }
 
@@ -218,4 +233,178 @@ Or say "change calendar settings" anytime.
   },
 };
 
-export const calendarTools: Tool[] = [showCalendar, showToday, addEvent];
+export const calendarSetup: Tool = {
+  name: 'calendarSetup',
+  description: 'Complete calendar setup / change calendar settings',
+
+  routing: {
+    patterns: [
+      /^(yes|no|defaults?),?\s/i,
+      /^(30m|1h|90m|morning|afternoon|sunday|monday|15m|30m),?\s/i,
+      /^change\s+calendar\s+settings?$/i,
+      /^calendar\s+settings?$/i,
+      /^setup\s+calendar$/i,
+    ],
+    keywords: {
+      verbs: ['change', 'setup', 'configure'],
+      nouns: ['calendar settings', 'calendar setup'],
+    },
+    priority: 100, // High priority to catch setup responses
+  },
+
+  parseArgs: (input) => {
+    const lower = input.toLowerCase().trim();
+    
+    // Check if this is "change settings" request
+    if (lower.includes('change') || lower.includes('setup') || lower.includes('settings')) {
+      return { action: 'start' };
+    }
+    
+    // Check for defaults
+    if (lower === 'defaults' || lower === 'default') {
+      return {
+        action: 'complete',
+        timezone: 'auto',
+        duration: 60,
+        ambiguousTime: 'afternoon',
+        weekStart: 'sunday',
+        reminder: 'none',
+      };
+    }
+    
+    // Parse comma-separated answers
+    const parts = lower.split(/[,\s]+/).filter(p => p.length > 0);
+    
+    let timezone = 'auto';
+    let duration = 60;
+    let ambiguousTime = 'afternoon';
+    let weekStart = 'sunday';
+    let reminder = 'none';
+    
+    for (const part of parts) {
+      // Timezone confirmation
+      if (part === 'yes' || part === 'correct') timezone = 'auto';
+      
+      // Duration
+      if (part === '30m' || part === '30') duration = 30;
+      if (part === '1h' || part === '60' || part === '60m') duration = 60;
+      if (part === '90m' || part === '90') duration = 90;
+      
+      // Ambiguous time
+      if (part === 'morning' || part === 'am') ambiguousTime = 'morning';
+      if (part === 'afternoon' || part === 'pm') ambiguousTime = 'afternoon';
+      
+      // Week start
+      if (part === 'sunday' || part === 'sun') weekStart = 'sunday';
+      if (part === 'monday' || part === 'mon') weekStart = 'monday';
+      
+      // Reminder
+      if (part === 'no' || part === 'none' || part === 'off') reminder = 'none';
+      if (part === '15m' || part === '15') reminder = '15';
+      if (part === '30m' && !lower.includes('duration')) reminder = '30'; // Avoid confusion with duration
+      if (part === '1h' && lower.includes('remind')) reminder = '60';
+    }
+    
+    return {
+      action: 'complete',
+      timezone,
+      duration,
+      ambiguousTime,
+      weekStart,
+      reminder,
+    };
+  },
+
+  execute: async (args, context) => {
+    const { action, timezone, duration, ambiguousTime, weekStart, reminder } = args as {
+      action: string;
+      timezone?: string;
+      duration?: number;
+      ambiguousTime?: string;
+      weekStart?: string;
+      reminder?: string;
+    };
+
+    // Check if setup is pending
+    const setupPending = context.services.memory.getFact('system', 'calendar_setup_pending');
+    
+    // "change settings" command - show the setup prompt
+    if (action === 'start') {
+      const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+      const tzOffset = new Date().getTimezoneOffset();
+      const tzHours = Math.abs(Math.floor(tzOffset / 60));
+      const tzSign = tzOffset <= 0 ? '+' : '-';
+      
+      context.services.memory.setFact('system', 'calendar_setup_pending', true, { source: 'explicit' });
+      
+      return `
+📅 **Calendar Settings**
+
+**1. Timezone**
+   Detected: ${tz} (UTC${tzSign}${tzHours})
+   Is this correct? [yes / or tell me your timezone]
+
+**2. Default event duration**
+   [30m / 1h / 90m]
+
+**3. Ambiguous times (when you say "3" without am/pm)**
+   [morning / afternoon]
+
+**4. Week starts on**
+   [Sunday / Monday]
+
+**5. Event reminders via Signal**
+   [no / 15m / 30m / 1h]
+
+Reply like: "yes, 1h, afternoon, Monday, 15m"
+Or just "defaults" to accept current settings.`;
+    }
+
+    // Not in setup mode and not a settings command
+    if (!setupPending) {
+      return "I'm not sure what you mean. Try 'change calendar settings' to configure your calendar.";
+    }
+
+    // Complete the setup
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    
+    // Store preferences in memory
+    context.services.memory.setFact('preference', 'event_duration', duration, { source: 'explicit' });
+    context.services.memory.setFact('preference', 'ambiguous_time', ambiguousTime, { source: 'explicit' });
+    context.services.memory.setFact('preference', 'week_start', weekStart, { source: 'explicit' });
+    context.services.memory.setFact('preference', 'event_reminder', reminder, { source: 'explicit' });
+    
+    // Mark setup as complete
+    context.services.memory.setFact('system', 'calendar_setup_pending', false, { source: 'explicit' });
+    context.services.memory.setFact('system', 'calendar_onboarded', true, { source: 'explicit' });
+
+    // Build .env output
+    const reminderVal = reminder || 'none';
+    
+    return `
+✓ **Calendar configured!**
+
+Your settings:
+• Timezone: ${tz}
+• Default duration: ${duration || 60} minutes
+• Ambiguous times: ${ambiguousTime || 'afternoon'}
+• Week starts: ${weekStart || 'sunday'}
+• Reminders: ${reminderVal === 'none' ? 'off' : reminderVal + ' before'}
+
+───────────────────────────────────────────
+**Copy to .env (optional):**
+
+# Calendar Preferences
+CALENDAR_TIMEZONE=${tz}
+CALENDAR_DEFAULT_DURATION=${duration || 60}
+CALENDAR_AMBIGUOUS_TIME=${ambiguousTime || 'afternoon'}
+CALENDAR_WEEK_START=${weekStart || 'sunday'}
+CALENDAR_REMINDER_MINUTES=${reminderVal === 'none' ? '0' : reminderVal}
+SIGNAL_ENABLED=${reminderVal !== 'none' ? 'true' : 'false'}
+───────────────────────────────────────────
+
+These are saved to my memory. Add to .env for persistence across reinstalls.`;
+  },
+};
+
+export const calendarTools: Tool[] = [showCalendar, showToday, addEvent, calendarSetup];
