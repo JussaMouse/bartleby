@@ -228,20 +228,22 @@ export const calendarSetup: Tool = {
       /^change\s+calendar\s+settings?$/i,
       /^calendar\s+settings?$/i,
       /^setup\s+calendar$/i,
-      // Catch setup-specific responses (not bare yes/no to avoid conflicts)
+      // Catch setup-specific responses
       /^(30m?|1h|60m?|90m?)$/i,
       /^(morning|afternoon|am|pm)$/i,
       /^(sunday|monday|sun|mon)$/i,
       /^(15m?|none|off)$/i,
       /^defaults?$/i,
-      // Timezone confirmations - more specific than bare "yes"
+      // Confirmations (yes, no, cancel) - used by both setup and reset flows
       /^(yes|correct|y)$/i,
+      /^yes\s+delete\s+events?$/i,
+      /^(no|cancel|n)$/i,
     ],
     keywords: {
       verbs: ['change', 'setup', 'configure'],
       nouns: ['calendar settings', 'calendar setup'],
     },
-    priority: 85,  // Lower than resetCalendar (95) so reset confirmation works
+    priority: 95,  // High priority to catch confirmations before keyword matching
   },
 
   execute: async (args, context) => {
