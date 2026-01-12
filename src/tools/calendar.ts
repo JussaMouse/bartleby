@@ -221,6 +221,27 @@ You said **${ambiguousHour}${minute ? ':' + minute.toString().padStart(2, '0') :
 
     let response = `✓ Created: ${event.title}\n  ${dateStr} at ${timeStr}`;
 
+    // Schedule reminder if configured
+    const reminderMinutes = context.services.config.calendar.reminderMinutes;
+    if (reminderMinutes > 0) {
+      const reminderTime = new Date(date.getTime() - reminderMinutes * 60 * 1000);
+      
+      // Only schedule if reminder time is in the future
+      if (reminderTime > new Date()) {
+        context.services.scheduler.create({
+          type: 'reminder',
+          scheduleType: 'once',
+          scheduleValue: reminderTime.toISOString(),
+          actionType: 'notify',
+          actionPayload: `"${event.title}" starts in ${reminderMinutes} minutes`,
+          nextRun: reminderTime.toISOString(),
+          createdBy: 'system',
+          relatedRecord: event.id,
+        });
+        response += `\n  🔔 Reminder set for ${reminderMinutes}m before`;
+      }
+    }
+
     // First-time onboarding - start the step-by-step setup flow
     if (isFirstEvent) {
       const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
