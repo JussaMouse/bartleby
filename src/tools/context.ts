@@ -59,6 +59,8 @@ export const setPreference: Tool = {
   routing: {
     patterns: [
       /^(remember|note) that i (prefer|like|want|am|'m)\s+(.+)/i,
+      /^my name is\s+(.+)$/i,  // "my name is Lon"
+      /^(call me|i'm called|i go by)\s+(.+)$/i,  // "call me Lon", "I'm called Lon"
       /^i (prefer|always|never)\s+(.+)/i,
       /^i('m| am) (a |an )?(\w+)\s+(person|type|kind)/i,  // "I am a morning person"
       /^i('m| am) (a |an )?(.+)/i,  // "I am a vegetarian", "I'm lactose intolerant"
@@ -67,12 +69,24 @@ export const setPreference: Tool = {
     ],
     keywords: {
       verbs: ['remember', 'note', 'prefer'],
-      nouns: ['preference', 'like', 'always'],
+      nouns: ['preference', 'like', 'always', 'name'],
     },
     priority: 80,  // Higher to beat scheduleReminder keyword matches
   },
 
   parseArgs: (input) => {
+    // Handle "my name is X" → name: X
+    const nameMatch = input.match(/^my name is\s+(.+)$/i);
+    if (nameMatch) {
+      return { preference: `name: ${nameMatch[1].trim()}`, category: 'identity' };
+    }
+
+    // Handle "call me X", "I'm called X", "I go by X" → name: X
+    const callMeMatch = input.match(/^(call me|i'm called|i go by)\s+(.+)$/i);
+    if (callMeMatch) {
+      return { preference: `name: ${callMeMatch[2].trim()}`, category: 'identity' };
+    }
+
     // Handle "I am a X person/type" → "morning person"
     const personMatch = input.match(/^i('m| am) (a |an )?(\w+)\s+(person|type|kind)/i);
     if (personMatch) {
