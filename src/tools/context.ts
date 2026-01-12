@@ -63,12 +63,13 @@ export const setPreference: Tool = {
       /^i('m| am) (a |an )?(\w+)\s+(person|type|kind)/i,  // "I am a morning person"
       /^i('m| am) (a |an )?(.+)/i,  // "I am a vegetarian", "I'm lactose intolerant"
       /^i (like|love|hate|enjoy|dislike)\s+(.+)/i,
+      /^i (rely|depend|use|need)\s+(on\s+)?(.+)/i,  // "I rely on signal", "I use vim"
     ],
     keywords: {
       verbs: ['remember', 'note', 'prefer'],
       nouns: ['preference', 'like', 'always'],
     },
-    priority: 75,  // Higher than before to beat addContact
+    priority: 80,  // Higher to beat scheduleReminder keyword matches
   },
 
   parseArgs: (input) => {
@@ -88,6 +89,12 @@ export const setPreference: Tool = {
     const likeMatch = input.match(/^i (like|love|hate|enjoy|dislike)\s+(.+)$/i);
     if (likeMatch) {
       return { preference: `${likeMatch[1]} ${likeMatch[2]}` };
+    }
+
+    // Handle "I rely on/use/need X"
+    const relyMatch = input.match(/^i (rely|depend|use|need)\s+(on\s+)?(.+)$/i);
+    if (relyMatch) {
+      return { preference: `${relyMatch[1]} on ${relyMatch[3]}` };
     }
 
     const preference = input
