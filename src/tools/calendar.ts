@@ -168,6 +168,12 @@ export const addEvent: Tool = {
       return 'Please provide an event title. Example: add event "Meeting" at 3pm';
     }
 
+    // Check for first-time calendar use
+    const hasOnboarded = context.services.memory.getFact('system', 'calendar_onboarded');
+    const existingEvents = context.services.calendar.getUpcoming(1);
+    const isFirstEvent = !hasOnboarded && existingEvents.length === 0;
+
+    // Create the event
     const event = context.services.calendar.create({
       title,
       start_time,
@@ -179,7 +185,36 @@ export const addEvent: Tool = {
     const dateStr = date.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
     const timeStr = date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
 
-    return `✓ Created: ${event.title}\n  ${dateStr} at ${timeStr}`;
+    let response = `✓ Created: ${event.title}\n  ${dateStr} at ${timeStr}`;
+
+    // First-time onboarding
+    if (isFirstEvent) {
+      context.services.memory.setFact('system', 'calendar_onboarded', true, { source: 'explicit' });
+      
+      response += `
+
+───────────────────────────────────────────
+📅 **Welcome to Bartleby's Calendar!**
+
+Current defaults:
+• Event duration: 1 hour
+• Ambiguous times (1-6): afternoon
+• Week starts: Sunday
+
+To customize, just tell me naturally:
+• "I prefer 30 minute meetings"
+• "my week starts on Monday"
+
+Or say "change calendar settings" anytime.
+
+**Tip:** Add events like:
+• "add event lunch 12pm"
+• "add event dentist 2pm wednesday"
+• "add event meeting tomorrow 9am"
+───────────────────────────────────────────`;
+    }
+
+    return response;
   },
 };
 

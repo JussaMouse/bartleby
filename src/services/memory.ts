@@ -15,7 +15,7 @@ export interface Episode {
 }
 
 export interface UserFact {
-  category: 'preference' | 'habit' | 'goal' | 'relationship' | 'schedule' | 'interest' | 'health';
+  category: 'preference' | 'habit' | 'goal' | 'relationship' | 'schedule' | 'interest' | 'health' | 'system';
   key: string;
   value: unknown;
   confidence: number;
