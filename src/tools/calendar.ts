@@ -182,7 +182,7 @@ export const addEvent: Tool = {
       
       if (pref === 'ask') {
         // Store pending event data and ask for clarification
-        context.services.memory.setFact('system', 'event_pending_clarification', {
+        context.services.context.setFact('system', 'event_pending_clarification', {
           title,
           ambiguousHour,
           minute,
@@ -203,7 +203,7 @@ You said **${ambiguousHour}${minute ? ':' + minute.toString().padStart(2, '0') :
     }
 
     // Check for first-time calendar use
-    const hasOnboarded = context.services.memory.getFact('system', 'calendar_onboarded');
+    const hasOnboarded = context.services.context.getFact('system', 'calendar_onboarded');
     const existingEvents = context.services.calendar.getUpcoming(1);
     const isFirstEvent = !hasOnboarded && existingEvents.length === 0;
 
@@ -250,9 +250,9 @@ You said **${ambiguousHour}${minute ? ':' + minute.toString().padStart(2, '0') :
       const tzSign = tzOffset <= 0 ? '+' : '-';
       
       // Initialize setup state
-      context.services.memory.setFact('system', 'calendar_setup_step', 1, { source: 'explicit' });
-      context.services.memory.setFact('system', 'calendar_setup_data', {}, { source: 'explicit' });
-      context.services.memory.setFact('system', 'calendar_setup_pending', true, { source: 'explicit' });
+      context.services.context.setFact('system', 'calendar_setup_step', 1, { source: 'explicit' });
+      context.services.context.setFact('system', 'calendar_setup_data', {}, { source: 'explicit' });
+      context.services.context.setFact('system', 'calendar_setup_pending', true, { source: 'explicit' });
       
       response += `
 
@@ -305,13 +305,13 @@ export const calendarSetup: Tool = {
     const input = context.input.toLowerCase().trim();
     
     // FIRST: Check if reset is pending - handle reset confirmations here
-    const resetPending = context.services.memory.getFact('system', 'calendar_reset_pending');
+    const resetPending = context.services.context.getFact('system', 'calendar_reset_pending');
     if (resetPending?.value) {
       return handleResetConfirmation(context, input);
     }
     
     // Get current setup state
-    const setupStep = context.services.memory.getFact('system', 'calendar_setup_step');
+    const setupStep = context.services.context.getFact('system', 'calendar_setup_step');
     const currentStep = (setupStep?.value as number) || 0;
     
     // Check if this is "change settings" request to start fresh
@@ -344,7 +344,7 @@ export const calendarSetup: Tool = {
 function handleResetConfirmation(context: import('./types.js').ToolContext, input: string): string {
   // Cancel
   if (input === 'cancel' || input === 'no' || input === 'n') {
-    context.services.memory.setFact('system', 'calendar_reset_pending', false, { source: 'explicit' });
+    context.services.context.setFact('system', 'calendar_reset_pending', false, { source: 'explicit' });
     return "Calendar reset cancelled. Your settings are unchanged.";
   }
   
@@ -357,19 +357,19 @@ function handleResetConfirmation(context: import('./types.js').ToolContext, inpu
   const deleteEvents = input.includes('delete') && input.includes('event');
   
   // Clear the pending flag
-  context.services.memory.setFact('system', 'calendar_reset_pending', false, { source: 'explicit' });
+  context.services.context.setFact('system', 'calendar_reset_pending', false, { source: 'explicit' });
   
   // Clear calendar settings from memory
-  context.services.memory.setFact('system', 'calendar_onboarded', false, { source: 'explicit' });
-  context.services.memory.setFact('system', 'calendar_setup_pending', false, { source: 'explicit' });
-  context.services.memory.setFact('system', 'calendar_setup_data', {}, { source: 'explicit' });
+  context.services.context.setFact('system', 'calendar_onboarded', false, { source: 'explicit' });
+  context.services.context.setFact('system', 'calendar_setup_pending', false, { source: 'explicit' });
+  context.services.context.setFact('system', 'calendar_setup_data', {}, { source: 'explicit' });
   
   // Clear preferences
-  context.services.memory.setFact('preference', 'timezone', null, { source: 'explicit' });
-  context.services.memory.setFact('preference', 'event_duration', null, { source: 'explicit' });
-  context.services.memory.setFact('preference', 'ambiguous_time', null, { source: 'explicit' });
-  context.services.memory.setFact('preference', 'week_start', null, { source: 'explicit' });
-  context.services.memory.setFact('preference', 'event_reminder', null, { source: 'explicit' });
+  context.services.context.setFact('preference', 'timezone', null, { source: 'explicit' });
+  context.services.context.setFact('preference', 'event_duration', null, { source: 'explicit' });
+  context.services.context.setFact('preference', 'ambiguous_time', null, { source: 'explicit' });
+  context.services.context.setFact('preference', 'week_start', null, { source: 'explicit' });
+  context.services.context.setFact('preference', 'event_reminder', null, { source: 'explicit' });
   
   let response = `✓ **Calendar settings reset**\n`;
 
@@ -402,8 +402,8 @@ function startSetup(context: import('./types.js').ToolContext): string {
   const tzSign = tzOffset <= 0 ? '+' : '-';
   
   // Initialize setup state
-  context.services.memory.setFact('system', 'calendar_setup_step', 1, { source: 'explicit' });
-  context.services.memory.setFact('system', 'calendar_setup_data', {}, { source: 'explicit' });
+  context.services.context.setFact('system', 'calendar_setup_step', 1, { source: 'explicit' });
+  context.services.context.setFact('system', 'calendar_setup_data', {}, { source: 'explicit' });
   
   return `
 📅 **Calendar Setup** (1/5)
@@ -417,7 +417,7 @@ Is this correct?
 
 function processSetupStep(context: import('./types.js').ToolContext, step: number, input: string): string {
   // Get accumulated data
-  const dataFact = context.services.memory.getFact('system', 'calendar_setup_data');
+  const dataFact = context.services.context.getFact('system', 'calendar_setup_data');
   const data = (dataFact?.value as Record<string, unknown>) || {};
   
   const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -425,8 +425,8 @@ function processSetupStep(context: import('./types.js').ToolContext, step: numbe
   switch (step) {
     case 1: // Timezone
       data.timezone = (input === 'yes' || input === 'y' || input === 'correct') ? tz : input;
-      context.services.memory.setFact('system', 'calendar_setup_data', data, { source: 'explicit' });
-      context.services.memory.setFact('system', 'calendar_setup_step', 2, { source: 'explicit' });
+      context.services.context.setFact('system', 'calendar_setup_data', data, { source: 'explicit' });
+      context.services.context.setFact('system', 'calendar_setup_step', 2, { source: 'explicit' });
       return `
 ✓ Timezone: ${data.timezone}
 
@@ -442,8 +442,8 @@ How long are your typical meetings?
       else if (input.includes('90')) data.duration = 90;
       else data.duration = 60;  // 1h, 1hr, 60m, hour, etc. all default to 60
       
-      context.services.memory.setFact('system', 'calendar_setup_data', data, { source: 'explicit' });
-      context.services.memory.setFact('system', 'calendar_setup_step', 3, { source: 'explicit' });
+      context.services.context.setFact('system', 'calendar_setup_data', data, { source: 'explicit' });
+      context.services.context.setFact('system', 'calendar_setup_step', 3, { source: 'explicit' });
       return `
 ✓ Duration: ${data.duration} minutes
 
@@ -464,8 +464,8 @@ When you say "meeting at 3" without am/pm, should I:
       } else {
         data.ambiguousTime = 'afternoon';
       }
-      context.services.memory.setFact('system', 'calendar_setup_data', data, { source: 'explicit' });
-      context.services.memory.setFact('system', 'calendar_setup_step', 4, { source: 'explicit' });
+      context.services.context.setFact('system', 'calendar_setup_data', data, { source: 'explicit' });
+      context.services.context.setFact('system', 'calendar_setup_step', 4, { source: 'explicit' });
       return `
 ✓ Ambiguous times: ${data.ambiguousTime}
 
@@ -477,7 +477,7 @@ When you say "meeting at 3" without am/pm, should I:
 
     case 4: // Week start
       data.weekStart = (input.includes('mon')) ? 'monday' : 'sunday';
-      context.services.memory.setFact('system', 'calendar_setup_data', data, { source: 'explicit' });
+      context.services.context.setFact('system', 'calendar_setup_data', data, { source: 'explicit' });
       
       // Check if Signal is configured
       const signalConfig = context.services.config.signal;
@@ -486,7 +486,7 @@ When you say "meeting at 3" without am/pm, should I:
       if (!signalReady) {
         // Skip reminder step - Signal not configured
         data.reminder = 'none';
-        context.services.memory.setFact('system', 'calendar_setup_data', data, { source: 'explicit' });
+        context.services.context.setFact('system', 'calendar_setup_data', data, { source: 'explicit' });
         return `
 ✓ Week starts: ${data.weekStart}
 
@@ -505,7 +505,7 @@ For now, setting reminders to **off**.
 ` + completeSetup(context, data as unknown as SetupData);
       }
       
-      context.services.memory.setFact('system', 'calendar_setup_step', 5, { source: 'explicit' });
+      context.services.context.setFact('system', 'calendar_setup_step', 5, { source: 'explicit' });
       return `
 ✓ Week starts: ${data.weekStart}
 
@@ -541,16 +541,16 @@ function completeSetup(context: import('./types.js').ToolContext, data: SetupDat
   const { timezone, duration, ambiguousTime, weekStart, reminder } = data;
   
   // Store preferences in memory
-  context.services.memory.setFact('preference', 'timezone', timezone, { source: 'explicit' });
-  context.services.memory.setFact('preference', 'event_duration', duration, { source: 'explicit' });
-  context.services.memory.setFact('preference', 'ambiguous_time', ambiguousTime, { source: 'explicit' });
-  context.services.memory.setFact('preference', 'week_start', weekStart, { source: 'explicit' });
-  context.services.memory.setFact('preference', 'event_reminder', reminder, { source: 'explicit' });
+  context.services.context.setFact('preference', 'timezone', timezone, { source: 'explicit' });
+  context.services.context.setFact('preference', 'event_duration', duration, { source: 'explicit' });
+  context.services.context.setFact('preference', 'ambiguous_time', ambiguousTime, { source: 'explicit' });
+  context.services.context.setFact('preference', 'week_start', weekStart, { source: 'explicit' });
+  context.services.context.setFact('preference', 'event_reminder', reminder, { source: 'explicit' });
   
   // Clear setup state
-  context.services.memory.setFact('system', 'calendar_setup_step', 0, { source: 'explicit' });
-  context.services.memory.setFact('system', 'calendar_setup_pending', false, { source: 'explicit' });
-  context.services.memory.setFact('system', 'calendar_onboarded', true, { source: 'explicit' });
+  context.services.context.setFact('system', 'calendar_setup_step', 0, { source: 'explicit' });
+  context.services.context.setFact('system', 'calendar_setup_pending', false, { source: 'explicit' });
+  context.services.context.setFact('system', 'calendar_onboarded', true, { source: 'explicit' });
 
   const reminderDisplay = reminder === 'none' ? 'off' : reminder + ' before';
   const reminderMinutes = reminder === 'none' ? '0' : reminder;
@@ -600,7 +600,7 @@ export const resetCalendar: Tool = {
   execute: async (args, context) => {
     // Start the reset flow - show warning and set pending flag
     // Confirmations (yes/no/cancel) are handled by calendarSetup which has broader patterns
-    context.services.memory.setFact('system', 'calendar_reset_pending', true, { source: 'explicit' });
+    context.services.context.setFact('system', 'calendar_reset_pending', true, { source: 'explicit' });
     
     const eventCount = context.services.calendar.getUpcoming(100).length;
     
@@ -636,7 +636,7 @@ export const clarifyEventTime: Tool = {
   },
 
   execute: async (args, context) => {
-    const pendingEvent = context.services.memory.getFact('system', 'event_pending_clarification');
+    const pendingEvent = context.services.context.getFact('system', 'event_pending_clarification');
     
     if (!pendingEvent?.value) {
       // No pending event - this am/pm isn't for us
@@ -673,7 +673,7 @@ export const clarifyEventTime: Tool = {
     });
     
     // Clear pending state
-    context.services.memory.setFact('system', 'event_pending_clarification', null, { source: 'explicit' });
+    context.services.context.setFact('system', 'event_pending_clarification', null, { source: 'explicit' });
     
     const dateStr = startTime.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
     const timeStr = startTime.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });

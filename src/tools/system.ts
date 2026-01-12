@@ -67,7 +67,7 @@ export const status: Tool = {
   execute: async (args, context) => {
     const tasks = context.services.garden.getTasks({ status: 'active' });
     const inbox = tasks.filter(t => t.context === '@inbox');
-    const episodes = context.services.memory.getEpisodeCount();
+    const episodes = context.services.context.getEpisodeCount();
 
     const llmRouter = context.services.llm.isHealthy('router') ? '✓' : '✗';
     const llmFast = context.services.llm.isHealthy('fast') ? '✓' : '✗';

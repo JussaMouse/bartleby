@@ -1,4 +1,6 @@
-// src/services/memory.ts
+// src/services/personal-context.ts
+// The Personal Context Service - Bartleby's memory of you and your interactions
+
 import fs from 'fs';
 import path from 'path';
 import { Config, resolvePath, ensureDir } from '../config.js';
@@ -23,7 +25,7 @@ export interface UserFact {
   source: 'explicit' | 'inferred';
 }
 
-export class MemoryService {
+export class PersonalContextService {
   private storagePath: string;
   private episodes: Episode[] = [];
   private facts = new Map<string, UserFact>();
@@ -59,7 +61,7 @@ export class MemoryService {
       }
     }
 
-    info('MemoryService initialized', {
+    info('PersonalContextService initialized', {
       episodes: this.episodes.length,
       facts: this.facts.size,
     });

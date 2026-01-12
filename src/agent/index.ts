@@ -20,8 +20,8 @@ export class Agent {
    * Handle a simple request using Fast model with single tool call
    */
   async handleSimple(input: string): Promise<string> {
-    const profile = this.services.memory.getProfileSummary();
-    const lastSession = this.services.memory.getLastSession();
+    const profile = this.services.context.getProfileSummary();
+    const lastSession = this.services.context.getLastSession();
     const contextStr = lastSession ? `Last conversation: ${lastSession.summary}` : undefined;
 
     const tools = getToolDescriptions();
@@ -79,8 +79,8 @@ export class Agent {
    * Uses OpenAI function calling for structured tool invocation
    */
   async handleComplex(input: string): Promise<string> {
-    const profile = this.services.memory.getProfileSummary();
-    const lastSession = this.services.memory.getLastSession();
+    const profile = this.services.context.getProfileSummary();
+    const lastSession = this.services.context.getLastSession();
     const contextStr = lastSession ? `Last conversation: ${lastSession.summary}` : undefined;
 
     const systemPrompt = buildComplexPrompt(profile, contextStr);

@@ -33,7 +33,7 @@ export const recallConversation: Tool = {
       return 'Please specify what to recall. Example: what did we talk about the website';
     }
 
-    const episodes = context.services.memory.recallRelevant(topic, 5);
+    const episodes = context.services.context.recallRelevant(topic, 5);
 
     if (episodes.length === 0) {
       return "I don't have any conversations about that in my memory.";
@@ -83,7 +83,7 @@ export const setPreference: Tool = {
       return 'Please specify a preference. Example: I prefer morning meetings';
     }
 
-    context.services.memory.setFact('preference', preference, true, {
+    context.services.context.setFact('preference', preference, true, {
       source: 'explicit',
       confidence: 1.0,
     });
@@ -110,8 +110,8 @@ export const viewProfile: Tool = {
   },
 
   execute: async (args, context) => {
-    const summary = context.services.memory.getProfileSummary();
-    const episodeCount = context.services.memory.getEpisodeCount();
+    const summary = context.services.context.getProfileSummary();
+    const episodeCount = context.services.context.getEpisodeCount();
 
     if (!summary && episodeCount === 0) {
       return "I don't know much about you yet. As we chat, I'll learn your preferences and remember our conversations.";
@@ -147,7 +147,7 @@ export const clearFollowup: Tool = {
   execute: async (args, context) => {
     const { description } = args as { description: string };
 
-    const cleared = context.services.memory.clearMatchingFollowup(description);
+    const cleared = context.services.context.clearMatchingFollowup(description);
 
     if (cleared) {
       return `✓ Cleared follow-up: "${cleared}"`;

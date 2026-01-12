@@ -2,7 +2,7 @@
 import readline from 'readline';
 import { CommandRouter } from './router/index.js';
 import { Agent } from './agent/index.js';
-import { ServiceContainer } from './services/index.js';
+import { ServiceContainer, buildSessionOpener } from './services/index.js';
 import { info, warn, error, debug } from './utils/logger.js';
 
 export async function startRepl(
@@ -18,20 +18,21 @@ export async function startRepl(
 
   console.log('\n📋 Bartleby is ready. Type "help" for commands, "quit" to exit.\n');
 
-  // === Proactive Session Opener ===
+  // === Session Opener ===
+  // Proactive behavior at startup - surfaces relevant context
   try {
-    const opener = await services.proactive.getSessionOpener();
+    const opener = buildSessionOpener(services);
     if (opener) {
       console.log('─'.repeat(50));
       console.log(opener);
       console.log('─'.repeat(50));
     }
   } catch (err) {
-    warn('Proactive opener failed', { error: String(err) });
+    warn('Session opener failed', { error: String(err) });
   }
 
-  // Start memory session
-  services.memory.startSession();
+  // Start personal context session
+  services.context.startSession();
 
   rl.prompt();
 
@@ -43,8 +44,8 @@ export async function startRepl(
       return;
     }
 
-    // Record user message
-    services.memory.recordMessage(input, true);
+    // Record user message in personal context
+    services.context.recordMessage(input, true);
 
     try {
       // Route the input
@@ -82,13 +83,13 @@ export async function startRepl(
       // Check for exit
       if (response === '__EXIT__') {
         console.log('\nGoodbye! 👋\n');
-        await services.memory.endSession();
+        await services.context.endSession();
         rl.close();
         return;
       }
 
-      // Record response
-      services.memory.recordMessage(response, false);
+      // Record response in personal context
+      services.context.recordMessage(response, false);
 
       console.log(`\n${response}`);
     } catch (err) {
@@ -101,14 +102,14 @@ export async function startRepl(
 
   rl.on('close', async () => {
     info('Session ended');
-    await services.memory.endSession();
+    await services.context.endSession();
     process.exit(0);
   });
 
   // Handle Ctrl+C
   process.on('SIGINT', async () => {
     console.log('\n\nGoodbye! 👋\n');
-    await services.memory.endSession();
+    await services.context.endSession();
     rl.close();
   });
 }
