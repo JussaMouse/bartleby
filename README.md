@@ -166,8 +166,31 @@ Talk to Bartleby about what you want to change:
 | `change calendar settings` | Walk through calendar preferences, output `.env` values |
 | `I prefer 30 minute meetings` | Suggest the config change and output the `.env` line |
 | `my week starts on Monday` | Same — conversation → `.env` output |
+| `reset calendar` | Clear settings and re-trigger onboarding (suggests backup first) |
 
 Copy the output to your `.env` file. On next startup, Bartleby uses the new values.
+
+### Resetting Settings
+
+If you want to start fresh or re-run onboarding:
+
+```
+> reset calendar
+⚠️ Reset Calendar
+
+This will:
+• Clear calendar settings (timezone, duration, reminders, etc.)
+• Trigger onboarding again on your next event
+
+💾 Backup first! Your current settings are in .env.
+Copy the CALENDAR_* lines somewhere safe to restore later.
+
+→ yes - reset settings only
+→ yes delete events - reset settings AND clear all events  
+→ cancel - abort
+```
+
+Your events are preserved unless you explicitly say "yes delete events".
 
 ## Command Reference
 

@@ -426,4 +426,113 @@ SIGNAL_ENABLED=${reminder !== 'none' ? 'true' : 'false'}
 Settings saved! You can change these anytime with "change calendar settings".`;
 }
 
-export const calendarTools: Tool[] = [showCalendar, showToday, addEvent, calendarSetup];
+export const resetCalendar: Tool = {
+  name: 'resetCalendar',
+  description: 'Reset calendar settings and optionally clear all events',
+
+  routing: {
+    patterns: [
+      /^reset\s+calendar$/i,
+      /^clear\s+calendar\s+settings?$/i,
+      /^reset\s+calendar\s+settings?$/i,
+      /^yes\s*$/i,  // Catch confirmation
+      /^yes\s+delete\s+events?$/i,
+      /^cancel$/i,
+      /^no$/i,
+    ],
+    keywords: {
+      verbs: ['reset', 'clear'],
+      nouns: ['calendar', 'calendar settings'],
+    },
+    priority: 95,
+  },
+
+  execute: async (args, context) => {
+    const input = context.input.toLowerCase().trim();
+    const pendingReset = context.services.memory.getFact('system', 'calendar_reset_pending');
+    
+    // Handle confirmation/cancellation if reset is pending
+    if (pendingReset?.value) {
+      // Cancel
+      if (input === 'cancel' || input === 'no' || (!input.startsWith('yes') && input !== 'confirm')) {
+        context.services.memory.setFact('system', 'calendar_reset_pending', false, { source: 'explicit' });
+        return "Calendar reset cancelled. Your settings are unchanged.";
+      }
+      
+      // Confirm - do the reset
+      const deleteEvents = input.includes('delete') && input.includes('event');
+      
+      // Clear the pending flag
+      context.services.memory.setFact('system', 'calendar_reset_pending', false, { source: 'explicit' });
+      
+      // Clear calendar settings from memory
+      context.services.memory.setFact('system', 'calendar_onboarded', false, { source: 'explicit' });
+      context.services.memory.setFact('system', 'calendar_setup_step', 0, { source: 'explicit' });
+      context.services.memory.setFact('system', 'calendar_setup_pending', false, { source: 'explicit' });
+      context.services.memory.setFact('system', 'calendar_setup_data', {}, { source: 'explicit' });
+      
+      // Clear preferences
+      context.services.memory.setFact('preference', 'timezone', null, { source: 'explicit' });
+      context.services.memory.setFact('preference', 'event_duration', null, { source: 'explicit' });
+      context.services.memory.setFact('preference', 'ambiguous_time', null, { source: 'explicit' });
+      context.services.memory.setFact('preference', 'week_start', null, { source: 'explicit' });
+      context.services.memory.setFact('preference', 'event_reminder', null, { source: 'explicit' });
+      
+      let response = `
+✓ **Calendar settings reset**
+
+• Onboarding will trigger on your next event
+• Settings cleared from memory`;
+
+      if (deleteEvents) {
+        response += `
+
+To delete events, remove the database file:
+  rm database/calendar.sqlite3
+
+Then restart Bartleby.`;
+      } else {
+        const eventCount = context.services.calendar.getUpcoming(100).length;
+        response += `
+• Your ${eventCount} event(s) are preserved`;
+      }
+
+      response += `
+
+**To restore settings:** Copy your backed-up .env values back and restart.`;
+
+      return response;
+    }
+    
+    // Not in pending state - only respond to reset commands
+    if (!input.includes('reset') && !input.includes('clear')) {
+      // Not a reset command and not in pending state - don't handle
+      // This prevents "yes" from triggering reset when not expected
+      return "I'm not sure what you mean. Try 'reset calendar' to reset calendar settings.";
+    }
+    
+    // Start the reset flow - show warning
+    context.services.memory.setFact('system', 'calendar_reset_pending', true, { source: 'explicit' });
+    
+    const eventCount = context.services.calendar.getUpcoming(100).length;
+    
+    return `
+⚠️ **Reset Calendar**
+
+This will:
+• Clear calendar settings (timezone, duration, reminders, etc.)
+• Trigger onboarding again on your next event
+
+You have **${eventCount} upcoming event(s)** - these will NOT be deleted.
+
+**💾 Backup first!** Your current settings are in \`.env\`.
+Copy the CALENDAR_* lines somewhere safe to restore later.
+
+To confirm, type:
+→ **yes** - reset settings only
+→ **yes delete events** - reset settings AND clear all events
+→ **cancel** - abort`;
+  },
+};
+
+export const calendarTools: Tool[] = [showCalendar, showToday, addEvent, calendarSetup, resetCalendar];
