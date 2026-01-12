@@ -151,10 +151,28 @@ export const addTask: Tool = {
           today.setDate(today.getDate() + daysUntil);
           dueDate = today.toISOString().split('T')[0];
         } else {
-          // Try to parse as generic date string
-          const parsed = new Date(dueStr);
-          if (!isNaN(parsed.getTime())) {
+          // Try MM/DD or M/D format (assume current year)
+          const mdMatch = dueStr.match(/^(\d{1,2})\/(\d{1,2})$/);
+          if (mdMatch) {
+            const month = parseInt(mdMatch[1], 10) - 1; // 0-indexed
+            const day = parseInt(mdMatch[2], 10);
+            const year = today.getFullYear();
+            const parsed = new Date(year, month, day);
+            // If date is in the past, assume next year
+            if (parsed < today) {
+              parsed.setFullYear(year + 1);
+            }
             dueDate = parsed.toISOString().split('T')[0];
+          } else {
+            // Try to parse as generic date string with current year context
+            const parsed = new Date(dueStr);
+            if (!isNaN(parsed.getTime())) {
+              // Fix year if it defaulted to something weird
+              if (parsed.getFullYear() < 2020) {
+                parsed.setFullYear(today.getFullYear());
+              }
+              dueDate = parsed.toISOString().split('T')[0];
+            }
           }
         }
       }
