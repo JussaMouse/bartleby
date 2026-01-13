@@ -76,26 +76,34 @@ Everything lives on your machine in three places.
 
 Your personal wiki — plain markdown files you own forever.
 
-The Garden is where everything lives: actions and projects, notes on topics you're researching, encyclopedia entries for concepts you want to remember, contacts, daily journals, reading lists. Over time it becomes your external brain — a comprehensive, searchable map of everything you know and everything you're working on.
+The Garden is where your knowledge lives: notes on topics you're researching, encyclopedia entries for concepts you want to remember, contacts, daily journals, reading lists. Over time it becomes your external brain — a searchable map of everything you know.
 
-**Page types:** actions, projects, notes, entries (wiki pages), contacts, daily journals, lists, and media references.
+Your [GTD workflow](#gtd-workflow) lives here too — actions, projects, and inbox items are all Garden pages with special fields.
 
-**Common commands:**
+**Page types:**
+
+| Type | What it's for |
+|------|---------------|
+| `note` | Meeting notes, scratch, working documents |
+| `entry` | Wiki/encyclopedia pages — your accumulated knowledge |
+| `contact` | People, with email/phone/birthday |
+| `daily` | Journal entries, one per day |
+| `list` | Curated collections (reading list, gift ideas) |
+| `media` | References to ingested documents |
+
+**Commands:**
 ```
-new action <text>       Create an action
 new note <title>        Create a note (prompts for content)
-new project <name>      Create a project
-add contact <name>      Create a contact
-capture <text>          Quick inbox capture
-show next actions       List actions by context
-show projects           List active projects
+add contact <name>      Add a person
 recent                  Last 10 modified pages
 open <title>            View any page
+show notes              List all notes
+show contacts           List all contacts
 ```
 
 **Files are the source of truth.** Edit them in any text editor — Bartleby watches for changes and syncs automatically.
 
-**When you complete or delete something:** The file is removed from the Garden and a one-line record is appended to `archive.log`. This keeps your Garden clean while maintaining a permanent record.
+**When you complete or delete something:** The file is removed and a record is appended to `archive.log`. This keeps your Garden clean while maintaining a permanent log.
 
 Location: `./garden/`
 
