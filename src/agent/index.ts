@@ -188,7 +188,7 @@ export class Agent {
       addTask: {
         type: 'object',
         properties: {
-          description: { type: 'string', description: 'Task description' },
+          description: { type: 'string', description: 'Action description' },
           context: { type: 'string', description: 'GTD context (e.g., @home, @errands)' },
           project: { type: 'string', description: 'Project name' },
         },
@@ -199,7 +199,7 @@ export class Agent {
         properties: {
           identifier: { 
             oneOf: [{ type: 'string' }, { type: 'number' }],
-            description: 'Task number or title' 
+            description: 'Action number or title' 
           },
         },
         required: ['identifier'],

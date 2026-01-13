@@ -520,7 +520,7 @@ export const status: Tool = {
 **Bartleby Status**
 ─────────────────────────────────────
 **Data**
-  Tasks: ${tasks.length} active (${inbox.length} in inbox)
+  Actions: ${tasks.length} active (${inbox.length} in inbox)
   Events today: ${todayEvents.length}
   Context: ${episodes} conversation(s)
   Shed: ${sources.length} document(s)

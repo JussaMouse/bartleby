@@ -60,7 +60,7 @@ export const viewNextActions: Tool = {
 
 export const addTask: Tool = {
   name: 'addTask',
-  description: 'Add a new task',
+  description: 'Add a new action',
 
   routing: {
     patterns: [
@@ -203,7 +203,7 @@ export const addTask: Tool = {
     };
 
     if (!description) {
-      return 'Please provide a task description. Example: add task buy milk @errands';
+      return 'Please provide an action description. Example: add task buy milk @errands';
     }
 
     const task = context.services.garden.addTask(description, ctx || '@inbox', project, dueDate);
@@ -219,7 +219,7 @@ export const addTask: Tool = {
 
 export const markDone: Tool = {
   name: 'markDone',
-  description: 'Mark a task as complete',
+  description: 'Mark an action as complete',
 
   routing: {
     patterns: [
@@ -256,13 +256,13 @@ export const markDone: Tool = {
     const { identifier } = args as { identifier: string | number };
 
     if (!identifier) {
-      return 'Please specify which task to complete. Example: done 1';
+      return 'Please specify which action to complete. Example: done 1';
     }
 
     const completed = context.services.garden.completeTask(identifier);
 
     if (!completed) {
-      return `Task not found: "${identifier}". Try "show next actions" to see the list.`;
+      return `Action not found: "${identifier}". Try "show next actions" to see the list.`;
     }
 
     return `✓ Completed: "${completed.title}"`;
