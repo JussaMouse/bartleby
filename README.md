@@ -98,7 +98,6 @@ Pages are dynamic so `list` and `project` can programmatically display linked ac
 ```
 new note <title>        Create a note (prompts for content)
 add contact <name>      Add a person
-recent                  Last 10 modified pages
 open <title>            View any page
 show notes <project>    List notes tagged with project
 show contacts           List all contacts

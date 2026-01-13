@@ -85,6 +85,9 @@ export const addTask: Tool = {
       description = input.replace(/^(add|create|new)\s+(task|action|todo|to\s+list)\s*/i, '').trim();
     }
 
+    // Strip surrounding quotes from description
+    description = description.replace(/^["'](.*)["']$/, '$1').trim();
+
     // Parse inline context (@) and project (+)
     let context: string | undefined;
     let project: string | undefined;
@@ -96,10 +99,10 @@ export const addTask: Tool = {
       description = description.replace(/@\w+/, '').trim();
     }
 
-    const projectMatch = description.match(/\+(\w+)/);
+    const projectMatch = description.match(/\+([\w-]+)/);
     if (projectMatch) {
       project = projectMatch[1];
-      description = description.replace(/\+\w+/, '').trim();
+      description = description.replace(/\+[\w-]+/, '').trim();
     }
 
     // Parse due date - multiple formats supported:
