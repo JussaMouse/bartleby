@@ -2,10 +2,6 @@
 
 A local-first AI assistant that runs entirely on your machine. Your data stays yours.
 
----
-
-## Index
-
 - [What is Bartleby?](#what-is-bartleby)
 - [Quick Start](#quick-start)
 - [Your Data](#your-data)
