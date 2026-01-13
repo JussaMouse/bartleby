@@ -19,7 +19,7 @@ The personal exocortex, locally.
 
 ## What is Bartleby?
 
-Bartleby is a personal AI assistant that runs entirely on your machine using local LLMs. No cloud. No subscriptions. No data leaving your computer.
+Bartleby is a personal assistant that runs entirely on your machine. It works best paired with locally run LLMs.
 
 **Why local?**
 - **Privacy** — Your thoughts, tasks, and documents never leave your machine
