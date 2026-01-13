@@ -559,6 +559,15 @@ remind me <msg> in <time>    Set reminder
 
 You never miss something because it's in the "wrong system." Due dates from GTD, calendar events, and reminders all flow into one temporal view.
 
+### Notifications
+
+When scheduled items come due, Bartleby notifies you:
+
+- **Console** — Always shows in your terminal
+- **Signal** — Optionally sends to your phone (see [Notifications](#notifications-signal))
+
+Bartleby checks for due items periodically. If you weren't running when something was due, it handles missed items on next startup (configurable via `SCHEDULER_MISSED_REMINDERS`).
+
 ---
 
 ## Configuration
