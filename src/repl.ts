@@ -206,6 +206,88 @@ async function handleMissedReminders(
   }
 }
 
+/**
+ * Tab completion for garden page titles, contexts, and projects.
+ */
+function createCompleter(services: ServiceContainer) {
+  return (line: string): [string[], string] => {
+    const lowerLine = line.toLowerCase();
+    
+    // Commands that take a page title
+    const titleCommands = ['open ', 'show ', 'edit ', 'read '];
+    const needsTitle = titleCommands.some(cmd => lowerLine.startsWith(cmd));
+    
+    if (needsTitle) {
+      // Extract the partial title after the command
+      const cmdMatch = line.match(/^(\w+\s+)(.*)$/i);
+      if (cmdMatch) {
+        const prefix = cmdMatch[1];
+        const partial = cmdMatch[2].toLowerCase();
+        
+        // Get all page titles
+        const pages = [
+          ...services.garden.getTasks({ status: 'active' }),
+          ...services.garden.getByType('project'),
+          ...services.garden.getByType('note'),
+          ...services.garden.getByType('contact'),
+        ];
+        
+        const titles = pages.map(p => p.title);
+        const matches = titles.filter(t => t.toLowerCase().startsWith(partial));
+        
+        if (matches.length > 0) {
+          return [matches.map(m => prefix + m), line];
+        }
+      }
+    }
+    
+    // Context completion (@)
+    if (line.includes('@') && !line.includes('@inbox')) {
+      const atMatch = line.match(/@(\w*)$/);
+      if (atMatch) {
+        const partial = atMatch[1].toLowerCase();
+        const contexts = ['@phone', '@computer', '@errands', '@home', '@office', '@waiting', '@focus', '@anywhere'];
+        const matches = contexts.filter(c => c.toLowerCase().startsWith('@' + partial));
+        
+        if (matches.length > 0) {
+          const beforeAt = line.slice(0, line.lastIndexOf('@'));
+          return [matches.map(c => beforeAt + c), line];
+        }
+      }
+    }
+    
+    // Project completion (+)
+    if (line.includes('+')) {
+      const plusMatch = line.match(/\+([\w-]*)$/);
+      if (plusMatch) {
+        const partial = plusMatch[1].toLowerCase();
+        const projects = services.garden.getByType('project');
+        const slugs = projects.map(p => '+' + p.title.toLowerCase().replace(/\s+/g, '-'));
+        const matches = slugs.filter(s => s.startsWith('+' + partial));
+        
+        if (matches.length > 0) {
+          const beforePlus = line.slice(0, line.lastIndexOf('+'));
+          return [matches.map(s => beforePlus + s), line];
+        }
+      }
+    }
+    
+    // Command completion
+    const commands = [
+      'help', 'status', 'quit',
+      'new action ', 'new note ', 'new project ',
+      'show next actions', 'show projects', 'show notes', 'show contacts',
+      'show inbox', 'process inbox', 'show overdue', 'show waiting',
+      'capture ', 'done ', 'edit ', 'open ', 'recent',
+      'today', 'calendar', 'add event ', 'remind me ',
+      'ingest ', 'ask shed ', 'list sources',
+    ];
+    
+    const matches = commands.filter(c => c.startsWith(lowerLine));
+    return [matches, line];
+  };
+}
+
 export async function startRepl(
   router: CommandRouter,
   agent: Agent,
@@ -215,6 +297,7 @@ export async function startRepl(
     input: process.stdin,
     output: process.stdout,
     prompt: '\n> ',
+    completer: createCompleter(services),
   });
 
   console.log('\n📋 Bartleby is ready. Type "help" for commands, "quit" to exit.\n');
