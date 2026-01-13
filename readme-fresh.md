@@ -531,7 +531,7 @@ Everything with a "when" shows up in one place.
 |--------|------|--------|
 | 📅 | Events | Calendar |
 | ⚠️ | Deadlines | Actions with due dates |
-| 🔔 | Automation | Scheduler |
+| ⚙️ | Automation | Scheduler |
 
 ### Commands
 
@@ -551,7 +551,7 @@ remind me <msg> in <time>    Set reminder
 
   09:00  📅 Team standup
   14:00  📅 1:1 with Sarah
-  15:30  🔔 Stretch break
+  15:30  ⚙️ Stretch break
   17:00  ⚠️ Submit report (due)
 ```
 
