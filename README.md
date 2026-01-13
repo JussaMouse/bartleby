@@ -10,8 +10,6 @@ The personal exocortex, locally.
 - [Configuration](#configuration)
 - [Troubleshooting](#troubleshooting)
 
----
-
 ## What is Bartleby?
 
 Bartleby is a personal assistant that runs entirely on your machine. It works best paired with locally run LLMs.
