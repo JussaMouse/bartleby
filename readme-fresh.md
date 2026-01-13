@@ -76,12 +76,15 @@ Everything lives on your machine in three places.
 
 Your personal wiki — plain markdown files you own forever.
 
-The Garden is where your knowledge lives: notes on topics you're researching, encyclopedia entries for concepts you want to remember, contacts, daily journals, reading lists. Over time it becomes your external brain — a searchable map of everything you know.
+The Garden is where your knowledge lives: wiki-like pages, projects, and notes. But the same system includes contacts, events, daily journals, and reference media. Over time it becomes your external brain — a searchable map of everything you know.
 
-Your [GTD workflow](#gtd-workflow) lives here too — actions, projects, and inbox items are all Garden pages with special fields.
+Your productivity lives here too — actions, projects, and inbox items are all special page types in The Garden.
+
+It consists of two layers: the **files** and the **database**.
+- The files are a flat dir of markdown files, one for each page. The files each have lines of metadata at the bottom (YAML backmatter).
+- The database system monitors these files for changes and updates the database. A db gives Bartleby the speed and flexibility to make the most of this centralized store of knowledge.
 
 **Page types:**
-
 | Type | What it's for |
 |------|---------------|
 | `note` | Meeting notes, scratch, working documents |
@@ -91,7 +94,7 @@ Your [GTD workflow](#gtd-workflow) lives here too — actions, projects, and inb
 | `list` | Curated collections (reading list, gift ideas) |
 | `media` | References to ingested documents |
 
-Page types are dynamic so `list` and `project` can programmatically display linked actions, notes, calendar events, contacts, etc. via metadata tagging. The Garden achieves this with backmatter — YAML metadata at the bottom of each markdown file.
+Pages are dynamic so `list` and `project` can programmatically display linked actions, notes, calendar events, contacts, etc. via tagging.
 
 **Commands:**
 ```
@@ -111,7 +114,7 @@ Location: `./garden/`
 
 ### The Shed
 
-Your document library. Ingest files, query them with natural language.
+Your reference library. Ingest PDF, YouTube, web page, ebook. Query them with natural language. This is where you feed Bartleby the expertice he needs to help do knowledge work.
 
 **How it works:**
 1. You ingest a document (PDF, markdown, text)
@@ -195,7 +198,7 @@ GTD organizes your work into lists:
 
 | List | What goes here | Command |
 |------|----------------|---------|
-| **Inbox** | Everything you capture, before processing | `show inbox` |
+| **Inbox** | Everything you capture, before processing | `process inbox` |
 | **Next Actions** | Actions you can do now, organized by context | `show next actions` |
 | **Projects** | Outcomes you're working toward | `show projects` |
 | **Someday/Maybe** | Things you might do later | `show someday` |
@@ -249,7 +252,7 @@ A project is any outcome requiring more than one action. The key discipline: eve
 > new action call accountant +2025-taxes @phone
 ```
 
-The `+project-name` links actions to their project. View a project to see all linked actions:
+The `+project-name` links actions to their project. View a project to see all associated actions and more:
 
 ```
 > open 2025 taxes
@@ -273,7 +276,7 @@ Capture → Clarify → Organize → Review → Do
 - **No:** Delete it, file it as reference, or put it in Someday/Maybe.
 
 ```
-> show inbox
+> process inbox
 > new action call insurance claims dept @phone
 > done 2
 ```
@@ -309,7 +312,7 @@ Everything with a "when" shows up in one place.
 |--------|------|--------|
 | 📅 | Events | Calendar |
 | ⚠️ | Deadlines | Actions with due dates |
-| ⚙️ | Scheduled | Reminders and recurring items |
+| 🔔 | Scheduled | Reminders and recurring items |
 
 ### Commands
 
@@ -405,11 +408,11 @@ SIGNAL_NUMBER=+1234567890      # Your Signal number
 SIGNAL_RECIPIENT=+0987654321   # Where to send notifications
 ```
 
-**Setup:**
+**Signal Setup:**
 1. Install [signal-cli](https://github.com/AsamK/signal-cli)
 2. Register/link your number
 3. Configure the settings above
-4. Test: `remind me test in 1 min`
+4. Test: `msg me in 1 min: test`
 
 ### Presence
 
