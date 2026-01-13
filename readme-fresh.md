@@ -91,7 +91,7 @@ Your [GTD workflow](#gtd-workflow) lives here too — actions, projects, and inb
 | `list` | Curated collections (reading list, gift ideas) |
 | `media` | References to ingested documents |
 
-There are also dynamic page types like `project` that automatically show linked actions, notes, and calendar events. The Garden achieves this with backmatter — YAML metadata at the *bottom* of each file, so your content comes first and the machine-readable fields stay out of the way.
+Page types are dynamic so `list` and `project` can programmatically display linked actions, notes, calendar events, contacts, etc. via metadata tagging. The Garden achieves this with backmatter — YAML metadata at the bottom of each markdown file.
 
 **Commands:**
 ```
@@ -99,7 +99,7 @@ new note <title>        Create a note (prompts for content)
 add contact <name>      Add a person
 recent                  Last 10 modified pages
 open <title>            View any page
-show notes              List all notes
+show notes <project>    List notes tagged with project
 show contacts           List all contacts
 ```
 
