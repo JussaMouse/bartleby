@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Bartleby Dashboard</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div id="app">
+    <header>
+      <h1>Bartleby</h1>
+      <span class="status" id="status">Connecting...</span>
+    </header>
+    
+    <main id="panels">
+      <!-- Panels are added dynamically -->
+    </main>
+    
+    <footer>
+      <button onclick="addPanel('inbox')">+ Inbox</button>
+      <button onclick="addPanel('next-actions')">+ Actions</button>
+      <button onclick="addPanel('projects')">+ Projects</button>
+      <button onclick="addPanel('today')">+ Today</button>
+      <button onclick="addPanel('recent')">+ Recent</button>
+      <button onclick="promptProjectPanel()">+ Project...</button>
+    </footer>
+  </div>
+  
+  <script src="app.js"></script>
+</body>
+</html>

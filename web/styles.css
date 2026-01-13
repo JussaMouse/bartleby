@@ -1,0 +1,242 @@
+/* Bartleby Dashboard - Minimal Dark Theme */
+
+:root {
+  --bg: #0d1117;
+  --bg-panel: #161b22;
+  --bg-hover: #21262d;
+  --border: #30363d;
+  --text: #c9d1d9;
+  --text-muted: #8b949e;
+  --text-bright: #f0f6fc;
+  --accent: #58a6ff;
+  --success: #3fb950;
+  --warning: #d29922;
+  --danger: #f85149;
+  --font-mono: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+  --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body {
+  height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+#app {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+/* Header */
+header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 20px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-panel);
+}
+
+header h1 {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-bright);
+  letter-spacing: 0.5px;
+}
+
+.status {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.status.connected {
+  color: var(--success);
+}
+
+.status.disconnected {
+  color: var(--danger);
+}
+
+/* Main panels area */
+main#panels {
+  flex: 1;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 1px;
+  background: var(--border);
+  overflow: auto;
+}
+
+/* Panel */
+.panel {
+  background: var(--bg-panel);
+  display: flex;
+  flex-direction: column;
+  min-height: 200px;
+  max-height: 100%;
+}
+
+.panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg);
+}
+
+.panel-header h2 {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.panel-close {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 16px;
+  padding: 0 4px;
+}
+
+.panel-close:hover {
+  color: var(--danger);
+}
+
+.panel-content {
+  flex: 1;
+  padding: 14px;
+  overflow: auto;
+  font-family: var(--font-mono);
+  font-size: 13px;
+}
+
+/* Content styling */
+.panel-content ul {
+  list-style: none;
+}
+
+.panel-content li {
+  padding: 6px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.panel-content li:last-child {
+  border-bottom: none;
+}
+
+.item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.item-title {
+  color: var(--text-bright);
+}
+
+.item-meta {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.item-context {
+  color: var(--accent);
+}
+
+.item-project {
+  color: var(--warning);
+}
+
+.item-due {
+  color: var(--danger);
+}
+
+.item-due.overdue {
+  color: var(--danger);
+  font-weight: 600;
+}
+
+/* Empty state */
+.empty {
+  color: var(--text-muted);
+  font-style: italic;
+  text-align: center;
+  padding: 40px 20px;
+}
+
+/* Footer */
+footer {
+  display: flex;
+  gap: 8px;
+  padding: 12px 20px;
+  border-top: 1px solid var(--border);
+  background: var(--bg-panel);
+  flex-wrap: wrap;
+}
+
+footer button {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  padding: 6px 12px;
+  border-radius: 4px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+footer button:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+  border-color: var(--text-muted);
+}
+
+/* Scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--bg);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted);
+}
+
+/* Section headers in panels */
+.section-header {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-top: 16px;
+  margin-bottom: 8px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--border);
+}
+
+.section-header:first-child {
+  margin-top: 0;
+}

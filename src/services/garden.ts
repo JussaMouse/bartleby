@@ -534,6 +534,14 @@ export class GardenService {
     info('Initial file sync complete', { files: files.length });
   }
 
+  /**
+   * Public method to resync all files from disk.
+   * Used by dashboard to refresh after external changes.
+   */
+  syncAll(): void {
+    this.syncFromFiles();
+  }
+
   private startWatcher(): void {
     this.watcher = chokidar.watch(this.gardenPath, {
       ignored: [/(^|[\/\\])\./, /archive\.log$/],
