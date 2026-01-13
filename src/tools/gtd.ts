@@ -348,6 +348,118 @@ export const markDone: Tool = {
   },
 };
 
+export const editAction: Tool = {
+  name: 'editAction',
+  description: 'Edit an existing action (context, project, due date)',
+
+  routing: {
+    patterns: [
+      /^edit\s+(?:action\s+)?(\d+)\s+(.+)$/i,
+      /^edit\s+(?:action\s+)?(.+?)\s+(@[\w-]+|\+[\w-]+|due:\S+)(.*)$/i,
+      /^move\s+(\d+)\s+(@\w+)$/i,
+    ],
+    keywords: {
+      verbs: ['edit', 'move', 'change', 'update'],
+      nouns: ['action', 'task', 'context'],
+    },
+    examples: ['edit 1 @phone', 'edit 1 +new-project', 'edit screenshot @home', 'move 1 @errands'],
+    priority: 92,
+  },
+
+  parseArgs: (input, match) => {
+    if (!match) return { identifier: null, changes: '' };
+    
+    // Pattern 1: edit 1 @phone (number + changes)
+    // Pattern 2: edit screenshot @home (name + changes)
+    // Pattern 3: move 1 @phone
+    if (match[0].toLowerCase().startsWith('move')) {
+      return { identifier: match[1], changes: match[2] };
+    }
+    
+    const identifier = match[1];
+    const changes = (match[2] + (match[3] || '')).trim();
+    return { identifier, changes };
+  },
+
+  execute: async (args, context) => {
+    const { identifier, changes } = args as { identifier: string; changes: string };
+
+    if (!identifier || !changes) {
+      return 'Usage: edit <number or name> <@context | +project | due:date>\nExample: edit 1 @phone';
+    }
+
+    // Find the action
+    const tasks = context.services.garden.getTasks({ status: 'active' });
+    let record = null;
+
+    const num = parseInt(identifier);
+    if (!isNaN(num) && num > 0 && num <= tasks.length) {
+      record = tasks[num - 1];
+    } else {
+      // Search by partial title match
+      const search = identifier.toLowerCase();
+      record = tasks.find(t => t.title.toLowerCase().includes(search));
+    }
+
+    if (!record) {
+      return `Action not found: "${identifier}". Try "show next actions" to see the list.`;
+    }
+
+    // Parse changes
+    const updates: Record<string, string | undefined> = {};
+    
+    const contextMatch = changes.match(/@([\w-]+)/);
+    if (contextMatch) {
+      updates.context = `@${contextMatch[1]}`;
+    }
+
+    const projectMatch = changes.match(/\+([\w-]+)/);
+    if (projectMatch) {
+      updates.project = projectMatch[1];
+    }
+
+    const dueMatch = changes.match(/due:(\S+)/i);
+    if (dueMatch) {
+      // Simple due date handling - could reuse the full parser later
+      const dueStr = dueMatch[1].toLowerCase();
+      const today = new Date();
+      
+      if (dueStr === 'today') {
+        updates.due_date = today.toISOString().split('T')[0];
+      } else if (dueStr === 'tomorrow') {
+        today.setDate(today.getDate() + 1);
+        updates.due_date = today.toISOString().split('T')[0];
+      } else if (/^\d{4}-\d{2}-\d{2}$/.test(dueStr)) {
+        updates.due_date = dueStr;
+      } else {
+        // Day of week
+        const days = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+        const dayIndex = days.indexOf(dueStr);
+        if (dayIndex !== -1) {
+          const currentDay = today.getDay();
+          let daysUntil = dayIndex - currentDay;
+          if (daysUntil <= 0) daysUntil += 7;
+          today.setDate(today.getDate() + daysUntil);
+          updates.due_date = today.toISOString().split('T')[0];
+        }
+      }
+    }
+
+    if (Object.keys(updates).length === 0) {
+      return 'No valid changes detected. Use @context, +project, or due:date';
+    }
+
+    context.services.garden.update(record.id, updates);
+
+    const parts = [`✓ Updated: "${record.title}"`];
+    if (updates.context) parts.push(`context → ${updates.context}`);
+    if (updates.project) parts.push(`project → +${updates.project}`);
+    if (updates.due_date) parts.push(`due → ${updates.due_date}`);
+
+    return parts.join('\n');
+  },
+};
+
 export const capture: Tool = {
   name: 'capture',
   description: 'Quick capture to inbox',
@@ -878,6 +990,7 @@ export const gtdTools: Tool[] = [
   openPage,
   showTagged,
   markDone,
+  editAction,
   capture,
   showWaitingFor,
   showOverdue,
