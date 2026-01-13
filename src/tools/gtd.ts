@@ -72,7 +72,7 @@ export const addTask: Tool = {
       verbs: ['add', 'create', 'new', 'make'],
       nouns: ['task', 'action', 'todo', 'item'],
     },
-    examples: ['add action buy milk', 'new action call dentist', 'add action report due:friday', 'new action: drive home (due 5pm)'],
+    examples: ['new action buy milk', 'new action call dentist @phone', 'new action report due:friday', 'new action: drive home (due 5pm)'],
     priority: 90,
   },
 
@@ -203,7 +203,7 @@ export const addTask: Tool = {
     };
 
     if (!description) {
-      return 'Please provide an action description. Example: add action buy milk @errands';
+      return 'Please provide an action description. Example: new action buy milk @errands';
     }
 
     const task = context.services.garden.addTask(description, ctx || '@inbox', project, dueDate);
@@ -428,7 +428,7 @@ export const addProject: Tool = {
       status: 'active',
     });
 
-    return `✓ Created project: "${project.title}"\n\nAdd actions with: add action <text> +${project.title.toLowerCase().replace(/\s+/g, '-')}`;
+    return `✓ Created project: "${project.title}"\n\nAdd actions with: new action <text> +${project.title.toLowerCase().replace(/\s+/g, '-')}`;
   },
 };
 
@@ -472,7 +472,7 @@ export const showProjects: Tool = {
       if (actionCount > 0) {
         lines.push(`  ${actionCount} action(s) — Next: ${nextAction?.title || 'none'}`);
       } else {
-        lines.push(`  ⚠️ No actions — add one with: add action <text> +${projectSlug}`);
+        lines.push(`  ⚠️ No actions — add one with: new action <text> +${projectSlug}`);
       }
     }
 

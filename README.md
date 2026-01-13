@@ -11,7 +11,7 @@ A local-first AI assistant that lives on your machine. Your data stays yours.
 Bartleby is your personal assistant who remembers everything, helps you get things done, and keeps your knowledge organized. Behind the scenes, everything is stored as simple markdown files you can edit, backup, or sync anywhere.
 
 ```
-> add action call mom
+> new action call mom
 ✓ Added: "call mom" (@inbox)
 
 > new note meeting with scott
@@ -44,7 +44,7 @@ Configure in `.env` with `SIGNAL_ENABLED=true`. See `help reminders`.
 
 **Garden** — Your personal wiki (markdown files):
 - Actions, notes, contacts, projects
-- `add action`, `new note`, `show next actions`
+- `new action`, `new note`, `show next actions`
 
 **Shed** — Documents you want to search:
 - `ingest <file or url>` (indexes for search + creates wiki page)
@@ -82,48 +82,27 @@ pnpm start
 
 ## Common Commands
 
-### Actions (GTD)
 ```
-add action <text>            Add an action
-add action <text> @phone     With context
-add action <text> +project   With project
-add action <text> due:friday With due date
-show next actions            List by context
-show overdue                 Past-due actions
-done <number>                Complete action
-capture <text>               Quick inbox capture
-```
+new action <text>            Add a GTD action
+new action <text> @phone     ...with context
+new action <text> +project   ...with project
+new note <title>             Create a note
+new project <name>           Start a project
+add contact <name>           Add a contact
+add event <title> at <time>  Schedule an event
+remind me to X in 30 min     Set a reminder
 
-### Notes & Pages
-```
-new note <title>             Create note (prompts for content)
-add contact <name>           Create a contact
-add contact Sarah, email sarah@example.com, phone 555-1234
-show notes                   List all notes
-show contacts                List contacts
-recent                       Last 10 modified
-open <title>                 Display a page
-find <name>                  Search contacts
-show tagged <tag>            Filter by tag
-#urgent                      Shorthand for tagged
-```
-
-### Calendar & Time
-```
+show next actions            Your action list
+show projects                Active projects
 today                        Today's schedule
-calendar                     Upcoming events
-add event <title> at <time>  Create event
-remind me to X in 30 min     Set reminder
-show reminders               List pending
+recent                       Recently modified pages
+
+done <number>                Complete an action
+open <title>                 View any page
+help                         Full command reference
 ```
 
-### Navigation
-```
-help                         All commands
-help <topic>                 Detailed help (calendar, garden, etc.)
-status                       System health
-quit                         Exit
-```
+Type `help <topic>` for detailed guides (calendar, garden, reminders, etc.)
 
 ---
 

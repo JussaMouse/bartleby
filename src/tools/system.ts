@@ -7,7 +7,7 @@ const HELP_OVERVIEW = `
 **Talk to Bartleby, not to files.**
 
 **Quick Commands**
-  add action <text>     Add an action
+  new action <text>     Add an action
   new note <title>      Create a note
   show next actions     Your action list
   show notes            Your notes
@@ -35,10 +35,10 @@ const HELP_GTD = `
 Actions are things you can do. Projects are outcomes with multiple actions.
 
 **Actions**
-  add action <text>            Add an action
-  add action <text> @phone     With context (where to do it)
-  add action <text> +taxes     With project
-  add action <text> due:friday With due date
+  new action <text>            Add an action
+  new action <text> @phone     With context (where to do it)
+  new action <text> +taxes     With project
+  new action <text> due:friday With due date
   show next actions            List by context
   show overdue                 Past-due actions
   done <number>                Complete by number
@@ -57,13 +57,13 @@ Actions are things you can do. Projects are outcomes with multiple actions.
 **Projects**
   new project <name>           Create a project
   show projects                List with action counts
-  add action <text> +project   Add action to project
+  new action <text> +project   Add action to project
 
 **Examples**
-  add action buy groceries @errands
-  add action review PR @computer +website due:tomorrow
+  new action buy groceries @errands
+  new action review PR @computer +website due:tomorrow
   new project 2025 taxes
-  add action gather W2s +2025-taxes
+  new action gather W2s +2025-taxes
   capture random thought
   done 3
 
@@ -111,7 +111,7 @@ others are permanent knowledge (entry, note, contact). Any can link to any.
   new note <title>        Create a note (prompts for content)
   add contact <name>      Create a contact
   new project <name>      Create a project
-  add action <text>       Create an action
+  new action <text>       Create an action
 
 **File Format (Backmatter)**
 Content first, metadata at bottom:
@@ -173,7 +173,7 @@ Bartleby's Time System shows everything temporal in one place.
 
 **Action Deadlines** (from GTD)
 Actions with due dates flow into the Time System automatically:
-  add action finish report due:friday
+  new action finish report due:friday
   → Shows in "today" when due
 
 **Time Formats**
