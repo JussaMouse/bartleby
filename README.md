@@ -8,6 +8,7 @@ The personal exocortex, locally.
 - [GTD Workflow](#gtd-workflow)
 - [The Time System](#the-time-system)
 - [Configuration](#configuration)
+- [Dashboard](#dashboard)
 - [Troubleshooting](#troubleshooting)
 
 ## What is Bartleby?
@@ -482,6 +483,55 @@ WEATHER_CITY=London       # City for weather queries
 ```
 
 Get a free API key at [openweathermap.org](https://openweathermap.org/api).
+
+---
+
+## Dashboard
+
+A minimal web UI for viewing and editing Garden pages while you work in the CLI.
+
+### Starting the Dashboard
+
+```bash
+# Terminal 1: Bartleby CLI
+pnpm start
+
+# Terminal 2: Dashboard server
+pnpm dashboard
+```
+
+Open http://localhost:3333 in your browser.
+
+### Panels
+
+The dashboard shows live-updating panels:
+
+| Panel | What it shows |
+|-------|---------------|
+| **Inbox** | Uncategorized captures |
+| **Next Actions** | Actions grouped by context |
+| **Projects** | Active projects (click to open) |
+| **Today** | Today's events + overdue items |
+| **Recent** | Last 10 modified pages |
+| **Project: X** | Specific project with its actions |
+
+Click the `+` buttons in the footer to add panels.
+
+### Editing
+
+Click any item to open the editor:
+
+- Edit the raw markdown (including backmatter)
+- **Save:** `Cmd+S` or click Save
+- **Cancel:** `Escape` or click Cancel
+
+Changes are written to the `.md` file. The file watcher syncs everything — both CLI and dashboard see updates instantly.
+
+### Configuration
+
+```env
+DASHBOARD_PORT=3333    # Default port
+```
 
 ---
 
