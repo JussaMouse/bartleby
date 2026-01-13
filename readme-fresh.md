@@ -114,7 +114,7 @@ Location: `./garden/`
 
 ### The Shed
 
-Your reference library. Ingest PDF, YouTube, web page, ebook. Query them with natural language. This is where you feed Bartleby the expertice he needs to help do knowledge work.
+Your reference library. Ingest PDF, YouTube, web page, ebook. Query them with natural language. This is where you feed Bartleby the expertise he needs to help do knowledge work.
 
 **How it works:**
 1. You ingest a document (PDF, markdown, text)
