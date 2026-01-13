@@ -262,7 +262,12 @@ function createCompleter(services: ServiceContainer) {
     
     // Commands that take any page title
     const titleCommands = ['open ', 'edit ', 'read ', 'delete ', 'remove '];
-    const needsTitle = titleCommands.some(cmd => lowerLine.startsWith(cmd)) && !needsProject;
+    // 'show ' is special - only complete titles if not followed by a keyword
+    const showKeywords = ['next', 'projects', 'notes', 'contacts', 'inbox', 'overdue', 'waiting', 'someday', 'tagged', 'reminders'];
+    const isShowWithTitle = lowerLine.startsWith('show ') && 
+      !showKeywords.some(kw => lowerLine.startsWith('show ' + kw));
+    
+    const needsTitle = (titleCommands.some(cmd => lowerLine.startsWith(cmd)) || isShowWithTitle) && !needsProject;
     
     if (needsTitle) {
       // Extract the partial title after the command
