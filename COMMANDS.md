@@ -1,0 +1,169 @@
+# Bartleby Command Reference
+
+Complete list of all commands. For quick start, see [README.md](README.md).
+
+---
+
+## Actions (GTD)
+
+| Command | Description |
+|---------|-------------|
+| `new action <text>` | Add a new action |
+| `new action <text> @context` | With context (where to do it) |
+| `new action <text> +project` | With project association |
+| `new action <text> due:<date>` | With due date |
+| `show next actions` | List actions grouped by context |
+| `show overdue` | Actions past their due date |
+| `done <number>` | Complete action by number |
+| `done <partial>` | Complete by partial name match |
+| `capture <text>` | Quick capture to inbox |
+| `waiting for` | Show delegated items |
+
+**Due date formats:** `due:today`, `due:tomorrow`, `due:friday`, `due:1/15`, `(due tomorrow)`, `by friday`
+
+**Context examples:** `@phone`, `@computer`, `@errands`, `@home`, `@office`
+
+---
+
+## Projects
+
+| Command | Description |
+|---------|-------------|
+| `new project <name>` | Create a new project |
+| `show projects` | List projects with action counts |
+
+---
+
+## Notes & Pages
+
+| Command | Description |
+|---------|-------------|
+| `new note <title>` | Create note (prompts for content) |
+| `show notes` | List all notes |
+| `open <title>` | Display any page inline |
+| `recent` | Last 10 modified pages |
+
+---
+
+## Contacts
+
+| Command | Description |
+|---------|-------------|
+| `add contact <name>` | Create a contact |
+| `add contact <name>, email <email>, phone <phone>` | With details |
+| `show contacts` | List all contacts |
+| `find <name>` | Search contacts |
+
+---
+
+## Garden Navigation
+
+| Command | Description |
+|---------|-------------|
+| `show tagged <tag>` | Filter pages by tag |
+| `#urgent` | Shorthand for `show tagged urgent` |
+| `open <title>` | Display page content |
+| `recent` | Recently modified pages |
+
+---
+
+## Calendar & Events
+
+| Command | Description |
+|---------|-------------|
+| `today` | Today's unified schedule |
+| `calendar` | Upcoming events, deadlines, reminders |
+| `add event <title> at <time>` | Create an event |
+| `add event <title> tomorrow at <time>` | Future event |
+| `change calendar settings` | Configure calendar preferences |
+| `reset calendar` | Clear settings, restart setup |
+
+**Time formats:** `2pm`, `2:30pm`, `14:00`, `noon`, `midnight`
+
+**Day formats:** `today`, `tomorrow`, `monday`, `wed`, `next friday`
+
+---
+
+## Reminders
+
+| Command | Description |
+|---------|-------------|
+| `remind me <message> at <time>` | One-time reminder |
+| `remind me <message> in <duration>` | Relative time |
+| `send me a msg in 5 min '<text>'` | Alternative syntax |
+| `show reminders` | List all scheduled |
+| `cancel reminder <number>` | Cancel by number |
+| `daily at <hour> <message>` | Recurring daily reminder |
+
+**Duration formats:** `in 30 minutes`, `in 2 hours`, `in 1 day`
+
+---
+
+## Shed (Document Library)
+
+| Command | Description |
+|---------|-------------|
+| `ingest <filepath>` | Add document to library |
+| `ingest <url>` | Add from URL |
+| `list sources` | Show ingested documents |
+| `ask shed <question>` | Query your documents |
+
+**Supported formats:** `.md`, `.txt`, `.pdf`
+
+---
+
+## Context (Memory)
+
+| Command | Description |
+|---------|-------------|
+| `what do you know about me` | Show stored facts |
+| `show profile` | Same as above |
+| `what did we talk about <topic>` | Search conversation history |
+
+**Teaching Bartleby:**
+- `my name is <name>`
+- `I am a <type> person`
+- `I prefer <preference>`
+- `I like/love/hate <thing>`
+- `my <relation> <name>` (wife, friend, boss, etc.)
+
+---
+
+## Weather
+
+| Command | Description |
+|---------|-------------|
+| `weather` | Current weather |
+| `what's the weather` | Same |
+
+*Requires `WEATHER_API_KEY` and `WEATHER_CITY` in .env*
+
+---
+
+## System
+
+| Command | Description |
+|---------|-------------|
+| `help` | Command overview |
+| `help <topic>` | Detailed help |
+| `status` | System health check |
+| `quit` | Exit Bartleby |
+
+**Help topics:** `garden`, `gtd`, `calendar`, `reminders`, `contacts`, `context`, `shed`, `settings`, `presence`, `llm`, `weather`, `time`
+
+---
+
+## Natural Language
+
+Bartleby understands natural language, so these all work:
+
+```
+call mom tomorrow
+new action buy groceries @errands
+remember to stretch in 30 min
+what's on my calendar today
+add sarah to contacts
+my meeting at 3pm got moved to 4
+```
+
+When in doubt, just say what you want. Bartleby will figure it out or ask for clarification.

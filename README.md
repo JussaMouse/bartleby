@@ -102,7 +102,7 @@ open <title>                 View any page
 help                         Full command reference
 ```
 
-Type `help <topic>` for detailed guides (calendar, garden, reminders, etc.)
+Type `help <topic>` for detailed guides. See [COMMANDS.md](COMMANDS.md) for complete reference.
 
 ---
 
