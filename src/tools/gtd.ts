@@ -768,14 +768,15 @@ export const openPage: Tool = {
       /^open\s+(.+)$/i,
       /^view\s+page\s+(.+)$/i,
       /^read\s+(.+)$/i,
+      /^show\s+(?!next|projects?|notes?|contacts?|inbox|overdue|waiting|someday|tagged|reminders?)(.+)$/i,
     ],
     keywords: { verbs: ['open', 'read'], nouns: [] },
-    examples: ['open 2025 taxes', 'read meeting notes'],
-    priority: 75,
+    examples: ['open 2025 taxes', 'read meeting notes', 'show 2025 taxes'],
+    priority: 80,  // Higher than addProject (95) after pattern match
   },
 
   parseArgs: (input, match) => {
-    const title = match ? match[1] : input.replace(/^(open|view\s+page|read)\s+/i, '');
+    const title = match ? match[1] : input.replace(/^(open|view\s+page|read|show)\s+/i, '');
     return { title };
   },
 
