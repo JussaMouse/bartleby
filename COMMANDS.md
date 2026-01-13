@@ -16,6 +16,9 @@ Complete list of all commands. For quick start, see [README.md](README.md).
 | `show overdue` | Actions past their due date |
 | `done <number>` | Complete action by number |
 | `done <partial>` | Complete by partial name match |
+| `edit <number> @context` | Change action's context |
+| `edit <number> +project` | Change action's project |
+| `edit <number> due:<date>` | Change action's due date |
 | `capture <text>` | Quick capture to inbox |
 | `waiting for` | Show delegated items |
 
@@ -31,6 +34,7 @@ Complete list of all commands. For quick start, see [README.md](README.md).
 |---------|-------------|
 | `new project <name>` | Create a new project |
 | `show projects` | List projects with action counts |
+| `delete project <name>` | Remove a project |
 
 ---
 
@@ -42,6 +46,7 @@ Complete list of all commands. For quick start, see [README.md](README.md).
 | `show notes` | List all notes |
 | `open <title>` | Display any page inline |
 | `recent` | Last 10 modified pages |
+| `delete <title>` | Remove a page |
 
 ---
 
@@ -53,6 +58,7 @@ Complete list of all commands. For quick start, see [README.md](README.md).
 | `add contact <name>, email <email>, phone <phone>` | With details |
 | `show contacts` | List all contacts |
 | `find <name>` | Search contacts |
+| `delete contact <name>` | Remove a contact |
 
 ---
 

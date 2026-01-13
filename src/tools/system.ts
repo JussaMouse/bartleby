@@ -46,6 +46,7 @@ Actions are things you can do. Projects are outcomes with multiple actions.
   show overdue                 Past-due actions
   done <number>                Complete by number
   done <partial>               Complete by name match
+  edit <number> @context       Change context/project/due
   capture <text>               Quick inbox capture
   waiting for                  Delegated items
 
@@ -60,6 +61,7 @@ Actions are things you can do. Projects are outcomes with multiple actions.
 **Projects**
   new project <name>           Create a project
   show projects                List with action counts
+  delete project <name>        Remove a project
   new action <text> +project   Add action to project
 
 **Examples**
@@ -108,6 +110,7 @@ others are permanent knowledge (entry, note, contact). Any can link to any.
   open <title>            Display a page inline
   show tagged <tag>       Filter by tag
   #urgent                 Shorthand for show tagged urgent
+  delete <title>          Remove a page
 
 **Create Commands**
   capture <text>          Quick capture to inbox
