@@ -46,7 +46,23 @@ export const ingestDocument: Tool = {
 
     try {
       const source = await context.services.shed.ingestDocument(filepath);
-      return `✓ Ingested: "${source.title}"\n  File: ${source.filename}\n  Chunks: ${source.chunkCount}`;
+      
+      // Create a Garden page for this media
+      const title = source.title || source.filename.replace(/\.[^.]+$/, '');
+      const mediaPage = context.services.garden.create({
+        type: 'media',
+        title,
+        status: 'active',
+        tags: ['media'],
+        content: `Source: ${source.filename}\nIngested: ${new Date(source.ingestedAt).toLocaleDateString()}\nChunks: ${source.chunkCount}\n\nUse \`ask shed <question>\` to query this document.`,
+        metadata: {
+          shed_source_id: source.id,
+          filename: source.filename,
+          chunk_count: source.chunkCount,
+        },
+      });
+      
+      return `✓ Ingested: "${source.title}"\n  Chunks: ${source.chunkCount}\n  Page created: open "${mediaPage.title}"`;
     } catch (err) {
       return `Failed to ingest document: ${err instanceof Error ? err.message : String(err)}`;
     }
