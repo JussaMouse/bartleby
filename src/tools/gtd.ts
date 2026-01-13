@@ -977,12 +977,149 @@ export const showTagged: Tool = {
   },
 };
 
+export const deleteProject: Tool = {
+  name: 'deleteProject',
+  description: 'Delete a project',
+
+  routing: {
+    patterns: [
+      /^(delete|remove)\s+project\s+(.+)$/i,
+    ],
+    keywords: {
+      verbs: ['delete', 'remove'],
+      nouns: ['project'],
+    },
+    examples: ['delete project 2025 taxes', 'remove project thailand trip'],
+    priority: 96,  // Higher than addProject (95) to catch "delete project" first
+  },
+
+  parseArgs: (input) => {
+    const query = input.replace(/^(delete|remove)\s+project\s*/i, '').trim();
+    return { query };
+  },
+
+  execute: async (args, context) => {
+    const { query } = args as { query: string };
+
+    if (!query) {
+      return 'Please provide a project name. Example: delete project 2025 taxes';
+    }
+
+    // Find the project
+    const allProjects = context.services.garden.getByType('project');
+    const queryLower = query.toLowerCase();
+    
+    const matches = allProjects.filter(p => 
+      p.title.toLowerCase() === queryLower ||
+      p.title.toLowerCase().includes(queryLower) ||
+      p.title.toLowerCase().replace(/\s+/g, '-') === queryLower
+    );
+
+    if (matches.length === 0) {
+      return `Project not found: "${query}"\n\nTry: show projects`;
+    }
+
+    if (matches.length > 1) {
+      const names = matches.map(p => p.title).join(', ');
+      return `Multiple projects match "${query}": ${names}\nPlease be more specific.`;
+    }
+
+    const project = matches[0];
+    
+    // Check for associated actions
+    const projectSlug = project.title.toLowerCase().replace(/\s+/g, '-');
+    const actions = context.services.garden.getTasks({ status: 'active' })
+      .filter(a => a.project === projectSlug || a.project === project.title);
+    
+    // Delete the project
+    const deleted = context.services.garden.delete(project.id);
+
+    if (deleted) {
+      let response = `✓ Removed project: "${project.title}"`;
+      if (actions.length > 0) {
+        response += `\n\n⚠️ ${actions.length} action(s) were linked to this project.`;
+        response += `\nTheir +${projectSlug} tag remains — reassign or delete them.`;
+      }
+      return response;
+    }
+    return `Failed to remove project: "${project.title}"`;
+  },
+};
+
+export const deletePage: Tool = {
+  name: 'deletePage',
+  description: 'Delete any Garden page',
+
+  routing: {
+    patterns: [
+      /^(delete|remove)\s+(?!project\s|contact\s)(.+)$/i,
+    ],
+    keywords: {
+      verbs: ['delete', 'remove'],
+      nouns: ['page', 'note', 'entry'],
+    },
+    examples: ['delete meeting notes', 'remove old entry'],
+    priority: 85,
+  },
+
+  parseArgs: (input) => {
+    const query = input.replace(/^(delete|remove)\s*/i, '').trim();
+    return { query };
+  },
+
+  execute: async (args, context) => {
+    const { query } = args as { query: string };
+
+    if (!query) {
+      return 'Please provide a page title. Example: delete old meeting notes';
+    }
+
+    // Find the page
+    let record = context.services.garden.getByTitle(query);
+    
+    // Try partial match
+    if (!record) {
+      const all = context.services.garden.getRecent(100);
+      const queryLower = query.toLowerCase();
+      const matches = all.filter(r => r.title.toLowerCase().includes(queryLower));
+      
+      if (matches.length === 0) {
+        return `Page not found: "${query}"\n\nTry: recent`;
+      }
+      
+      if (matches.length > 1) {
+        const names = matches.slice(0, 5).map(p => `${p.title} (${p.type})`).join('\n  ');
+        return `Multiple pages match "${query}":\n  ${names}\nPlease be more specific.`;
+      }
+      
+      record = matches[0];
+    }
+
+    // Special handling for different types
+    if (record.type === 'project') {
+      return `Use "delete project ${record.title}" to remove projects.`;
+    }
+    
+    if (record.type === 'contact') {
+      return `Use "delete contact ${record.title}" to remove contacts.`;
+    }
+
+    const deleted = context.services.garden.delete(record.id);
+
+    if (deleted) {
+      return `✓ Removed ${record.type}: "${record.title}"`;
+    }
+    return `Failed to remove: "${record.title}"`;
+  },
+};
+
 export const gtdTools: Tool[] = [
   appendToNote,  // Must be first - highest priority contextual check
   viewNextActions,
   processInbox,
   addTask,
   addProject,
+  deleteProject,  // Higher priority than deletePage
   showProjects,
   createNote,
   showByType,
@@ -994,4 +1131,5 @@ export const gtdTools: Tool[] = [
   capture,
   showWaitingFor,
   showOverdue,
+  deletePage,
 ];
