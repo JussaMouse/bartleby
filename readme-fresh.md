@@ -1,6 +1,6 @@
 # Bartleby
 
-A local-first AI assistant that runs entirely on your machine. Your data stays yours.
+The personal exocortex, locally.
 
 - [What is Bartleby?](#what-is-bartleby)
 - [Quick Start](#quick-start)
