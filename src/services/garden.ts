@@ -11,7 +11,18 @@ import type { CalendarService } from './calendar.js';
 
 // === Types ===
 
-export type RecordType = 'action' | 'project' | 'context' | 'contact' | 'note' | 'daily' | 'list';
+// GTD types: item → action → completed (workflow)
+// Wiki types: entry, note, contact, media, list, daily (persistent knowledge)
+export type RecordType = 
+  | 'item'      // Raw inbox, unprocessed
+  | 'action'    // Doable next step
+  | 'project'   // Multi-action outcome
+  | 'entry'     // Wiki/encyclopedia page
+  | 'note'      // Reference/scratch notes
+  | 'contact'   // Person
+  | 'media'     // File attachment
+  | 'list'      // Curated collection
+  | 'daily';    // Journal entry
 export type RecordStatus = 'active' | 'completed' | 'archived' | 'someday' | 'waiting';
 
 export interface GardenRecord {
