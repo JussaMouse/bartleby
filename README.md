@@ -47,7 +47,7 @@ Configure in `.env` with `SIGNAL_ENABLED=true`. See `help reminders`.
 - `add task`, `new note`, `show next actions`
 
 **Shed** — Documents you want to search:
-- `ingest <file or url>` → creates a wiki page for it
+- `ingest <file or url>` (indexes for search + creates wiki page)
 - `ask shed <question>`, `open <title>`
 
 **Context** — What Bartleby remembers about you:
