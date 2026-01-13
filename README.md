@@ -1,568 +1,314 @@
 # Bartleby
 
-A local-first AI assistant that runs entirely on your machine. Privacy-respecting, offline-capable, and designed for personal productivity.
+A local-first AI assistant that lives on your machine. Your data stays yours.
 
-## What is Bartleby?
+---
 
-Bartleby is a personal assistant that combines:
-- **GTD workflow** with actions, contexts, projects, and inbox capture
-- **Personal knowledge base** (the "Garden") synced as markdown files
-- **Document library** (the "Shed") with semantic search and RAG
-- **Context** that remembers your conversations, preferences, and follow-ups
-- **Presence** — Bartleby's initiative layer that decides when to speak unprompted
+## The Big Idea
 
-All powered by local LLMs. Your data stays on your machine.
+**Talk to Bartleby, not to files.**
 
-### Not Just Reactive
-
-Most assistants only respond to commands. Bartleby is **present** — aware of your context, noticing opportunities to help, and occasionally speaking first:
+Bartleby is your personal assistant who remembers everything, helps you get things done, and keeps your knowledge organized. Behind the scenes, everything is stored as simple markdown files you can edit, backup, or sync anywhere.
 
 ```
-📋 Bartleby is ready. Type "help" for commands, "quit" to exit.
+> add task call mom
+✓ Added: "call mom" (@inbox)
 
-──────────────────────────────────────────────────
-📅 4 event(s) today
-📝 Pending: "follow up with Sarah about the proposal"
-⚠️ 2 overdue action(s)
-💭 Last: "review the Q3 budget numbers..."
-──────────────────────────────────────────────────
+> new note meeting with scott
+📝 What would you like to add?
+> discussed Q1 roadmap, agreed on timeline
+> done
+✓ Note saved
 
-> 
+> what's on my plate?
+Based on your calendar and actions:
+- 3 events today (next: 2pm standup)
+- 5 active actions (2 overdue)
+...
 ```
 
-This "session opener" isn't scripted — Bartleby checks your calendar, actions, follow-ups, and recent conversations to surface what's relevant *right now*.
+---
+
+## Three Places, One Garden
+
+Everything lives in the **Garden** — your personal wiki:
+
+| What | Examples | Commands |
+|------|----------|----------|
+| **Actions** | Tasks, to-dos, next steps | `add task`, `done`, `show next actions` |
+| **Notes** | Meeting notes, ideas, scratch | `new note`, `show notes`, `open <title>` |
+| **Contacts** | People, relationships | `add contact`, `find <name>` |
+| **Projects** | Multi-step outcomes | `new project`, `show projects` |
+| **Entries** | Wiki pages, reference | `new entry` |
+
+**The Shed** stores documents (PDFs, articles) you want to search.
+
+**Context** is what Bartleby remembers about you and your conversations.
+
+---
 
 ## Quick Start
 
-### Prerequisites
-
-- **Node.js** 22+ 
-- **pnpm** (or npm/yarn)
-- **Local LLM server** - MLX, Ollama, llama.cpp, or any OpenAI-compatible API
-
-### Installation
-
 ```bash
-# Clone
-git clone https://github.com/yourusername/bartleby.git
+# Clone and install
+git clone https://github.com/JussaMouse/bartleby.git
 cd bartleby
-
-# Install
 pnpm install
-pnpm approve-builds   # Approve native module compilation (hnswlib, sqlite)
+pnpm approve-builds
 
-# Configure
+# Configure (edit .env with your LLM endpoints)
 cp .env.example .env
-# Edit .env with your model endpoints (see Configuration below)
 
-# Build & Run
+# Run
 pnpm build
 pnpm start
 ```
 
-### First Commands
+### Requirements
+- Node.js 22+
+- pnpm
+- Local LLM server (MLX, Ollama, or OpenAI-compatible)
+
+---
+
+## Common Commands
+
+### Actions (GTD)
+```
+add task <text>              Add an action
+add task <text> @phone       With context
+add task <text> +project     With project
+add task <text> due:friday   With due date
+show next actions            List by context
+show overdue                 Past-due actions
+done <number>                Complete action
+capture <text>               Quick inbox capture
+```
+
+### Notes & Pages
+```
+new note <title>             Create note (prompts for content)
+show notes                   List all notes
+show contacts                List contacts
+show entries                 List wiki entries
+recent                       Last 10 modified
+open <title>                 Display a page
+show tagged <tag>            Filter by tag
+#urgent                      Shorthand for tagged
+```
+
+### Calendar & Time
+```
+today                        Today's schedule
+calendar                     Upcoming events
+add event <title> at <time>  Create event
+remind me to X in 30 min     Set reminder
+show reminders               List pending
+```
+
+### Navigation
+```
+help                         All commands
+help <topic>                 Detailed help (calendar, garden, etc.)
+status                       System health
+quit                         Exit
+```
+
+---
+
+## How It Works
 
 ```
-> help                    # See all commands
-> add task buy groceries  # Add an action
-> show next actions       # View actions
-> done 1                  # Complete action #1
-> capture call dentist    # Quick capture to inbox
-> status                  # Check system health
-> quit                    # Exit
+┌─────────────────────────────────────────────────────────┐
+│                     You ↔ Bartleby                      │
+│         (Natural conversation in the terminal)          │
+└─────────────────────────┬───────────────────────────────┘
+                          │
+┌─────────────────────────┴───────────────────────────────┐
+│                     The Garden                          │
+│           (Your personal wiki as markdown files)        │
+│                                                         │
+│  garden/                                                │
+│  ├── call-mom.md           (action)                     │
+│  ├── meeting-with-scott.md (note)                       │
+│  ├── 2025-taxes.md         (project)                    │
+│  └── sarah-chen.md         (contact)                    │
+└─────────────────────────────────────────────────────────┘
 ```
+
+**Key insight:** The markdown files are the truth. The database is just an index for fast queries. You can edit files directly — Bartleby syncs changes automatically.
+
+### File Format (Backmatter)
+
+Content first, metadata tucked at the bottom:
+
+```markdown
+# Call Mom
+
+Ask about her doctor appointment.
+Bring up the family reunion planning.
+
+---
+tags: [family, calls]
+context: "@phone"
+due: 2026-01-15
+type: action
+status: active
+id: abc123
+---
+```
+
+Human-readable content at the top. System metadata at the bottom.
+
+---
 
 ## Configuration
 
-The `.env` file is Bartleby's **source of truth** for all configuration—like how the Garden's markdown files are the source of truth for your actions and notes.
+The `.env` file controls everything. Bartleby reads it on startup.
 
-### The Settings Flow
+### LLM Models (Required)
 
-Instead of manually editing `.env`, talk to Bartleby about what you want to change:
+```env
+# Fast model for simple commands (7-30B)
+LLM_FAST_URL=http://localhost:1234/v1
+LLM_FAST_MODEL=mlx-community/Qwen3-30B-A3B-4bit
 
+# Router model for complexity classification (0.5-3B)  
+LLM_ROUTER_URL=http://localhost:1235/v1
+LLM_ROUTER_MODEL=mlx-community/Qwen3-0.6B-4bit
+
+# Thinking model for complex reasoning (30B+)
+LLM_THINKING_URL=http://localhost:1236/v1
+LLM_THINKING_MODEL=mlx-community/Qwen3-30B-A3B-Thinking-4bit
+
+# Embedding model for semantic search
+EMBEDDING_URL=http://localhost:1237/v1
+EMBEDDING_MODEL=nomic-ai/nomic-embed-text-v1.5
 ```
-> change calendar settings
-```
 
-Bartleby walks you through each option, then outputs the `.env` values:
+### Optional Features
 
-```
-✓ Calendar configured!
-
-Your settings:
-• Timezone: America/Los_Angeles
-• Default duration: 30 minutes
-• Week starts: Monday
-• Reminders: 15m before
-
-───────────────────────────────────────────
-Copy to .env:
-
-CALENDAR_DEFAULT_DURATION=30
-CALENDAR_WEEK_START=monday
+```env
+# Calendar
+CALENDAR_TIMEZONE=America/Los_Angeles
+CALENDAR_DEFAULT_DURATION=60
 CALENDAR_REMINDER_MINUTES=15
-───────────────────────────────────────────
-```
 
-**You copy these values to `.env`** — Bartleby can't write to files himself, but he'll generate the correct config for you.
-
-### Bidirectional Trust
-
-This works like the Garden's bidirectional sync:
-- **`.env` is authoritative** — Bartleby reads it on startup and respects whatever's there
-- **You can edit `.env` directly** anytime — Bartleby will use your changes on next restart  
-- **Bartleby helps you configure** — through conversation, outputting values ready to copy
-- **Bartleby may suggest changes** — if he notices something that could improve your experience
-
-### Initial LLM Setup
-
-The one thing you *do* need to configure manually is your LLM endpoints. Copy `.env.example` to `.env` and set your model URLs:
-
-#### For Ollama (Most Common)
-
-```env
-# Router: Tiny model for SIMPLE/COMPLEX classification
-ROUTER_MODEL=qwen2:0.5b
-ROUTER_URL=http://localhost:11434/v1
-
-# Fast: 7B-class model for simple queries
-FAST_MODEL=qwen2.5:7b
-FAST_URL=http://localhost:11434/v1
-
-# Thinking: Large model for complex reasoning
-THINKING_MODEL=qwen2.5:32b
-THINKING_URL=http://localhost:11434/v1
-
-# Embeddings
-EMBEDDINGS_MODEL=nomic-embed-text
-EMBEDDINGS_URL=http://localhost:11434/v1
-EMBEDDINGS_DIMENSIONS=768
-```
-
-### For MLX (Apple Silicon)
-
-```env
-ROUTER_MODEL=mlx-community/Qwen3-0.6B-4bit
-ROUTER_URL=http://127.0.0.1:8080/v1
-
-FAST_MODEL=mlx-community/Qwen3-30B-A3B-4bit
-FAST_URL=http://127.0.0.1:8081/v1
-
-THINKING_MODEL=mlx-community/Qwen3-30B-A3B-Thinking-2507-4bit
-THINKING_URL=http://127.0.0.1:8083/v1
-
-EMBEDDINGS_MODEL=Qwen/Qwen3-Embedding-8B
-EMBEDDINGS_URL=http://127.0.0.1:8084/v1
-EMBEDDINGS_DIMENSIONS=4096
-```
-
-### Paths & Integrations (Manual)
-
-```env
-# Paths (defaults work for most setups)
-GARDEN_PATH=./garden          # Your markdown notes
-SHED_PATH=./shed              # Document library
-DATABASE_PATH=./database      # SQLite databases
-LOG_DIR=./logs
-
-# Logging
-LOG_LEVEL=info                # debug, info, warn, error
-LOG_LLM_VERBOSE=false         # Show LLM thinking/reasoning
-
-# Optional: Weather
-WEATHER_CITY=Seattle
-OPENWEATHERMAP_API_KEY=your-key
-
-# Optional: Signal notifications
-SIGNAL_ENABLED=false
+# Signal notifications
+SIGNAL_ENABLED=true
 SIGNAL_CLI_PATH=/usr/local/bin/signal-cli
 SIGNAL_NUMBER=+1234567890
 SIGNAL_RECIPIENT=+0987654321
+
+# Weather (OpenWeatherMap)
+WEATHER_API_KEY=your_api_key
+WEATHER_CITY=San Francisco
 ```
 
-### Changing Settings
+### Conversational Settings
 
-Talk to Bartleby about what you want to change:
-
-| Say this... | Bartleby will... |
-|-------------|------------------|
-| `change calendar settings` | Walk through calendar preferences, output `.env` values |
-| `I prefer 30 minute meetings` | Suggest the config change and output the `.env` line |
-| `my week starts on Monday` | Same — conversation → `.env` output |
-| `reset calendar` | Clear settings and re-trigger onboarding (suggests backup first) |
-
-Copy the output to your `.env` file. On next startup, Bartleby uses the new values.
-
-### Resetting Settings
-
-If you want to start fresh or re-run onboarding:
+Don't want to edit `.env` manually? Just ask Bartleby:
 
 ```
-> reset calendar
-⚠️ Reset Calendar
+> change calendar settings
+📅 Calendar Setup (1/5)
+What's your timezone? ...
 
-This will:
-• Clear calendar settings (timezone, duration, reminders, etc.)
-• Trigger onboarding again on your next event
-
-💾 Backup first! Your current settings are in .env.
-Copy the CALENDAR_* lines somewhere safe to restore later.
-
-→ yes - reset settings only
-→ yes delete events - reset settings AND clear all events  
-→ cancel - abort
+> change llm settings
+🤖 Let's configure your models...
 ```
 
-Your events are preserved unless you explicitly say "yes delete events".
+Bartleby will walk you through options and output the `.env` values to copy.
 
-## Command Reference
+---
 
-### GTD / Actions
+## For Developers
 
-| Command | Description |
-|---------|-------------|
-| `show next actions` | List active actions grouped by context |
-| `add task <text>` | Add action (use `@context`, `+project`, `due:DATE`) |
-| `done <n>` | Complete action by number |
-| `capture <text>` | Quick capture to inbox |
-| `waiting for` | Show delegated items |
-
-**Examples:**
-```
-> add task buy milk @errands
-> add task review PR +website @computer
-> done 3
-```
-
-### Calendar
-
-| Command | Description |
-|---------|-------------|
-| `calendar` | Show upcoming events |
-| `today` | Today's schedule |
-| `add event <title> at <time>` | Create event |
-
-**Examples:**
-```
-> add event dentist tomorrow at 2pm
-> add event team standup at 9am
-```
-
-### Contacts
-
-| Command | Description |
-|---------|-------------|
-| `add contact <name>` | Create contact |
-| `find <name>` | Search contacts |
-
-**Examples:**
-```
-> add contact Sarah Chen, email sarah@example.com, phone 555-1234
-> find sarah
-```
-
-### Context
-
-Bartleby learns about you over time from natural conversation.
-
-| Command | Description |
-|---------|-------------|
-| `I am a <type> person` | Tell Bartleby about yourself |
-| `I prefer <preference>` | Set a preference |
-| `I like/love/hate <thing>` | Express preferences |
-| `my <relation> <name>` | Share relationships |
-| `what do you know about me` | View your profile |
-| `what did we talk about <topic>` | Search past conversations |
-
-**Examples:**
-```
-> I am a morning person
-> I prefer short meetings
-> my wife Sarah is a doctor
-> what do you know about me
-```
-
-### Shed (Document Library)
-
-| Command | Description |
-|---------|-------------|
-| `ingest <filepath>` | Add document (.md, .txt, .pdf) |
-| `list sources` | Show ingested documents |
-| `ask shed <question>` | Query your documents (RAG) |
-
-**Examples:**
-```
-> ingest ~/Documents/meeting-notes.md
-> ask shed what were the key decisions from the planning meeting
-```
-
-### Reminders
-
-| Command | Description |
-|---------|-------------|
-| `remind me <msg> at <time>` | Set reminder |
-| `show reminders` | List scheduled reminders |
-| `cancel reminder <n>` | Cancel by number |
-| `daily at <hour> <msg>` | Recurring daily reminder |
-
-**Examples:**
-```
-> remind me to call mom at 5pm
-> remind me about standup in 30 minutes
-> daily at 9am check email
-```
-
-### System
-
-| Command | Description |
-|---------|-------------|
-| `help` | Show all commands |
-| `status` | System health check |
-| `weather` | Current weather (if configured) |
-| `quit` | Exit Bartleby |
-
-## Architecture
+### Architecture
 
 ```
-┌──────────────────────────────────────────────────────────────────┐
-│                          REPL                                     │
-│   Startup ──► Presence.getStartupMessage()                       │
-│   Loop    ──► Router → Agent → Tools                             │
-│   Quit    ──► Presence.getShutdownMessage()                      │
-└──────────────────────────────────────────────────────────────────┘
-                               │
-                               ▼
-┌──────────────────────────────────────────────────────────────────┐
-│                      User Input                                   │
-└─────────────────────────┬────────────────────────────────────────┘
-                          ▼
-┌──────────────────────────────────────────────────────────────────┐
-│              Router Model: SIMPLE or COMPLEX?                     │
-│                    (0.5B parameter model)                         │
-└─────────────────────────┬────────────────────────────────────────┘
-                          │
-          ┌───────────────┴───────────────┐
-          ▼                               ▼
-┌─────────────────────┐       ┌─────────────────────────────┐
-│       SIMPLE        │       │          COMPLEX            │
-│                     │       │                             │
-│  Command Router:    │       │  Thinking Model:            │
-│  1. Pattern Match   │       │  - Multi-step reasoning     │
-│  2. Keyword Match   │       │  - Function calling         │
-│  3. Semantic Match  │       │  - Agentic loop             │
-│  4. Fast LLM        │       │  (30B+ parameter model)     │
-│     (7B model)      │       │                             │
-└─────────────────────┘       └─────────────────────────────┘
-                               │
-                               ▼
-┌──────────────────────────────────────────────────────────────────┐
-│                        Services                                   │
-│   ┌─────────────┐  ┌─────────────┐  ┌─────────────────────────┐  │
-│   │   Garden    │  │  Scheduler  │  │      Context            │  │
-│   │  (actions)  │  │ (reminders) │  │  (memory, profile)      │  │
-│   └──────┬──────┘  └──────┬──────┘  └───────────┬─────────────┘  │
-│          │                │                     │                │
-│          ▼                ▼                     │                │
-│   ┌───────────────────────────────┐            │                │
-│   │         Calendar              │            │                │
-│   │    (Temporal Index)           │            │                │
-│   │  events + deadlines +         │            │                │
-│   │  reminders unified            │            │                │
-│   └───────────────┬───────────────┘            │                │
-│                   └────────────────────────────┘                │
-│                           ▼                                      │
-│                  ┌─────────────────┐                             │
-│                  │    Presence     │  ← "What should B say?"     │
-│                  │   (initiative)  │                             │
-│                  └─────────────────┘                             │
-└──────────────────────────────────────────────────────────────────┘
+src/
+├── services/           # Core services
+│   ├── garden.ts       # Personal wiki (markdown ↔ SQLite)
+│   ├── calendar.ts     # Events & Time System
+│   ├── context.ts      # Memory & preferences
+│   ├── scheduler.ts    # Reminders & recurring
+│   ├── shed.ts         # Document library (RAG)
+│   └── llm.ts          # Model management
+├── tools/              # Command implementations
+├── router/             # Input → tool routing
+├── agent/              # LLM agent loop
+└── utils/              # Helpers (logger, parser)
+
+garden/                 # Your wiki (markdown files)
+shed/                   # Reference documents
+database/               # SQLite indexes
 ```
 
-**Why 4 Models?**
+### Key Principles
 
-| Tier | Model Size | Purpose | Latency |
-|------|------------|---------|---------|
-| Router | 0.5-1B | Classify simple vs complex | ~50ms |
-| Fast | 7-30B | Single tool calls, simple chat | ~500ms |
-| Thinking | 30B+ | Multi-step reasoning, code | 2-10s |
-| Embeddings | 1B | Vector generation | ~100ms |
+1. **Markdown is truth** — Files are authoritative, database is index
+2. **Bidirectional sync** — Edit files or talk to Bartleby, both work
+3. **Local-first** — Everything runs on your machine
+4. **Graceful degradation** — Works offline, handles errors smoothly
 
-Most requests hit the deterministic router (layers 1-3) and never need an LLM at all.
+### The Type System
 
-### The Time System
+| Type | Has Workflow? | Description |
+|------|---------------|-------------|
+| `item` | ✓ | Inbox capture, unprocessed |
+| `action` | ✓ | Next step (active → done) |
+| `project` | ✓ | Multi-action outcome |
+| `note` | — | Working notes |
+| `entry` | — | Wiki page (permanent) |
+| `contact` | — | Person |
+| `daily` | — | Journal entry |
+| `list` | — | Curated collection |
+| `media` | — | File attachment |
 
-Bartleby has a **Time System** — a unified way of handling everything temporal. Instead of events, reminders, and deadlines living in separate silos, they all flow into one place.
+### Development
 
-An action has a *what* (the thing to do) and optionally a *when* (due date).  
-A reminder has a *what* (the message) and a *when* (fire time).  
-An event has a *what* (title/notes) and a *when* (start/end time).
-
-The Time System collects all the "whens" into a single view:
-
-| Type | Where it comes from | Example |
-|------|---------------------|---------|
-| **Event** | You create it | "Team meeting at 3pm" |
-| **Deadline** | Action with due date | "Report due Friday" |
-| **Reminder** | Scheduled notification | "remind me in 30 min" |
-
-When you say `today` or `calendar`, the Time System shows them all:
-
-```
-**Today's Schedule**
-
-**📅 Events**
-  3:00 PM - Team meeting
-  5:30 PM - Gym
-
-**⚠️ Due Today**
-  Finish quarterly report
-
-**🔔 Reminders**
-  4:00 PM - stretch break
+```bash
+pnpm dev          # Watch mode
+pnpm build        # Compile TypeScript
+pnpm typecheck    # Type check only
+pnpm start        # Run compiled
 ```
 
-**Why it matters:** You never miss something because it's in the "wrong system." Everything temporal is unified.
-
-### The Context System
-
-Bartleby learns about you over time, building a personal context from natural conversation.
-
-**How it works:**
-```
-> my name is Lon                    → Bartleby remembers your name
-> I'm a morning person              → Stores your preference
-> my wife Sarah is a doctor         → Stores relationship
-> I'll call the dentist tomorrow    → Tracks as follow-up
-```
-
-**What's stored:**
-| Type | Examples | How it's used |
-|------|----------|---------------|
-| **Identity** | name, timezone | Personalization |
-| **Preferences** | "morning person", "likes tea" | Adapts suggestions |
-| **Relationships** | "wife Sarah", "boss Tom" | Context in conversations |
-| **Goals** | "learn piano", "exercise more" | Motivation, tracking |
-| **Episodes** | Conversation summaries | "What did we talk about X?" |
-| **Follow-ups** | "call dentist tomorrow" | Surfaces at startup |
-
-**Commands:**
-```
-> what do you know about me         # See all stored facts
-> what did we talk about budget     # Search conversation history
-```
-
-### Presence Service
-
-The initiative layer that decides when Bartleby speaks unprompted:
-- Queries Context, Calendar, and Garden
-- Surfaces relevant info at key moments
-- Configurable per-moment
-
-| Moment | When | Example |
-|--------|------|---------|
-| **Startup** | REPL starts | "📅 4 events today, 📝 follow up with Sarah pending" |
-| **Shutdown** | Before quit | "📅 Tomorrow: 2 events. Anything to capture?" |
-| **Morning** | Scheduled (8am) | "☀️ Morning Review: 3 events, 12 actions" |
-| **Evening** | Scheduled (6pm) | "🌙 5 actions done today, 2 events tomorrow" |
-| **Weekly** | Scheduled (Sun 9am) | "📋 Weekly Review: 15/20 actions completed" |
-
-Configure in `.env`:
-
-```env
-PRESENCE_STARTUP=true
-PRESENCE_SHUTDOWN=true
-PRESENCE_SCHEDULED=true
-PRESENCE_MORNING_HOUR=8
-PRESENCE_EVENING_HOUR=18
-PRESENCE_WEEKLY_DAY=0    # Sunday
-PRESENCE_WEEKLY_HOUR=9
-```
-
-This is what makes Bartleby feel like a companion rather than just a command processor.
-
-## Data Storage
-
-```
-bartleby/
-├── garden/           # Your markdown notes (synced bidirectionally)
-│   ├── buy-milk.md
-│   └── project-website.md
-├── shed/
-│   └── sources/      # Ingested documents
-├── database/
-│   ├── garden.sqlite3
-│   ├── calendar.sqlite3
-│   ├── memory/
-│   │   ├── episodes.json
-│   │   └── profile.json
-│   └── ...
-└── logs/
-    └── bartleby.log
-```
-
-**The Garden**: Your unified personal wiki. Everything lives here—actions, projects, contacts, notes, wiki entries. Each is a markdown file with YAML frontmatter.
-
-| Type | Purpose | Has Workflow? |
-|------|---------|---------------|
-| `item` | Inbox capture, not yet processed | ✓ (process → convert) |
-| `action` | Doable next step | ✓ (active → done) |
-| `project` | Multi-action outcome | ✓ (active → done) |
-| `entry` | Wiki/encyclopedia page | — (permanent) |
-| `note` | Working notes, meeting notes | — |
-| `contact` | Person with details | — |
-| `daily` | Journal entry | — |
-| `list` | Curated collections | — |
-| `media` | File attachments | — |
-
-All pages are wiki pages. Some have workflow (active → completed), others accumulate knowledge. Any page can link to any other.
-
-**Bidirectional sync**: Edit files in any editor—Bartleby syncs. Bartleby writes changes—your editor sees them. Files are the source of truth.
-
-**The Shed**: Reference documents you want to query. Bartleby chunks them, generates embeddings, and answers questions using RAG.
+---
 
 ## Troubleshooting
 
 ### "LLM tier health check failed"
-
-Your LLM server isn't reachable. Check:
-1. Is your LLM server running? (`ollama serve` or equivalent)
+Your LLM server isn't reachable:
+1. Is your LLM server running?
 2. Are the URLs in `.env` correct?
-3. Try `curl http://localhost:11434/v1/models` to test connectivity
-
-### "Embedding failed"
-
-The embedding model isn't available. For Ollama:
-```bash
-ollama pull nomic-embed-text
-```
+3. Test: `curl http://localhost:1234/v1/models`
 
 ### "hnswlib-node compilation failed"
-
-You need build tools:
+Install build tools:
 - **macOS**: `xcode-select --install`
 - **Ubuntu**: `apt install build-essential`
-- **Windows**: Install Visual Studio Build Tools
 
 ### Slow first response
+Models load into memory on first use. Subsequent requests are fast.
 
-Models may need to load into memory on first use. Subsequent requests are faster. You can "warm up" models by running them before starting Bartleby.
+### Want verbose LLM output?
+Set `LOG_LLM_VERBOSE=true` in `.env` to see chain-of-thought reasoning.
 
-### Want to see LLM reasoning?
+---
 
-Set `LOG_LLM_VERBOSE=true` in `.env` to see the Thinking model's chain-of-thought. Useful for debugging or curiosity about how Bartleby reasons through complex requests.
+## Philosophy
 
-## Development
+Bartleby is named after the Melville character who "would prefer not to." But unlike that Bartleby, this one actually helps.
 
-```bash
-# Dev mode (auto-reload)
-pnpm dev
+**Your data is yours.** Everything is markdown files and SQLite databases on your machine. No cloud, no subscriptions, no lock-in.
 
-# Type check
-pnpm typecheck
+**Talk, don't click.** The interface is conversation. Tell Bartleby what you want in natural language.
 
-# Build
-pnpm build
-```
+**The Garden grows.** Every note, action, and thought you capture lives in one interconnected wiki. Over time, it becomes your second brain.
+
+---
 
 ## License
 

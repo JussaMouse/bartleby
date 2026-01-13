@@ -4,74 +4,77 @@ import { Tool } from './types.js';
 // === Help Subsections ===
 
 const HELP_OVERVIEW = `
-**Bartleby Commands**
+**Talk to Bartleby, not to files.**
 
-Type \`help <topic>\` for details and .env settings.
+**Quick Commands**
+  add task <text>       Add an action
+  new note <title>      Create a note
+  show next actions     Your action list
+  show notes            Your notes
+  recent                Last 10 pages
+  open <title>          View any page
+  today                 Today's schedule
+  done <number>         Complete action
 
-**Garden** — Your unified wiki/knowledge base (help garden)
-**GTD** — Actions, projects & inbox (help gtd)
-**Time System** — Events, deadlines, reminders unified (help calendar)
-**Reminders** — Scheduled notifications (help reminders)
-**Contacts** — People you know (help contacts)
-**Context** — What Bartleby learns about you (help context)
-**Shed** — Document library (help shed)
-**Presence** — Proactive behaviors (help presence)
-**LLM** — Model configuration (help llm)
-**Weather** — Current conditions (help weather)
-**Settings** — All configuration (help settings)
-**System** — status, quit
+**Learn More**
+  help garden           Your wiki (notes, contacts, entries)
+  help gtd              Actions & projects
+  help calendar         Events & time
+  help reminders        Scheduled notifications
+  help context          What Bartleby remembers
+  help settings         Configuration options
+
+**System**
+  status                Health check
+  quit                  Exit Bartleby
 `.trim();
 
 const HELP_GTD = `
-**GTD — Getting Things Done**
+**Actions & Projects**
 
-Bartleby implements David Allen's GTD methodology.
+Actions are things you can do. Projects are outcomes with multiple actions.
 
-**Terminology**
-  Action    Something you can do directly (next physical step)
-  Item      Something in inbox, not yet processed
-  Project   Multi-action outcome (has child actions)
-  Event     Something on the calendar (see "help calendar")
+**Actions**
+  add task <text>              Add an action
+  add task <text> @phone       With context (where to do it)
+  add task <text> +taxes       With project
+  add task <text> due:friday   With due date
+  show next actions            List by context
+  show overdue                 Past-due actions
+  done <number>                Complete by number
+  done <partial>               Complete by name match
+  capture <text>               Quick inbox capture
+  waiting for                  Delegated items
 
-**Commands**
-  show next actions       List active actions by context
-  show overdue            List overdue actions
-  show projects           List active projects
-  add task <text>         Add a new action
-  new project <name>      Create a project
-  done <n>                Complete action by number
-  done <partial title>    Complete by partial match
-  capture <text>          Quick capture to inbox
-  waiting for             Show delegated items
+**Due Date Formats**
+  due:today                    Today
+  due:tomorrow                 Tomorrow
+  due:friday                   Next Friday
+  due:1/15                     January 15
+  (due tomorrow)               Alternative syntax
+  by friday                    Alternative syntax
 
-**Inline Syntax**
-  @context       Assign context (where/how to do it)
-  +project       Assign to project
-  due:DATE       Set due date (today, tomorrow, friday, YYYY-MM-DD)
-  (due DATE)     Alternative: "new action: call mom (due tomorrow)"
-  by DATE        Alternative: "add task finish report by friday"
+**Projects**
+  new project <name>           Create a project
+  show projects                List with action counts
+  add task <text> +project     Add action to project
 
 **Examples**
-  add task buy milk @errands
+  add task buy groceries @errands
   add task review PR @computer +website due:tomorrow
-  new action: call Sarah (due 5pm) @phone
-  add task finish report by friday
   new project 2025 taxes
   add task gather W2s +2025-taxes
-  capture remember to check on the budget
+  capture random thought
   done 3
-  done buy milk
 
 **.env Settings**
-  GARDEN_PATH=./garden          Where Garden markdown files are stored
-  CALENDAR_DATE_FORMAT=mdy      mdy (1/11=Jan 11) | dmy (1/11=Nov 1)
+  GARDEN_PATH=./garden          Where files are stored
+  CALENDAR_DATE_FORMAT=mdy      mdy=month/day, dmy=day/month
 
 **Tips**
-• Process your inbox regularly — items waiting > 2 days appear at startup
-• Use contexts to batch similar actions (@calls, @errands, @computer)
-• Projects group related actions but aren't actionable themselves
-• "capture" is fastest for quick thoughts — sort later
-• Actions with due dates appear in "show overdue" and the Time System
+• @context = where you do it (@phone, @computer, @errands)
+• +project = which project it belongs to
+• "capture" for quick thoughts, sort later
 `.trim();
 
 const HELP_GARDEN = `
