@@ -15,6 +15,9 @@ const HELP_OVERVIEW = `
   open <title>          View any page
   today                 Today's schedule
   done <number>         Complete action
+  edit <#> @context     Change action context
+
+**💡 Use TAB for autocomplete** — page titles, @contexts, +projects, commands
 
 **Learn More**
   help garden           Your wiki (notes, contacts, entries)

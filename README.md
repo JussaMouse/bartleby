@@ -64,6 +64,12 @@ You'll see:
 📋 Bartleby is ready. Type "help" for commands, "quit" to exit.
 ```
 
+**Pro tip:** Use **TAB** for autocompletion:
+- Page titles: `edit scr[TAB]` → `edit screenshot summ 2025 txs`
+- Contexts: `@ph[TAB]` → `@phone`
+- Projects: `+th[TAB]` → `+thailand`
+- Commands: `show n[TAB]` → `show next actions`
+
 ---
 
 ## Your Data
