@@ -500,7 +500,23 @@ bartleby/
     └── bartleby.log
 ```
 
-**The Garden**: Your personal wiki. Edit markdown files directly—Bartleby syncs changes bidirectionally. Each file has YAML frontmatter for metadata.
+**The Garden**: Your unified personal wiki. Everything lives here—actions, projects, contacts, notes, wiki entries. Each is a markdown file with YAML frontmatter.
+
+| Type | Purpose | Has Workflow? |
+|------|---------|---------------|
+| `item` | Inbox capture, not yet processed | ✓ (process → convert) |
+| `action` | Doable next step | ✓ (active → done) |
+| `project` | Multi-action outcome | ✓ (active → done) |
+| `entry` | Wiki/encyclopedia page | — (permanent) |
+| `note` | Working notes, meeting notes | — |
+| `contact` | Person with details | — |
+| `daily` | Journal entry | — |
+| `list` | Curated collections | — |
+| `media` | File attachments | — |
+
+All pages are wiki pages. Some have workflow (active → completed), others accumulate knowledge. Any page can link to any other.
+
+**Bidirectional sync**: Edit files in any editor—Bartleby syncs. Bartleby writes changes—your editor sees them. Files are the source of truth.
 
 **The Shed**: Reference documents you want to query. Bartleby chunks them, generates embeddings, and answers questions using RAG.
 

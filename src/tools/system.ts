@@ -8,7 +8,8 @@ const HELP_OVERVIEW = `
 
 Type \`help <topic>\` for details and .env settings.
 
-**GTD** — Actions & inbox management (help gtd)
+**Garden** — Your unified wiki/knowledge base (help garden)
+**GTD** — Actions, projects & inbox (help gtd)
 **Time System** — Events, deadlines, reminders unified (help calendar)
 **Reminders** — Scheduled notifications (help reminders)
 **Contacts** — People you know (help contacts)
@@ -29,11 +30,15 @@ Bartleby implements David Allen's GTD methodology.
 **Terminology**
   Action    Something you can do directly (next physical step)
   Item      Something in inbox, not yet processed
+  Project   Multi-action outcome (has child actions)
   Event     Something on the calendar (see "help calendar")
 
 **Commands**
   show next actions       List active actions by context
+  show overdue            List overdue actions
+  show projects           List active projects
   add task <text>         Add a new action
+  new project <name>      Create a project
   done <n>                Complete action by number
   done <partial title>    Complete by partial match
   capture <text>          Quick capture to inbox
@@ -51,19 +56,76 @@ Bartleby implements David Allen's GTD methodology.
   add task review PR @computer +website due:tomorrow
   new action: call Sarah (due 5pm) @phone
   add task finish report by friday
+  new project 2025 taxes
+  add task gather W2s +2025-taxes
   capture remember to check on the budget
   done 3
   done buy milk
 
 **.env Settings**
-  GARDEN_PATH=./garden    Where Garden markdown files are stored
+  GARDEN_PATH=./garden          Where Garden markdown files are stored
+  CALENDAR_DATE_FORMAT=mdy      mdy (1/11=Jan 11) | dmy (1/11=Nov 1)
 
 **Tips**
 • Process your inbox regularly — items waiting > 2 days appear at startup
 • Use contexts to batch similar actions (@calls, @errands, @computer)
 • Projects group related actions but aren't actionable themselves
 • "capture" is fastest for quick thoughts — sort later
-• Actions with due dates show as "overdue" if past due
+• Actions with due dates appear in "show overdue" and the Time System
+`.trim();
+
+const HELP_GARDEN = `
+**The Garden — Your Personal Wiki**
+
+The Garden is Bartleby's unified knowledge base. Everything lives here:
+actions, projects, contacts, notes, wiki entries, and more.
+
+**Page Types**
+  Action    Doable next step (has workflow: active → done)
+  Project   Multi-action outcome (has child actions)
+  Item      Inbox capture, awaiting processing
+  Entry     Wiki/encyclopedia page (permanent knowledge)
+  Note      Working notes, meeting notes
+  Contact   Person with details and relationships
+  Daily     Journal entries (one per day)
+  List      Curated collections (reading list, etc.)
+
+**All pages are wiki pages.** Some have workflow (item, action, project),
+others are permanent knowledge (entry, note, contact). Any can link to any.
+
+**Commands**
+  capture <text>          Quick capture to inbox
+  add contact <name>      Create a contact
+  show projects           List active projects
+  show next actions       List actions
+
+**Markdown Files**
+Garden pages are stored as markdown files with YAML frontmatter:
+
+\`\`\`markdown
+---
+type: action
+status: active
+context: "@phone"
+project: "2025-taxes"
+due_date: "2026-01-15"
+---
+# Call accountant
+
+Ask about quarterly estimates...
+\`\`\`
+
+**Bidirectional Sync**
+- Edit files directly in any editor — Bartleby syncs changes
+- Bartleby writes to files — edits appear in your editor
+- Files are the source of truth; database is an index
+
+**.env Settings**
+  GARDEN_PATH=./garden    Where Garden files are stored
+
+**Linking** (planned)
+Use [[Page Name]] to link pages together. Bartleby will resolve links
+and surface related pages when relevant.
 `.trim();
 
 const HELP_CALENDAR = `
@@ -425,6 +487,11 @@ Get weather info (requires OpenWeatherMap API key).
 const HELP_SECTIONS: Record<string, string> = {
   gtd: HELP_GTD,
   tasks: HELP_GTD,
+  actions: HELP_GTD,
+  projects: HELP_GTD,
+  garden: HELP_GARDEN,
+  wiki: HELP_GARDEN,
+  pages: HELP_GARDEN,
   calendar: HELP_CALENDAR,
   events: HELP_CALENDAR,
   time: HELP_CALENDAR,
