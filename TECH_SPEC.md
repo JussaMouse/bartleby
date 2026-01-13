@@ -203,6 +203,30 @@ id: i9j0k1l2
 
 **Parser:** `src/utils/garden-parser.ts`
 
+### Archive Log
+
+When items, actions, or events are completed (via `done`) or when any page is deleted, the file is removed from the Garden and a record is appended to `garden/archive.log`.
+
+**Format:**
+```
+YYYY-MM-DD HH:MM | ACTION | type | title | details
+```
+
+**Examples:**
+```
+2026-01-13 14:30 | DONE | action | Call dentist | @phone +health
+2026-01-13 15:00 | DELETED | project | Old project name |
+2026-01-13 16:45 | DONE | action | Submit report | @computer due:2026-01-13
+```
+
+**Fields:**
+- `ACTION`: `DONE` (completed) or `DELETED` (explicitly removed)
+- `type`: The record type (action, item, project, note, etc.)
+- `title`: The page title
+- `details`: Context, project, due date if present
+
+This keeps the Garden clean (only active items as files) while maintaining a permanent, searchable log of everything you've accomplished or removed.
+
 ---
 
 ## Architecture

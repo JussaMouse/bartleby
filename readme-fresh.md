@@ -95,6 +95,8 @@ open <title>            View any page
 
 **Files are the source of truth.** Edit them in any text editor — Bartleby watches for changes and syncs automatically.
 
+**When you complete or delete something:** The file is removed from the Garden and a one-line record is appended to `archive.log`. This keeps your Garden clean while maintaining a permanent record.
+
 Location: `./garden/`
 
 ### The Shed

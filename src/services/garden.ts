@@ -95,6 +95,7 @@ CREATE INDEX IF NOT EXISTS idx_garden_due ON garden_records(due_date);
 export class GardenService {
   private db: Database.Database;
   private gardenPath: string;
+  private archivePath: string;
   private watcher?: FSWatcher;
   private syncing = false;
   private calendar?: CalendarService;
@@ -106,6 +107,7 @@ export class GardenService {
     this.db = new Database(dbPath);
     this.db.pragma('journal_mode = WAL');
     this.gardenPath = resolvePath(config, 'garden');
+    this.archivePath = path.join(this.gardenPath, 'archive.log');
   }
 
   /**
@@ -213,19 +215,17 @@ export class GardenService {
     const record = this.get(id);
     if (!record) return false;
 
-    this.db.prepare('DELETE FROM garden_records WHERE id = ?').run(id);
-
-    const filepath = this.getFilePath(record);
-    if (fs.existsSync(filepath)) {
-      this.syncing = true;
-      fs.unlinkSync(filepath);
-      this.syncing = false;
-    }
+    // Archive before deletion
+    this.appendToArchive(record, 'DELETED');
 
     // Remove from calendar temporal index
     if (this.calendar) {
       this.calendar.removeTemporal('garden', id);
     }
+
+    // Delete file and DB record
+    this.deleteFile(record);
+    this.deleteFromDb(id);
 
     return true;
   }
@@ -330,7 +330,16 @@ export class GardenService {
     }
 
     if (!record) return null;
-    return this.update(record.id, { status: 'completed' });
+    
+    // Archive, remove from calendar, delete file and DB record
+    this.appendToArchive(record, 'DONE');
+    if (this.calendar) {
+      this.calendar.removeTemporal('garden', record.id);
+    }
+    this.deleteFile(record);
+    this.deleteFromDb(record.id);
+    
+    return record;
   }
 
   captureToInbox(text: string): GardenRecord {
@@ -366,18 +375,34 @@ export class GardenService {
     const cutoff = new Date();
     cutoff.setDate(cutoff.getDate() - days);
     const cutoffStr = cutoff.toISOString();
+    const cutoffDate = cutoffStr.split('T')[0];
 
+    // Count added from database
     const added = this.db.prepare(`
       SELECT COUNT(*) as count FROM garden_records 
       WHERE type = 'action' AND created_at >= ?
     `).get(cutoffStr) as { count: number };
 
-    const completed = this.db.prepare(`
-      SELECT COUNT(*) as count FROM garden_records 
-      WHERE type = 'action' AND status = 'completed' AND completed_at >= ?
-    `).get(cutoffStr) as { count: number };
+    // Count completed from archive log
+    let completed = 0;
+    if (fs.existsSync(this.archivePath)) {
+      const lines = fs.readFileSync(this.archivePath, 'utf-8').split('\n');
+      for (const line of lines) {
+        if (!line.trim()) continue;
+        // Format: YYYY-MM-DD HH:MM | DONE | action | title | details
+        const parts = line.split(' | ');
+        if (parts.length >= 3) {
+          const dateStr = parts[0].split(' ')[0]; // YYYY-MM-DD
+          const action = parts[1];
+          const type = parts[2];
+          if (dateStr >= cutoffDate && action === 'DONE' && type === 'action') {
+            completed++;
+          }
+        }
+      }
+    }
 
-    return { added: added.count, completed: completed.count };
+    return { added: added.count, completed };
   }
 
   // === Contact Helpers ===
@@ -491,7 +516,8 @@ export class GardenService {
   private async syncFromFiles(): Promise<void> {
     if (!fs.existsSync(this.gardenPath)) return;
 
-    const files = fs.readdirSync(this.gardenPath).filter(f => f.endsWith('.md'));
+    const files = fs.readdirSync(this.gardenPath)
+      .filter(f => f.endsWith('.md') && f !== 'archive.log');
 
     for (const file of files) {
       this.syncFromFile(path.join(this.gardenPath, file));
@@ -502,7 +528,7 @@ export class GardenService {
 
   private startWatcher(): void {
     this.watcher = chokidar.watch(this.gardenPath, {
-      ignored: /(^|[\/\\])\../,
+      ignored: [/(^|[\/\\])\./, /archive\.log$/],
       persistent: true,
       ignoreInitial: true,
       awaitWriteFinish: { stabilityThreshold: 300 },
@@ -596,5 +622,47 @@ export class GardenService {
   close(): void {
     this.watcher?.close();
     this.db.close();
+  }
+
+  // === Archive ===
+
+  /**
+   * Append a record to the archive log before deletion.
+   * Format: YYYY-MM-DD HH:MM | ACTION | type | title | context/project
+   */
+  private appendToArchive(record: GardenRecord, action: 'DONE' | 'DELETED'): void {
+    const now = new Date();
+    const date = now.toISOString().split('T')[0];
+    const time = now.toTimeString().slice(0, 5);
+    
+    const details = [
+      record.context,
+      record.project ? `+${record.project}` : null,
+      record.due_date ? `due:${record.due_date}` : null,
+    ].filter(Boolean).join(' ');
+    
+    const line = `${date} ${time} | ${action} | ${record.type} | ${record.title}${details ? ` | ${details}` : ''}\n`;
+    
+    fs.appendFileSync(this.archivePath, line);
+    debug('Archived record', { action, title: record.title });
+  }
+
+  /**
+   * Delete a record's file (internal, no archive).
+   */
+  private deleteFile(record: GardenRecord): void {
+    const filepath = this.getFilePath(record);
+    if (fs.existsSync(filepath)) {
+      this.syncing = true;
+      fs.unlinkSync(filepath);
+      this.syncing = false;
+    }
+  }
+
+  /**
+   * Delete a record from DB (internal, no archive).
+   */
+  private deleteFromDb(id: string): void {
+    this.db.prepare('DELETE FROM garden_records WHERE id = ?').run(id);
   }
 }
