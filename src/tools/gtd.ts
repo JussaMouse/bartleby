@@ -278,11 +278,17 @@ export const addTask: Tool = {
       }
     }
 
-    const task = context.services.garden.addTask(description, ctx || '@inbox', project, dueDate);
+    // Determine context:
+    // - If explicitly set, use it
+    // - If project or due date is set (action is "processed"), no context needed
+    // - Otherwise, default to @inbox (unprocessed capture)
+    const finalContext = ctx || (project || dueDate ? undefined : '@inbox');
+    
+    const task = context.services.garden.addTask(description, finalContext, project, dueDate);
 
     let response = `✓ Added: "${task.title}"`;
     if (task.context) response += ` (${task.context})`;
-    if (task.project) response += ` [${task.project}]`;
+    if (task.project) response += ` +${task.project}`;
     if (task.due_date) response += ` [due: ${task.due_date}]`;
     if (projectCreated) response += `\n✓ Created project: "${project}"`;
 

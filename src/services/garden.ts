@@ -306,7 +306,7 @@ export class GardenService {
 
   // === Task Helpers ===
 
-  addTask(title: string, context = '@inbox', project?: string, dueDate?: string): GardenRecord {
+  addTask(title: string, context?: string, project?: string, dueDate?: string): GardenRecord {
     return this.create({
       type: 'action',
       title,
