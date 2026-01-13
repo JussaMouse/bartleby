@@ -92,7 +92,6 @@ add contact <name>           Create a contact
 add contact Sarah, email sarah@example.com, phone 555-1234
 show notes                   List all notes
 show contacts                List contacts
-show entries                 List wiki entries
 recent                       Last 10 modified
 open <title>                 Display a page
 find <name>                  Search contacts

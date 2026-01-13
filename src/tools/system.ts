@@ -99,7 +99,6 @@ others are permanent knowledge (entry, note, contact). Any can link to any.
 **Navigation Commands**
   show notes              List all notes
   show contacts           List all contacts
-  show entries            List wiki entries
   show projects           List active projects
   show next actions       List actions by context
   recent                  Last 10 modified pages
