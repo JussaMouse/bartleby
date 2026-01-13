@@ -51,7 +51,7 @@ Configure in `.env` with `SIGNAL_ENABLED=true`. See `help reminders`.
 
 **Context** — What Bartleby remembers about you:
 - Preferences, past conversations, follow-ups
-- `don't bother me on sundays`, `i like btc`
+- `don't bother me on sundays`, `i like btc here`
 
 ---
 
