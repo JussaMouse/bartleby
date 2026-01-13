@@ -440,7 +440,7 @@ export class GardenService {
 
   // === File Sync ===
 
-  private getFilePath(record: GardenRecord): string {
+  getFilePath(record: GardenRecord): string {
     const filename = `${sanitizeFilename(record.title)}.md`;
     return path.join(this.gardenPath, filename);
   }

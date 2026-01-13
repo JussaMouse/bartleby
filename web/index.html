@@ -27,6 +27,21 @@
     </footer>
   </div>
   
+  <!-- Edit Modal -->
+  <div id="edit-modal" class="modal hidden">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2 id="edit-title">Edit</h2>
+        <button class="modal-close" onclick="closeEditor()">&times;</button>
+      </div>
+      <textarea id="edit-content"></textarea>
+      <div class="modal-footer">
+        <button class="btn-secondary" onclick="closeEditor()">Cancel</button>
+        <button class="btn-primary" onclick="saveEdit()">Save</button>
+      </div>
+    </div>
+  </div>
+  
   <script src="app.js"></script>
 </body>
 </html>

@@ -3,6 +3,7 @@
 let ws = null;
 let reconnectTimer = null;
 const panels = new Map(); // view -> panel element
+let editingId = null; // Currently editing page ID
 
 function connect() {
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -135,7 +136,7 @@ function renderInbox(items) {
   }
   
   return `<ul>${items.map(item => `
-    <li class="item">
+    <li class="item clickable" onclick="openEditor('${item.id}', '${escapeHtml(item.title)}')">
       <span class="item-title">${escapeHtml(item.title)}</span>
       <span class="item-meta">${timeAgo(item.created_at)}</span>
     </li>
@@ -159,7 +160,7 @@ function renderNextActions(tasks) {
   for (const [ctx, ctxTasks] of Object.entries(byContext)) {
     html += `<div class="section-header">${ctx}</div><ul>`;
     html += ctxTasks.map(task => `
-      <li class="item">
+      <li class="item clickable" onclick="openEditor('${task.id}', '${escapeHtml(task.title)}')">
         <span class="item-title">${escapeHtml(task.title)}</span>
         <span class="item-meta">
           ${task.project ? `<span class="item-project">+${task.project}</span>` : ''}
@@ -193,9 +194,13 @@ function renderProject(data) {
   const { project, actions } = data;
   let html = '';
   
+  // Project itself is editable
+  html += `<div class="item clickable" onclick="openEditor('${project.id}', '${escapeHtml(project.title)}')" style="margin-bottom: 16px; padding: 8px; border-radius: 4px;">`;
+  html += `<span class="item-meta">Click to edit project</span>`;
   if (project.content) {
-    html += `<div style="margin-bottom: 16px; color: var(--text-muted);">${escapeHtml(project.content)}</div>`;
+    html += `<div style="margin-top: 8px; color: var(--text-muted);">${escapeHtml(project.content)}</div>`;
   }
+  html += '</div>';
   
   html += '<div class="section-header">Actions</div>';
   
@@ -203,7 +208,7 @@ function renderProject(data) {
     html += '<div class="empty">No actions</div>';
   } else {
     html += `<ul>${actions.map(a => `
-      <li class="item">
+      <li class="item clickable" onclick="openEditor('${a.id}', '${escapeHtml(a.title)}')">
         <span class="item-title">${escapeHtml(a.title)}</span>
         <span class="item-meta">
           ${a.context ? `<span class="item-context">${a.context}</span>` : ''}
@@ -252,7 +257,7 @@ function renderRecent(items) {
   }
   
   return `<ul>${items.map(item => `
-    <li class="item">
+    <li class="item clickable" onclick="openEditor('${item.id}', '${escapeHtml(item.title)}')">
       <span class="item-title">${escapeHtml(item.title)}</span>
       <span class="item-meta">${item.type} · ${timeAgo(item.updated_at)}</span>
     </li>
@@ -300,6 +305,65 @@ function promptProjectPanel() {
     addPanel('project:' + name);
   }
 }
+
+// Editor functions
+async function openEditor(id, title) {
+  try {
+    const res = await fetch(`/api/page/${id}`);
+    if (!res.ok) throw new Error('Failed to load');
+    
+    const { content } = await res.json();
+    
+    editingId = id;
+    document.getElementById('edit-title').textContent = title;
+    document.getElementById('edit-content').value = content;
+    document.getElementById('edit-modal').classList.remove('hidden');
+    document.getElementById('edit-content').focus();
+  } catch (e) {
+    console.error('Failed to open editor:', e);
+    alert('Failed to load page');
+  }
+}
+
+function closeEditor() {
+  editingId = null;
+  document.getElementById('edit-modal').classList.add('hidden');
+}
+
+async function saveEdit() {
+  if (!editingId) return;
+  
+  const content = document.getElementById('edit-content').value;
+  
+  try {
+    const res = await fetch(`/api/page/${editingId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ content }),
+    });
+    
+    if (!res.ok) throw new Error('Failed to save');
+    
+    closeEditor();
+    // Dashboard will auto-update via file watcher
+  } catch (e) {
+    console.error('Failed to save:', e);
+    alert('Failed to save');
+  }
+}
+
+// Keyboard shortcuts
+document.addEventListener('keydown', (e) => {
+  // Escape to close editor
+  if (e.key === 'Escape' && editingId) {
+    closeEditor();
+  }
+  // Cmd/Ctrl+S to save
+  if ((e.metaKey || e.ctrlKey) && e.key === 's' && editingId) {
+    e.preventDefault();
+    saveEdit();
+  }
+});
 
 // Initialize
 document.addEventListener('DOMContentLoaded', () => {

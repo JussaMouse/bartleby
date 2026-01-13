@@ -5,11 +5,12 @@ import express from 'express';
 import { createServer } from 'http';
 import { WebSocketServer, WebSocket } from 'ws';
 import path from 'path';
+import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { GardenService } from '../services/garden.js';
 import { CalendarService } from '../services/calendar.js';
 import { loadConfig } from '../config.js';
-import { info, error } from '../utils/logger.js';
+import { info, error, debug } from '../utils/logger.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -82,6 +83,46 @@ export class DashboardServer {
     this.app.get('/api/recent', (req, res) => {
       const recent = this.garden.getRecent(10);
       res.json(recent);
+    });
+
+    // Get raw file content for editing
+    this.app.get('/api/page/:id', (req, res) => {
+      const record = this.garden.get(req.params.id);
+      if (!record) {
+        res.status(404).json({ error: 'Not found' });
+        return;
+      }
+      
+      const filepath = this.garden.getFilePath(record);
+      if (fs.existsSync(filepath)) {
+        const content = fs.readFileSync(filepath, 'utf-8');
+        res.json({ record, content });
+      } else {
+        res.json({ record, content: '' });
+      }
+    });
+
+    // Save raw file content
+    this.app.use(express.json());
+    this.app.put('/api/page/:id', (req, res) => {
+      const record = this.garden.get(req.params.id);
+      if (!record) {
+        res.status(404).json({ error: 'Not found' });
+        return;
+      }
+      
+      const { content } = req.body;
+      if (typeof content !== 'string') {
+        res.status(400).json({ error: 'Content required' });
+        return;
+      }
+      
+      const filepath = this.garden.getFilePath(record);
+      fs.writeFileSync(filepath, content, 'utf-8');
+      debug('Saved page via dashboard', { id: record.id, title: record.title });
+      
+      // Garden watcher will pick up the change and sync
+      res.json({ success: true });
     });
   }
 
