@@ -326,7 +326,15 @@ export class GardenService {
         record = tasks[identifier - 1];
       }
     } else {
+      // Try exact match first
       record = this.get(identifier) || this.getByTitle(identifier);
+      
+      // Try partial title match
+      if (!record) {
+        const tasks = this.getTasks({ status: 'active' });
+        const search = identifier.toLowerCase();
+        record = tasks.find(t => t.title.toLowerCase().includes(search)) || null;
+      }
     }
 
     if (!record) return null;

@@ -239,6 +239,27 @@ function createCompleter(services: ServiceContainer) {
       }
     }
     
+    // Commands that take an action title (done, complete)
+    const actionCommands = ['done ', 'complete '];
+    const needsAction = actionCommands.some(cmd => lowerLine.startsWith(cmd));
+    
+    if (needsAction) {
+      const cmdMatch = line.match(/^(\w+\s+)(.*)$/i);
+      if (cmdMatch) {
+        const prefix = cmdMatch[1];
+        const partial = cmdMatch[2].toLowerCase();
+        
+        // Only complete active actions
+        const actions = services.garden.getTasks({ status: 'active' });
+        const titles = actions.map(a => a.title);
+        const matches = titles.filter(t => t.toLowerCase().startsWith(partial));
+        
+        if (matches.length > 0) {
+          return [matches.map(m => prefix + m), line];
+        }
+      }
+    }
+    
     // Commands that take any page title
     const titleCommands = ['open ', 'edit ', 'read ', 'delete ', 'remove '];
     const needsTitle = titleCommands.some(cmd => lowerLine.startsWith(cmd)) && !needsProject;
@@ -321,8 +342,7 @@ export async function startRepl(
   agent: Agent,
   services: ServiceContainer
 ): Promise<void> {
-  // Debug: check if TTY is available for tab completion
-  console.log('[TAB DEBUG] TTY:', process.stdin.isTTY, process.stdout.isTTY);
+  // Tab completion requires TTY mode
   debug('Terminal mode', { 
     stdinIsTTY: process.stdin.isTTY, 
     stdoutIsTTY: process.stdout.isTTY 
