@@ -46,8 +46,8 @@ Configure in `.env` with `SIGNAL_ENABLED=true`. See `help reminders`.
 - Actions, notes, contacts, projects
 - `add task`, `new note`, `show next actions`
 
-**Shed** — Documents you want to search (PDFs, articles):
-- `ingest <file>`, `ask shed <question>`
+**Shed** — Documents you want to search:
+- `ingest <file or url>`, `ask shed <question>`
 
 **Context** — What Bartleby remembers about you:
 - Preferences, past conversations, follow-ups
