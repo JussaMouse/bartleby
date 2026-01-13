@@ -1107,10 +1107,19 @@ export const deleteProject: Tool = {
 
     const project = matches[0];
     
-    // Check for associated actions
+    // Find associated actions
     const projectSlug = project.title.toLowerCase().replace(/\s+/g, '-');
+    const projectTitle = project.title.toLowerCase();
     const actions = context.services.garden.getTasks({ status: 'active' })
-      .filter(a => a.project === projectSlug || a.project === project.title);
+      .filter(a => 
+        a.project?.toLowerCase() === projectSlug || 
+        a.project?.toLowerCase() === projectTitle
+      );
+    
+    // Remove project tag from all associated actions
+    for (const action of actions) {
+      context.services.garden.update(action.id, { project: undefined });
+    }
     
     // Delete the project
     const deleted = context.services.garden.delete(project.id);
@@ -1118,8 +1127,7 @@ export const deleteProject: Tool = {
     if (deleted) {
       let response = `✓ Removed project: "${project.title}"`;
       if (actions.length > 0) {
-        response += `\n\n⚠️ ${actions.length} action(s) were linked to this project.`;
-        response += `\nTheir +${projectSlug} tag remains — reassign or delete them.`;
+        response += `\n✓ Unlinked ${actions.length} action(s) from project`;
       }
       return response;
     }
