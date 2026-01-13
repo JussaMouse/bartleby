@@ -2,6 +2,30 @@
 import { Tool } from './types.js';
 import { loadConfig } from '../config.js';
 
+/**
+ * Parse a time string like "5pm", "5:30pm", "17:30" into "HH:MM" format
+ */
+function parseTime(timeStr: string): string | null {
+  const lower = timeStr.toLowerCase().trim();
+  
+  // Match formats: 5pm, 5:30pm, 17:30, 5:30, 5 pm
+  const match = lower.match(/^(\d{1,2})(?::(\d{2}))?\s*(am|pm)?$/);
+  if (!match) return null;
+  
+  let hours = parseInt(match[1], 10);
+  const minutes = match[2] ? parseInt(match[2], 10) : 0;
+  const meridiem = match[3];
+  
+  // Convert to 24-hour format
+  if (meridiem === 'pm' && hours < 12) hours += 12;
+  if (meridiem === 'am' && hours === 12) hours = 0;
+  
+  // Validate
+  if (hours > 23 || minutes > 59) return null;
+  
+  return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
+}
+
 export const viewNextActions: Tool = {
   name: 'viewNextActions',
   description: 'Display the current list of next actions',
@@ -182,18 +206,36 @@ export const addTask: Tool = {
     
     if (dueStr) {
       const today = new Date();
+      let dateOnly: string | null = null;
+      let timeOnly: string | null = null;
       
-      // Handle relative dates
-      if (dueStr === 'today' || /^\d{1,2}(?::\d{2})?(?:am|pm)?$/.test(dueStr)) {
-        // Today or a time today (8pm, 8:33pm)
-        dueDate = today.toISOString().split('T')[0];
+      // Check if dueStr is just a time (e.g., "5pm", "17:30")
+      const pureTime = parseTime(dueStr);
+      if (pureTime) {
+        dateOnly = today.toISOString().split('T')[0];
+        timeOnly = pureTime;
+      } else if (dueStr === 'today') {
+        dateOnly = today.toISOString().split('T')[0];
       } else if (dueStr === 'tomorrow') {
         today.setDate(today.getDate() + 1);
-        dueDate = today.toISOString().split('T')[0];
+        dateOnly = today.toISOString().split('T')[0];
       } else if (/^\d{4}-\d{2}-\d{2}$/.test(dueStr)) {
         // ISO date format
+        dateOnly = dueStr;
+      } else if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(dueStr)) {
+        // ISO datetime format - use as-is
         dueDate = dueStr;
       } else {
+        // Check for "date time" format (e.g., "tomorrow 5pm", "friday 3:30pm")
+        const parts = dueStr.split(/\s+/);
+        if (parts.length >= 2) {
+          const possibleTime = parseTime(parts[parts.length - 1]);
+          if (possibleTime) {
+            timeOnly = possibleTime;
+            dueStr = parts.slice(0, -1).join(' '); // Remove time part
+          }
+        }
+        
         // Try day of week
         const days = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
         const dayIndex = days.indexOf(dueStr);
@@ -202,7 +244,7 @@ export const addTask: Tool = {
           let daysUntil = dayIndex - currentDay;
           if (daysUntil <= 0) daysUntil += 7; // Next week if today or past
           today.setDate(today.getDate() + daysUntil);
-          dueDate = today.toISOString().split('T')[0];
+          dateOnly = today.toISOString().split('T')[0];
         } else {
           // Try MM/DD or DD/MM format based on config (assume current year)
           const slashMatch = dueStr.match(/^(\d{1,2})\/(\d{1,2})$/);
@@ -227,7 +269,7 @@ export const addTask: Tool = {
             if (parsed < today) {
               parsed.setFullYear(year + 1);
             }
-            dueDate = parsed.toISOString().split('T')[0];
+            dateOnly = parsed.toISOString().split('T')[0];
           } else {
             // Try to parse as generic date string with current year context
             const parsed = new Date(dueStr);
@@ -236,10 +278,15 @@ export const addTask: Tool = {
               if (parsed.getFullYear() < 2020) {
                 parsed.setFullYear(today.getFullYear());
               }
-              dueDate = parsed.toISOString().split('T')[0];
+              dateOnly = parsed.toISOString().split('T')[0];
             }
           }
         }
+      }
+      
+      // Combine date and time
+      if (dateOnly && !dueDate) {
+        dueDate = timeOnly ? `${dateOnly}T${timeOnly}` : dateOnly;
       }
     }
 
