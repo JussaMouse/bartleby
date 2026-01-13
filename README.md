@@ -64,11 +64,7 @@ You'll see:
 📋 Bartleby is ready. Type "help" for commands, "quit" to exit.
 ```
 
-**Pro tip:** Use **TAB** for autocompletion:
-- Page titles: `edit scr[TAB]` → `edit screenshot summ 2025 txs`
-- Contexts: `@ph[TAB]` → `@phone`
-- Projects: `+th[TAB]` → `+thailand`
-- Commands: `show n[TAB]` → `show next actions`
+**Pro tip:** Hit `TAB` to autocomplete commands, page names, contexts, and projects.
 
 ---
 
@@ -301,6 +297,25 @@ Capture → Clarify → Organize → Review → Do
 ```
 > show next actions @phone
 > done 1
+```
+
+### Tips
+
+**Commands combine naturally.** Context, project, due date, and tags can appear anywhere:
+```
+> new action call accountant @phone +2025-taxes due:friday #urgent
+```
+
+**Tab completion.** Hit `TAB` to autocomplete commands, page names, `@contexts`, and `+projects`:
+```
+edit scr[TAB] @ho[TAB] +20[TAB]  →  edit screenshot tax form @home +2025-taxes
+```
+
+**Auto-creation.** Using `@newcontext` or `+newproject` creates them if they don't exist:
+```
+> new action research flights +thailand-trip
+✓ Created project: "thailand-trip"
+✓ Added: "research flights" (thailand-trip)
 ```
 
 ---
