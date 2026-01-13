@@ -93,26 +93,40 @@ actions, projects, contacts, notes, wiki entries, and more.
 **All pages are wiki pages.** Some have workflow (item, action, project),
 others are permanent knowledge (entry, note, contact). Any can link to any.
 
-**Commands**
-  capture <text>          Quick capture to inbox
-  add contact <name>      Create a contact
+**Navigation Commands**
+  show notes              List all notes
+  show contacts           List all contacts
+  show entries            List wiki entries
   show projects           List active projects
-  show next actions       List actions
+  show next actions       List actions by context
+  recent                  Last 10 modified pages
+  open <title>            Display a page inline
+  show tagged <tag>       Filter by tag
+  #urgent                 Shorthand for show tagged urgent
 
-**Markdown Files**
-Garden pages are stored as markdown files with YAML frontmatter:
+**Create Commands**
+  capture <text>          Quick capture to inbox
+  new note <title>        Create a note (prompts for content)
+  add contact <name>      Create a contact
+  new project <name>      Create a project
+  add task <text>         Create an action
+
+**File Format (Backmatter)**
+Content first, metadata at bottom:
 
 \`\`\`markdown
----
-type: action
-status: active
-context: "@phone"
-project: "2025-taxes"
-due_date: "2026-01-15"
----
 # Call accountant
 
 Ask about quarterly estimates...
+
+---
+tags: [urgent, taxes]
+context: "@phone"
+due: 2026-01-15
+type: action
+status: active
+id: abc123
+---
 \`\`\`
 
 **Bidirectional Sync**

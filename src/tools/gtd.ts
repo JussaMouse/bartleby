@@ -586,6 +586,205 @@ export const appendToNote: Tool = {
   },
 };
 
+// === Navigation Tools ===
+
+export const showByType: Tool = {
+  name: 'showByType',
+  description: 'List pages of a specific type',
+
+  routing: {
+    patterns: [
+      /^show\s+(notes?|contacts?|entries?|items?|daily|lists?|media)$/i,
+      /^(notes|contacts|entries)$/i,
+    ],
+    keywords: {
+      verbs: ['show', 'list', 'view'],
+      nouns: ['notes', 'contacts', 'entries', 'items', 'daily', 'lists', 'media'],
+    },
+    examples: ['show notes', 'show contacts', 'list entries', 'contacts'],
+    priority: 80,
+  },
+
+  parseArgs: (input) => {
+    const match = input.match(/(notes?|contacts?|entries?|items?|daily|lists?|media)/i);
+    const typeMap: Record<string, string> = {
+      note: 'note', notes: 'note',
+      contact: 'contact', contacts: 'contact',
+      entry: 'entry', entries: 'entry',
+      item: 'item', items: 'item',
+      daily: 'daily',
+      list: 'list', lists: 'list',
+      media: 'media',
+    };
+    const type = match ? typeMap[match[1].toLowerCase()] : 'note';
+    return { type };
+  },
+
+  execute: async (args, context) => {
+    const { type } = args as { type: string };
+    const records = context.services.garden.getByType(type as any);
+    
+    if (records.length === 0) {
+      return `No ${type}s found.\n\nCreate one with: new ${type} <title>`;
+    }
+
+    const lines = [`**${type.charAt(0).toUpperCase() + type.slice(1)}s** (${records.length})\n`];
+    
+    for (const record of records.slice(0, 20)) {
+      const tags = record.tags?.length ? ` [${record.tags.join(', ')}]` : '';
+      lines.push(`• ${record.title}${tags}`);
+    }
+    
+    if (records.length > 20) {
+      lines.push(`\n... and ${records.length - 20} more`);
+    }
+
+    return lines.join('\n');
+  },
+};
+
+function timeAgo(date: Date): string {
+  const seconds = Math.floor((Date.now() - date.getTime()) / 1000);
+  if (seconds < 60) return 'just now';
+  if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
+  if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`;
+  return `${Math.floor(seconds / 86400)}d ago`;
+}
+
+export const showRecent: Tool = {
+  name: 'showRecent',
+  description: 'Show recently modified pages',
+
+  routing: {
+    patterns: [/^recent$/i, /^show\s+recent$/i, /^recently?\s+modified$/i],
+    keywords: { verbs: ['show'], nouns: ['recent'] },
+    examples: ['recent', 'show recent'],
+    priority: 85,
+  },
+
+  execute: async (args, context) => {
+    const records = context.services.garden.getRecent(10);
+    
+    if (records.length === 0) {
+      return 'No recent pages.';
+    }
+
+    const lines = ['**Recently Modified**\n'];
+    
+    for (const record of records) {
+      const ago = timeAgo(new Date(record.updated_at));
+      lines.push(`• ${record.title} (${record.type}) — ${ago}`);
+    }
+
+    return lines.join('\n');
+  },
+};
+
+export const openPage: Tool = {
+  name: 'openPage',
+  description: 'Display a page inline',
+
+  routing: {
+    patterns: [
+      /^open\s+(.+)$/i,
+      /^view\s+page\s+(.+)$/i,
+      /^read\s+(.+)$/i,
+    ],
+    keywords: { verbs: ['open', 'read'], nouns: [] },
+    examples: ['open 2025 taxes', 'read meeting notes'],
+    priority: 75,
+  },
+
+  parseArgs: (input, match) => {
+    const title = match ? match[1] : input.replace(/^(open|view\s+page|read)\s+/i, '');
+    return { title };
+  },
+
+  execute: async (args, context) => {
+    const { title } = args as { title: string };
+    
+    // Try exact match first
+    let record = context.services.garden.getByTitle(title);
+    
+    // Try partial match across all types
+    if (!record) {
+      const all = context.services.garden.getRecent(100);
+      record = all.find(r => 
+        r.title.toLowerCase().includes(title.toLowerCase())
+      ) || null;
+    }
+    
+    if (!record) {
+      return `Page not found: "${title}"\n\nTry: recent (to see recent pages)`;
+    }
+
+    const lines = [
+      `**${record.title}** (${record.type})`,
+      '─'.repeat(40),
+    ];
+    
+    if (record.content) {
+      lines.push(record.content);
+    } else {
+      lines.push('(no content)');
+    }
+    
+    lines.push('─'.repeat(40));
+    
+    const meta: string[] = [];
+    if (record.context) meta.push(`Context: ${record.context}`);
+    if (record.project) meta.push(`Project: ${record.project}`);
+    if (record.due_date) meta.push(`Due: ${record.due_date}`);
+    if (record.tags?.length) meta.push(`Tags: ${record.tags.join(', ')}`);
+    if (record.email) meta.push(`Email: ${record.email}`);
+    if (record.phone) meta.push(`Phone: ${record.phone}`);
+    
+    if (meta.length > 0) {
+      lines.push(meta.join(' | '));
+    }
+
+    return lines.join('\n');
+  },
+};
+
+export const showTagged: Tool = {
+  name: 'showTagged',
+  description: 'Show pages with a specific tag',
+
+  routing: {
+    patterns: [
+      /^show\s+tagged\s+(.+)$/i,
+      /^tagged\s+(.+)$/i,
+      /^#(\w+)$/,
+    ],
+    keywords: { verbs: ['show', 'find'], nouns: ['tagged', 'tag'] },
+    examples: ['show tagged urgent', 'tagged work', '#taxes'],
+    priority: 80,
+  },
+
+  parseArgs: (input, match) => {
+    const tag = match ? match[1] : input.replace(/^(show\s+)?tagged\s+/i, '').replace(/^#/, '');
+    return { tag };
+  },
+
+  execute: async (args, context) => {
+    const { tag } = args as { tag: string };
+    const records = context.services.garden.getByTag(tag);
+    
+    if (records.length === 0) {
+      return `No pages tagged "${tag}".`;
+    }
+
+    const lines = [`**Tagged: ${tag}** (${records.length})\n`];
+    
+    for (const record of records) {
+      lines.push(`• ${record.title} (${record.type})`);
+    }
+
+    return lines.join('\n');
+  },
+};
+
 export const gtdTools: Tool[] = [
   appendToNote,  // Must be first - highest priority contextual check
   viewNextActions,
@@ -593,6 +792,10 @@ export const gtdTools: Tool[] = [
   addProject,
   showProjects,
   createNote,
+  showByType,
+  showRecent,
+  openPage,
+  showTagged,
   markDone,
   capture,
   showWaitingFor,
