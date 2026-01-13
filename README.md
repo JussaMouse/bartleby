@@ -27,24 +27,16 @@ Based on your calendar and actions:
 ...
 ```
 
-### Bartleby Reaches Out
+### Notifications via Signal
 
-Bartleby isn't just waiting for you to ask. When something needs your attention, Bartleby messages you directly via **Signal** (with Discord, email, and more coming):
+Bartleby can message you outside the terminal:
 
 ```
-📱 Signal from Bartleby:
-
-🔔 Reminder: Call mom
-   (You asked me to remind you at 3pm)
-
-📅 Starting in 15 min: Dentist appointment
-   2:30 PM at Main St Dental
-
-⚠️ Overdue: Submit expense report
-   Was due yesterday
+remind me to call mom in 30 min     → Signal message at 3:30pm
+add event dentist 2pm               → Signal alert 15 min before
 ```
 
-Your assistant has a voice. Set a reminder, schedule an event with an alert, and Bartleby will find you when it matters.
+Configure in `.env` with `SIGNAL_ENABLED=true`. See `help reminders`.
 
 ---
 
