@@ -388,9 +388,103 @@ export const showOverdue: Tool = {
   },
 };
 
+export const addProject: Tool = {
+  name: 'addProject',
+  description: 'Create a new project',
+
+  routing: {
+    patterns: [
+      /^(new|create|add)\s+project\s*:?\s*(.+)$/i,
+      /^project\s*:?\s*(.+)$/i,
+    ],
+    keywords: {
+      verbs: ['add', 'create', 'new', 'start'],
+      nouns: ['project'],
+    },
+    examples: ['new project 2025 taxes', 'create project website redesign', 'add project home renovation'],
+    priority: 95,  // Higher than addTask to catch "new project X"
+  },
+
+  parseArgs: (input, match) => {
+    let title = '';
+    if (match) {
+      title = match[match.length - 1] || '';
+    } else {
+      title = input.replace(/^(new|create|add)\s+project\s*:?\s*/i, '').trim();
+    }
+    return { title };
+  },
+
+  execute: async (args, context) => {
+    const { title } = args as { title: string };
+
+    if (!title) {
+      return 'Please provide a project name. Example: new project website redesign';
+    }
+
+    const project = context.services.garden.create({
+      type: 'project',
+      title,
+      status: 'active',
+    });
+
+    return `✓ Created project: "${project.title}"\n\nAdd actions with: add task <action> +${project.title.toLowerCase().replace(/\s+/g, '-')}`;
+  },
+};
+
+export const showProjects: Tool = {
+  name: 'showProjects',
+  description: 'List all projects',
+
+  routing: {
+    patterns: [
+      /^(show|list|view)\s+(my\s+)?projects?$/i,
+      /^projects?$/i,
+    ],
+    keywords: {
+      verbs: ['show', 'list', 'view'],
+      nouns: ['projects', 'project'],
+    },
+    examples: ['show projects', 'list projects', 'projects'],
+    priority: 85,
+  },
+
+  execute: async (args, context) => {
+    const allProjects = context.services.garden.getByType('project');
+    const projects = allProjects.filter(r => r.status === 'active');
+
+    if (projects.length === 0) {
+      return 'No active projects.\n\nCreate one with: new project <name>';
+    }
+
+    const lines = [`**Projects** (${projects.length})\n`];
+
+    for (const project of projects) {
+      // Count actions for this project
+      const projectSlug = project.title.toLowerCase().replace(/\s+/g, '-');
+      const actions = context.services.garden.getTasks({ status: 'active' })
+        .filter(a => a.project === projectSlug || a.project === project.title);
+      
+      const actionCount = actions.length;
+      const nextAction = actions[0];
+      
+      lines.push(`• **${project.title}**`);
+      if (actionCount > 0) {
+        lines.push(`  ${actionCount} action(s) — Next: ${nextAction?.title || 'none'}`);
+      } else {
+        lines.push(`  ⚠️ No actions — add one with: add task <action> +${projectSlug}`);
+      }
+    }
+
+    return lines.join('\n');
+  },
+};
+
 export const gtdTools: Tool[] = [
   viewNextActions,
   addTask,
+  addProject,
+  showProjects,
   markDone,
   capture,
   showWaitingFor,
