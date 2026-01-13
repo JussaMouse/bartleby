@@ -21,9 +21,7 @@ The personal exocortex, locally.
 
 Bartleby is a personal assistant that runs entirely on your machine. It works best paired with locally run LLMs.
 
-At its heart is **the Garden** — a personal wiki that grows with you. Not just notes and tasks, but a sprawling knowledge base where you build your understanding of everything that matters to you. Research topics, personal projects, reference documents, contacts, daily journals — all interconnected, all searchable, all yours.
-
-When you ingest documents into the Shed, Bartleby learns from them. Ask questions, and it synthesizes answers from your collected knowledge. The assistant becomes an expert on *your* topics — a co-editor of your everything-wiki, a true zettelkasten that turbocharges not just productivity but discovery.
+At its heart are **The Garden** and **The Shed**. The Garden is a personal wiki that grows with you, letting you curate a vast interconnected knowledgebase of articles, notes, and the projects they support. The Shed is the intelligent reference library. You feed it PDFs, books, and videos to support your knowledge work in The Garden and to power Bartleby's memory.
 
 **Why local?**
 - **Privacy** — Your thoughts, research, and documents never leave your machine
