@@ -150,15 +150,20 @@ export const addTask: Tool = {
     }
 
     // Parse due date - multiple formats supported:
-    // due:today, due:tomorrow, due:2026-01-15
+    // due:today, due:tomorrow, due:2026-01-15, due:tomorrow am
     // (due today), (due 8pm), (due tomorrow)
     // by tomorrow, by friday, by 5pm
-    let dueMatch = description.match(/due:(\S+)/i);
+    // Handle due:WORD or due:WORD TIME (e.g., due:tomorrow am, due:friday 5pm)
+    let dueMatch = description.match(/due:(\S+)(?:\s+(am|pm|\d{1,2}(?::\d{2})?(?:am|pm)?))?/i);
     let dueStr: string | null = null;
     
     if (dueMatch) {
       dueStr = dueMatch[1].toLowerCase();
-      description = description.replace(/due:\S+/i, '').trim();
+      if (dueMatch[2]) {
+        dueStr += ' ' + dueMatch[2].toLowerCase(); // Include time modifier
+      }
+      // Remove the full match from description
+      description = description.replace(/due:\S+(?:\s+(?:am|pm|\d{1,2}(?::\d{2})?(?:am|pm)?))?/i, '').trim();
     } else {
       // Try parenthetical format: (due TODAY), (due 8pm), (due: 8pm)
       const parenMatch = description.match(/\(due:?\s*([^)]+)\)/i);
@@ -253,12 +258,33 @@ export const addTask: Tool = {
       return 'Please provide an action description. Example: new action buy milk @errands';
     }
 
+    // Auto-create project if it doesn't exist
+    let projectCreated = false;
+    if (project) {
+      const existingProjects = context.services.garden.getByType('project');
+      const projectSlug = project.toLowerCase();
+      const projectExists = existingProjects.some(p => 
+        p.title.toLowerCase() === projectSlug || 
+        p.title.toLowerCase().replace(/\s+/g, '-') === projectSlug
+      );
+      
+      if (!projectExists) {
+        context.services.garden.create({
+          type: 'project',
+          title: project.charAt(0).toUpperCase() + project.slice(1), // Capitalize
+          status: 'active',
+        });
+        projectCreated = true;
+      }
+    }
+
     const task = context.services.garden.addTask(description, ctx || '@inbox', project, dueDate);
 
     let response = `✓ Added: "${task.title}"`;
     if (task.context) response += ` (${task.context})`;
     if (task.project) response += ` [${task.project}]`;
     if (task.due_date) response += ` [due: ${task.due_date}]`;
+    if (projectCreated) response += `\n✓ Created project: "${project}"`;
 
     return response;
   },
