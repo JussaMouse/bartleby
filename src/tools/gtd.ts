@@ -58,6 +58,50 @@ export const viewNextActions: Tool = {
   },
 };
 
+export const processInbox: Tool = {
+  name: 'processInbox',
+  description: 'Process inbox items',
+
+  routing: {
+    patterns: [
+      /^process\s+inbox$/i,
+      /^(show|view|list)\s+inbox$/i,
+      /^inbox$/i,
+    ],
+    keywords: {
+      verbs: ['process', 'show', 'view', 'review'],
+      nouns: ['inbox'],
+    },
+    examples: ['process inbox', 'show inbox', 'inbox'],
+    priority: 95,
+  },
+
+  execute: async (args, context) => {
+    const tasks = context.services.garden.getTasks({ status: 'active', context: '@inbox' });
+
+    if (tasks.length === 0) {
+      return '📥 Inbox is empty! Nothing to process.\n\nCapture something with: capture <thought>';
+    }
+
+    const lines = [`📥 **Inbox** (${tasks.length} item${tasks.length === 1 ? '' : 's'} to process)\n`];
+
+    tasks.forEach((task, i) => {
+      const age = Math.floor((Date.now() - new Date(task.created_at).getTime()) / (1000 * 60 * 60 * 24));
+      const ageStr = age === 0 ? 'today' : age === 1 ? 'yesterday' : `${age} days ago`;
+      lines.push(`${i + 1}. ${task.title}`);
+      lines.push(`   captured ${ageStr}`);
+    });
+
+    lines.push('\n**For each item, decide:**');
+    lines.push('• Is it actionable? → `new action <text> @context`');
+    lines.push('• Multiple steps? → `new project <name>`');
+    lines.push('• Not now? → Mark someday or delete');
+    lines.push('• Done already? → `done <number>`');
+
+    return lines.join('\n');
+  },
+};
+
 export const addTask: Tool = {
   name: 'addTask',
   description: 'Add a new action',
@@ -791,6 +835,7 @@ export const showTagged: Tool = {
 export const gtdTools: Tool[] = [
   appendToNote,  // Must be first - highest priority contextual check
   viewNextActions,
+  processInbox,
   addTask,
   addProject,
   showProjects,
