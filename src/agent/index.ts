@@ -60,7 +60,8 @@ export class Agent {
 
           const context: ToolContext = { input, services: this.services };
           debug('Simple agent tool call', { tool: toolName, args });
-          return tool.execute(args, context);
+          const result = await tool.execute(args, context);
+          return result ?? '';
         } else {
           warn('Agent referenced unknown tool', { tool: toolName });
         }
@@ -129,7 +130,7 @@ export class Agent {
                 const context: ToolContext = { input, services: this.services };
                 
                 debug('Agentic tool call', { tool: toolName, args, iteration });
-                result = await tool.execute(args, context);
+                result = await tool.execute(args, context) ?? '';
               } catch (err) {
                 error('Tool execution failed', { tool: toolName, error: String(err) });
                 result = `Error executing ${toolName}: ${err}`;

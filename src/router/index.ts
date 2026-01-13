@@ -60,6 +60,13 @@ export class CommandRouter {
 
     // === Step 3: Simple requests go through deterministic router ===
 
+    // Layer 0: Context-dependent matching (shouldHandle)
+    const contextResult = await this.matchContextual(normalized);
+    if (contextResult) {
+      debug('Layer 0 match (contextual)', { tool: contextResult.tool });
+      return { type: 'routed', route: contextResult, complexity };
+    }
+
     // Layer 1: Pattern matching (regex)
     const patternResult = this.matchPattern(normalized);
     if (patternResult) {
@@ -104,7 +111,39 @@ export class CommandRouter {
       match: result.match,
     };
 
-    return tool.execute(result.args, context);
+    const output = await tool.execute(result.args, context);
+    return output ?? '';  // Handle null returns
+  }
+
+  // Layer 0: Context-dependent matching (tools with shouldHandle)
+  private async matchContextual(input: string): Promise<RouteResult | null> {
+    if (!this.services) return null;
+
+    const context: ToolContext = {
+      input,
+      services: this.services,
+    };
+
+    for (const tool of this.tools) {
+      if (!tool.shouldHandle) continue;
+
+      const shouldHandle = await tool.shouldHandle(input, context);
+      if (shouldHandle) {
+        // Pass raw input for context-dependent tools
+        const args = tool.parseArgs 
+          ? tool.parseArgs(input, null) 
+          : { __raw_input: input };
+        
+        return {
+          tool: tool.name,
+          args: { ...args, __raw_input: input },
+          confidence: 1.0,
+          source: 'pattern',  // Treat as high-confidence match
+        };
+      }
+    }
+
+    return null;
   }
 
   // Layer 1: Pattern matching

@@ -480,11 +480,119 @@ export const showProjects: Tool = {
   },
 };
 
+export const createNote: Tool = {
+  name: 'createNote',
+  description: 'Create a new note and prompt for content',
+
+  routing: {
+    patterns: [
+      /^(new|create|add)\s+note\s*:?\s*(.+)$/i,
+      /^note\s*:?\s*(.+)$/i,
+    ],
+    keywords: {
+      verbs: ['new', 'create', 'add', 'start'],
+      nouns: ['note', 'notes'],
+    },
+    examples: ['new note meeting with Scott', 'create note project ideas', 'note: daily standup'],
+    priority: 90,  // Higher than capture
+  },
+
+  parseArgs: (input, match) => {
+    let title = '';
+    if (match) {
+      title = match[match.length - 1] || '';
+    } else {
+      title = input.replace(/^(new|create|add)\s+note\s*:?\s*/i, '').trim();
+    }
+    return { title };
+  },
+
+  execute: async (args, context) => {
+    const { title } = args as { title: string };
+
+    if (!title) {
+      return 'Please provide a note title. Example: new note meeting with Scott';
+    }
+
+    // Create note with just the title
+    const note = context.services.garden.create({
+      type: 'note',
+      title,
+      status: 'active',
+      content: '',
+    });
+
+    // Set pending note in session for follow-up content
+    await context.services.context.setFact('system', 'pending_note_id', note.id);
+
+    return `📝 **Note: ${note.title}**
+
+What would you like to add to this note?
+(Type your content, or "done" to finish)`;
+  },
+};
+
+export const appendToNote: Tool = {
+  name: 'appendToNote',
+  description: 'Append content to a pending note',
+
+  routing: {
+    patterns: [],  // No patterns - checked via pending state
+    keywords: { verbs: [], nouns: [] },
+    examples: [],
+    priority: 100,  // Very high - check first if there's a pending note
+  },
+
+  // Custom check: only match if there's a pending note
+  shouldHandle: async (input: string, context) => {
+    const fact = context.services.context.getFact('system', 'pending_note_id');
+    const pendingNoteId = fact?.value as string | null;
+    if (!pendingNoteId) return false;
+    
+    // "done" finishes the note
+    if (input.toLowerCase().trim() === 'done') return true;
+    
+    // Any other input is content to append
+    return true;
+  },
+
+  execute: async (args, context) => {
+    const input = (args as any).__raw_input || '';
+    const fact = context.services.context.getFact('system', 'pending_note_id');
+    const pendingNoteId = fact?.value as string | null;
+    
+    if (!pendingNoteId) {
+      return '';  // Shouldn't happen, but safety check
+    }
+
+    // "done" finishes the note
+    if (input.toLowerCase().trim() === 'done') {
+      await context.services.context.setFact('system', 'pending_note_id', null);
+      const note = context.services.garden.get(pendingNoteId);
+      return `✓ Note saved: "${note?.title}"`;
+    }
+
+    // Append content to note
+    const note = context.services.garden.get(pendingNoteId);
+    if (!note) {
+      await context.services.context.setFact('system', 'pending_note_id', null);
+      return 'Note not found. Starting fresh.';
+    }
+
+    const newContent = note.content ? `${note.content}\n${input}` : input;
+    context.services.garden.update(note.id, { content: newContent });
+
+    return `Added to note. Continue typing, or say "done" to finish.`;
+  },
+};
+
 export const gtdTools: Tool[] = [
+  appendToNote,  // Must be first - highest priority contextual check
   viewNextActions,
   addTask,
   addProject,
   showProjects,
+  createNote,
   markDone,
   capture,
   showWaitingFor,

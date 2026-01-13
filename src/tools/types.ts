@@ -24,7 +24,9 @@ export interface Tool {
   routing?: ToolRouting;
   parameters?: Record<string, unknown>;
   parseArgs?: (input: string, match: RegExpMatchArray | null) => Record<string, unknown>;
-  execute: (args: Record<string, unknown>, context: ToolContext) => Promise<string>;
+  /** Optional async check for context-dependent matching (e.g., pending state) */
+  shouldHandle?: (input: string, context: ToolContext) => Promise<boolean>;
+  execute: (args: Record<string, unknown>, context: ToolContext) => Promise<string | null>;
 }
 
 export interface ToolContext {
