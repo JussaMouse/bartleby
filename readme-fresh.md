@@ -531,7 +531,7 @@ Everything with a "when" shows up in one place.
 |--------|------|--------|
 | 📅 | Events | Calendar |
 | ⚠️ | Deadlines | Actions with due dates |
-| 🔔 | Reminders | Scheduler |
+| 🔔 | Automation | Scheduler |
 
 ### Commands
 
