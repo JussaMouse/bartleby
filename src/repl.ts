@@ -212,13 +212,16 @@ async function handleMissedReminders(
 function createCompleter(services: ServiceContainer) {
   return (line: string): [string[], string] => {
     const lowerLine = line.toLowerCase();
+    debug('Completer called', { line, lowerLine });
     
     // Commands that take a project name specifically
     const projectCommands = ['delete project ', 'remove project '];
     const needsProject = projectCommands.some(cmd => lowerLine.startsWith(cmd));
+    debug('needsProject check', { needsProject, projectCommands });
     
     if (needsProject) {
       const cmdMatch = line.match(/^((?:delete|remove)\s+project\s+)(.*)$/i);
+      debug('Project completion', { cmdMatch: cmdMatch ? [cmdMatch[1], cmdMatch[2]] : null });
       if (cmdMatch) {
         const prefix = cmdMatch[1];
         const partial = cmdMatch[2].toLowerCase();
@@ -226,9 +229,12 @@ function createCompleter(services: ServiceContainer) {
         const projects = services.garden.getByType('project');
         const titles = projects.map(p => p.title);
         const matches = titles.filter(t => t.toLowerCase().startsWith(partial));
+        debug('Project matches', { partial, titles, matches });
         
         if (matches.length > 0) {
-          return [matches.map(m => prefix + m), line];
+          const result: [string[], string] = [matches.map(m => prefix + m), line];
+          debug('Returning completions', { completions: result[0] });
+          return result;
         }
       }
     }
@@ -315,10 +321,18 @@ export async function startRepl(
   agent: Agent,
   services: ServiceContainer
 ): Promise<void> {
+  // Debug: check if TTY is available for tab completion
+  console.log('[TAB DEBUG] TTY:', process.stdin.isTTY, process.stdout.isTTY);
+  debug('Terminal mode', { 
+    stdinIsTTY: process.stdin.isTTY, 
+    stdoutIsTTY: process.stdout.isTTY 
+  });
+  
   const rl = readline.createInterface({
     input: process.stdin,
     output: process.stdout,
     prompt: '\n> ',
+    terminal: true,  // Explicitly enable terminal mode for tab completion
     completer: createCompleter(services),
   });
 
