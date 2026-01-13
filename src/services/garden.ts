@@ -5,7 +5,8 @@ import fs from 'fs';
 import path from 'path';
 import chokidar, { FSWatcher } from 'chokidar';
 import { Config, resolvePath, getDbPath, ensureDir } from '../config.js';
-import { parseMarkdown, generateMarkdown, sanitizeFilename } from '../utils/markdown.js';
+import { sanitizeFilename } from '../utils/markdown.js';
+import { parseGardenPage, toGardenPage, extractTitle } from '../utils/garden-parser.js';
 import { info, warn, error, debug } from '../utils/logger.js';
 import type { CalendarService } from './calendar.js';
 
@@ -272,6 +273,26 @@ export class GardenService {
     return rows.map(r => this.rowToRecord(r));
   }
 
+  getRecent(limit = 10): GardenRecord[] {
+    const rows = this.db.prepare(`
+      SELECT * FROM garden_records 
+      ORDER BY updated_at DESC
+      LIMIT ?
+    `).all(limit) as any[];
+    return rows.map(r => this.rowToRecord(r));
+  }
+
+  getByTag(tag: string): GardenRecord[] {
+    const pattern = `%"${tag}"%`;
+    const rows = this.db.prepare(`
+      SELECT * FROM garden_records 
+      WHERE tags LIKE ? 
+      AND status = 'active'
+      ORDER BY updated_at DESC
+    `).all(pattern) as any[];
+    return rows.map(r => this.rowToRecord(r));
+  }
+
   search(query: string, limit = 50): GardenRecord[] {
     const pattern = `%${query}%`;
     const rows = this.db.prepare(`
@@ -396,22 +417,24 @@ export class GardenService {
 
     const filepath = this.getFilePath(record);
 
-    const frontmatter: Record<string, unknown> = {
-      id: record.id,
+    // Build body: title + content
+    const body = `# ${record.title}\n\n${record.content || ''}`;
+
+    // Build metadata (backmatter format - human-first ordering handled by toGardenPage)
+    const meta: Record<string, unknown> = {
+      tags: record.tags?.length ? record.tags : undefined,
+      context: record.context,
+      project: record.project,
+      due: record.due_date,
+      email: record.email,
+      phone: record.phone,
+      birthday: record.birthday,
       type: record.type,
       status: record.status,
+      id: record.id,
     };
 
-    if (record.context) frontmatter.context = record.context;
-    if (record.project) frontmatter.project = record.project;
-    if (record.due_date) frontmatter.due = record.due_date;
-    if (record.email) frontmatter.email = record.email;
-    if (record.phone) frontmatter.phone = record.phone;
-    if (record.birthday) frontmatter.birthday = record.birthday;
-    if (record.tags?.length) frontmatter.tags = record.tags;
-
-    const body = `# ${record.title}\n\n${record.content || ''}`;
-    const markdown = generateMarkdown(frontmatter, body);
+    const markdown = toGardenPage(body, meta);
 
     this.syncing = true;
     fs.writeFileSync(filepath, markdown);
@@ -425,27 +448,29 @@ export class GardenService {
 
     try {
       const content = fs.readFileSync(filepath, 'utf-8');
-      const { frontmatter, content: body } = parseMarkdown(content);
+      
+      // Parse with new parser (handles both backmatter and frontmatter)
+      const { body, meta } = parseGardenPage(content);
 
-      const titleMatch = body.match(/^#\s+(.+)$/m);
-      const title = titleMatch ? titleMatch[1].trim() : path.basename(filepath, '.md');
+      // Extract title from # heading or filename
+      const title = extractTitle(body, path.basename(filepath, '.md'));
 
       // Check if this file has an ID (was created by us)
-      const existingId = frontmatter.id as string | undefined;
+      const existingId = meta.id as string | undefined;
       const existing = existingId ? this.get(existingId) : this.getByTitle(title);
 
       const recordData = {
-        type: (frontmatter.type as RecordType) || 'note',
+        type: (meta.type as RecordType) || 'note',
         title,
-        status: (frontmatter.status as RecordStatus) || 'active',
-        context: frontmatter.context as string | undefined,
-        project: frontmatter.project as string | undefined,
-        due_date: frontmatter.due as string | undefined,
-        email: frontmatter.email as string | undefined,
-        phone: frontmatter.phone as string | undefined,
-        birthday: frontmatter.birthday as string | undefined,
+        status: (meta.status as RecordStatus) || 'active',
+        context: meta.context as string | undefined,
+        project: meta.project as string | undefined,
+        due_date: meta.due as string | undefined,
+        email: meta.email as string | undefined,
+        phone: meta.phone as string | undefined,
+        birthday: meta.birthday as string | undefined,
         content: body.replace(/^#\s+.+\n+/, '').trim(),
-        tags: frontmatter.tags as string[] | undefined,
+        tags: meta.tags as string[] | undefined,
       };
 
       this.syncing = true;
