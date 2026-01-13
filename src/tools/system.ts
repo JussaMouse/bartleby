@@ -55,13 +55,17 @@ Actions are things you can do. Projects are outcomes with multiple actions.
   due:tomorrow                 Tomorrow
   due:friday                   Next Friday
   due:1/15                     January 15
+  due:5pm                      Today at 5pm
+  due:tomorrow 5pm             Tomorrow at 5pm
+  due:friday 3:30pm            Next Friday at 3:30pm
   (due tomorrow)               Alternative syntax
   by friday                    Alternative syntax
 
 **Projects**
   new project <name>           Create a project
   show projects                List with action counts
-  delete project <name>        Remove a project
+  open <project>               View project with its actions
+  delete project <name>        Remove project (unlinks actions)
   new action <text> +project   Add action to project
 
 **Examples**

@@ -24,6 +24,8 @@ Complete list of all commands. For quick start, see [README.md](README.md).
 
 **Due date formats:** `due:today`, `due:tomorrow`, `due:friday`, `due:1/15`, `(due tomorrow)`, `by friday`
 
+**Due date with time:** `due:5pm`, `due:17:30`, `due:tomorrow 5pm`, `due:friday 3:30pm`
+
 **Context examples:** `@phone`, `@computer`, `@errands`, `@home`, `@office`
 
 ---
@@ -34,7 +36,7 @@ Complete list of all commands. For quick start, see [README.md](README.md).
 |---------|-------------|
 | `new project <name>` | Create a new project |
 | `show projects` | List projects with action counts |
-| `delete project <name>` | Remove a project |
+| `delete project <name>` | Remove project (unlinks associated actions) |
 
 ---
 
