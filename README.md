@@ -27,6 +27,25 @@ Based on your calendar and actions:
 ...
 ```
 
+### Bartleby Reaches Out
+
+Bartleby isn't just waiting for you to ask. When something needs your attention, Bartleby messages you directly via **Signal** (with Discord, email, and more coming):
+
+```
+📱 Signal from Bartleby:
+
+🔔 Reminder: Call mom
+   (You asked me to remind you at 3pm)
+
+📅 Starting in 15 min: Dentist appointment
+   2:30 PM at Main St Dental
+
+⚠️ Overdue: Submit expense report
+   Was due yesterday
+```
+
+Your assistant has a voice. Set a reminder, schedule an event with an alert, and Bartleby will find you when it matters.
+
 ---
 
 ## Three Places, One Garden
