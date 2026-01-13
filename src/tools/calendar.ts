@@ -651,7 +651,7 @@ CALENDAR_DEFAULT_DURATION=${duration}
 CALENDAR_AMBIGUOUS_TIME=${ambiguousTime}
 CALENDAR_WEEK_START=${weekStart}
 CALENDAR_DATE_FORMAT=${dateFormat}
-CALENDAR_REMINDER_MINUTES=${reminderMinutes}${reminder !== 'none' ? '\nSIGNAL_ENABLED=true' : ''}
+CALENDAR_EVENT_REMINDER_MINUTES=${reminderMinutes}${reminder !== 'none' ? '\nSIGNAL_ENABLED=true' : ''}
 ───────────────────────────────────────────
 
 Copy these to your \`.env\` file. Bartleby reads settings from .env on startup.

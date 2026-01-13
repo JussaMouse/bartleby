@@ -149,7 +149,7 @@ export function loadConfig(): Config {
       defaultDuration: parseInt(process.env.CALENDAR_DEFAULT_DURATION || '60'),
       ambiguousTime: (process.env.CALENDAR_AMBIGUOUS_TIME as 'morning' | 'afternoon' | 'ask') || 'afternoon',
       weekStart: (process.env.CALENDAR_WEEK_START as 'sunday' | 'monday') || 'sunday',
-      reminderMinutes: parseInt(process.env.CALENDAR_REMINDER_MINUTES || '0'),
+      reminderMinutes: parseInt(process.env.CALENDAR_EVENT_REMINDER_MINUTES || '0'),
       dateFormat: (process.env.CALENDAR_DATE_FORMAT as 'mdy' | 'dmy') || 'mdy',
     },
     presence: {

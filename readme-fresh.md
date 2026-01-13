@@ -616,7 +616,7 @@ CALENDAR_DEFAULT_DURATION=60
 CALENDAR_AMBIGUOUS_TIME=afternoon    # morning|afternoon|ask
 CALENDAR_WEEK_START=sunday           # sunday|monday
 CALENDAR_DATE_FORMAT=mdy             # mdy (1/15=Jan 15) | dmy (1/15=15 Jan)
-CALENDAR_REMINDER_MINUTES=15         # 0=off
+CALENDAR_EVENT_REMINDER_MINUTES=15   # 0=off
 ```
 
 Or configure interactively:
