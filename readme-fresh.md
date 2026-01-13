@@ -21,19 +21,23 @@ The personal exocortex, locally.
 
 Bartleby is a personal assistant that runs entirely on your machine. It works best paired with locally run LLMs.
 
+At its heart is **the Garden** — a personal wiki that grows with you. Not just notes and tasks, but a sprawling knowledge base where you build your understanding of everything that matters to you. Research topics, personal projects, reference documents, contacts, daily journals — all interconnected, all searchable, all yours.
+
+When you ingest documents into the Shed, Bartleby learns from them. Ask questions, and it synthesizes answers from your collected knowledge. The assistant becomes an expert on *your* topics — a co-editor of your everything-wiki, a true zettelkasten that turbocharges not just productivity but discovery.
+
 **Why local?**
-- **Privacy** — Your thoughts, tasks, and documents never leave your machine
-- **Ownership** — Plain markdown files you can read, edit, backup, migrate
+- **Privacy** — Your thoughts, research, and documents never leave your machine
+- **Ownership** — Plain markdown files you can read, edit, backup, migrate forever
 - **Speed** — No network latency for most operations
 - **Reliability** — Works offline, no API outages
 - **Customization** — Swap models, modify code, make it yours
 
-**What can Bartleby do?**
-- GTD task management (inbox, actions, projects, contexts)
-- Personal wiki (notes, contacts, journal entries)
+**What Bartleby enables:**
+- A personal wiki that connects everything you know and want to learn
+- GTD task management woven into that knowledge base
+- A document library that Bartleby actually understands (RAG)
 - Calendar with mobile notifications via Signal
-- Document library with semantic search (RAG)
-- Learn your preferences and adapt over time
+- An assistant that learns your preferences and adapts over time
 
 Talk to Bartleby naturally. It figures out what you mean.
 
@@ -96,9 +100,10 @@ Bartleby stores everything in three places, all on your machine.
 
 ### The Garden
 
-Your personal wiki. Plain markdown files you own forever.
+Your personal wiki — plain markdown files you own forever.
 
-**What lives here:**
+The Garden is where everything lives: tasks and projects, yes, but also notes on topics you're researching, encyclopedia entries for concepts you want to remember, contacts, daily journals, reading lists. Over time it becomes your external brain — a comprehensive, searchable map of everything you know and everything you're working on.
+
 | Type | Description | Example |
 |------|-------------|---------|
 | `action` | Something you can do | "Call dentist @phone" |
@@ -126,7 +131,7 @@ recent                  Last 10 modified
 open <title>            View any page
 ```
 
-**Files are the source of truth.** Edit them in any text editor. Bartleby watches for changes and syncs automatically.
+**Files are the source of truth.** Edit them in any text editor — Bartleby watches for changes and syncs automatically.
 
 Location: `./garden/` (configurable via `GARDEN_PATH`)
 
