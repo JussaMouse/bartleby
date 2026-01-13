@@ -160,75 +160,130 @@ Location: `./database/memory/`
 
 ## GTD Workflow
 
-Bartleby implements Getting Things Done (GTD).
+Bartleby implements Getting Things Done (GTD) — a system for capturing everything on your mind and organizing it so you always know what to do next.
 
-### The Flow
+### The Core Idea
+
+Your brain is for having ideas, not holding them. GTD gets everything out of your head and into a trusted system so you can focus on doing instead of remembering.
+
+### Things You'll Work With
+
+| Type | What it is | Example |
+|------|------------|---------|
+| **Item** | Raw capture, not yet processed | "Call someone about that thing" |
+| **Action** | A single, concrete next step | "Call Dr. Smith to schedule checkup @phone" |
+| **Project** | An outcome requiring multiple actions | "2025 Taxes" |
+| **Event** | Something happening at a specific time | "Team meeting at 2pm" |
+
+The key insight: an **action** is something you can actually *do*. "Do taxes" isn't an action — it's a project. "Find last year's W2" is an action.
+
+### The Lists
+
+GTD organizes your work into lists:
+
+| List | What goes here | Command |
+|------|----------------|---------|
+| **Inbox** | Everything you capture, before processing | `show inbox` |
+| **Next Actions** | Actions you can do now, organized by context | `show next actions` |
+| **Projects** | Outcomes you're working toward | `show projects` |
+| **Someday/Maybe** | Things you might do later | `show someday` |
+| **Waiting For** | Actions blocked on someone else | `show waiting` |
+
+### Contexts
+
+Contexts answer: *where or with what can I do this?*
+
+| Context | When to use |
+|---------|-------------|
+| `@phone` | Need to make a call |
+| `@computer` | Need your laptop |
+| `@errands` | Need to be out |
+| `@home` | Need to be home |
+| `@office` | Need to be at work |
+| `@waiting` | Delegated, waiting for response |
+| `@focus` | Need uninterrupted time |
+
+When you have 10 minutes and your phone, filter to `@phone` actions. When you're running errands, check `@errands`. Contexts let you see only what's possible right now.
+
+```
+> new action call mom @phone
+> new action buy batteries @errands
+> new action review proposal @focus
+```
+
+### Tags
+
+Tags categorize across types. Use them for:
+
+- **Priority:** `urgent`, `important`
+- **Topics:** `taxes`, `health`, `house`
+- **People:** `sarah`, `boss`
+- **Time horizons:** `thisweek`, `q1`
+
+```
+> new action call accountant @phone #taxes #urgent
+> show tagged urgent
+```
+
+### Projects
+
+A project is any outcome requiring more than one action. The key discipline: every project needs at least one action in your Next Actions list, or it stalls.
+
+```
+> new project 2025 taxes
+
+> new action gather W2 forms +2025-taxes
+> new action find last year's return +2025-taxes
+> new action call accountant +2025-taxes @phone
+```
+
+The `+project-name` links actions to their project. View a project to see all linked actions:
+
+```
+> open 2025 taxes
+```
+
+### The Workflow
 
 ```
 Capture → Clarify → Organize → Review → Do
 ```
 
-### In Practice
-
-**1. Capture everything**
+**1. Capture everything** — Get it out of your head immediately.
 ```
 > capture call insurance about claim
-> capture idea for blog post
-> capture buy groceries
+> capture idea for blog post  
+> capture look into that thing Jake mentioned
 ```
 
-**2. Process your inbox**
+**2. Clarify** — Process your inbox. For each item ask: Is it actionable?
+- **Yes:** What's the next action? Create it.
+- **No:** Delete it, file it as reference, or put it in Someday/Maybe.
+
 ```
 > show inbox
+> new action call insurance claims dept @phone
+> done 2
 ```
-For each item: Is it actionable? What's the next action?
 
-**3. Organize with context**
+**3. Organize** — Actions get contexts. Multi-step outcomes become projects.
 ```
-> new action call insurance @phone
 > new action write blog outline @computer
-> new action buy groceries @errands
+> new project home renovation
 ```
 
-**4. Work by context**
+**4. Review** — Weekly, look at all projects and lists. Is everything current? Does every project have a next action?
 ```
-> show next actions
-```
-When you're at the computer, do @computer actions. When you're out, do @errands.
-
-**5. Complete and review**
-```
-> done 3
 > show projects
+> show next actions
+> show waiting
 ```
 
-### Contexts
-
-Contexts tell you *where* or *how* you can do something:
-
-| Context | Meaning |
-|---------|---------|
-| `@phone` | Calls to make |
-| `@computer` | At your desk |
-| `@errands` | Out and about |
-| `@home` | Around the house |
-| `@office` | At work |
-| `@waiting` | Delegated, waiting for response |
-
-Use any context that makes sense for you.
-
-### Projects
-
-Projects are outcomes requiring multiple actions:
-
+**5. Do** — When it's time to work, filter by context and pick something.
 ```
-> new project 2025 taxes
-> new action gather W2 forms +2025-taxes
-> new action find last year's return +2025-taxes
-> new action schedule accountant call +2025-taxes @phone
+> show next actions @phone
+> done 1
 ```
-
-The `+project-name` links actions to their project.
 
 ---
 
