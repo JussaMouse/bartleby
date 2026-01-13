@@ -213,9 +213,29 @@ function createCompleter(services: ServiceContainer) {
   return (line: string): [string[], string] => {
     const lowerLine = line.toLowerCase();
     
-    // Commands that take a page title
-    const titleCommands = ['open ', 'show ', 'edit ', 'read '];
-    const needsTitle = titleCommands.some(cmd => lowerLine.startsWith(cmd));
+    // Commands that take a project name specifically
+    const projectCommands = ['delete project ', 'remove project '];
+    const needsProject = projectCommands.some(cmd => lowerLine.startsWith(cmd));
+    
+    if (needsProject) {
+      const cmdMatch = line.match(/^((?:delete|remove)\s+project\s+)(.*)$/i);
+      if (cmdMatch) {
+        const prefix = cmdMatch[1];
+        const partial = cmdMatch[2].toLowerCase();
+        
+        const projects = services.garden.getByType('project');
+        const titles = projects.map(p => p.title);
+        const matches = titles.filter(t => t.toLowerCase().startsWith(partial));
+        
+        if (matches.length > 0) {
+          return [matches.map(m => prefix + m), line];
+        }
+      }
+    }
+    
+    // Commands that take any page title
+    const titleCommands = ['open ', 'edit ', 'read ', 'delete ', 'remove '];
+    const needsTitle = titleCommands.some(cmd => lowerLine.startsWith(cmd)) && !needsProject;
     
     if (needsTitle) {
       // Extract the partial title after the command
@@ -279,6 +299,8 @@ function createCompleter(services: ServiceContainer) {
       'show next actions', 'show projects', 'show notes', 'show contacts',
       'show inbox', 'process inbox', 'show overdue', 'show waiting',
       'capture ', 'done ', 'edit ', 'open ', 'recent',
+      'delete ', 'delete project ', 'delete contact ',
+      'remove ', 'remove project ', 'remove contact ',
       'today', 'calendar', 'add event ', 'remind me ',
       'ingest ', 'ask shed ', 'list sources',
     ];
