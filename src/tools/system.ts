@@ -45,7 +45,7 @@ Actions are things you can do. Projects are outcomes with multiple actions.
   show next actions            List by context
   show overdue                 Past-due actions
   done <number>                Complete by number
-  done <partial>               Complete by name match
+  done <name>                  Complete by name (partial match, TAB completes)
   edit <number> @context       Change context/project/due
   capture <text>               Quick inbox capture
   waiting for                  Delegated items
