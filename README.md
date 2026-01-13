@@ -11,7 +11,7 @@ A local-first AI assistant that lives on your machine. Your data stays yours.
 Bartleby is your personal assistant who remembers everything, helps you get things done, and keeps your knowledge organized. Behind the scenes, everything is stored as simple markdown files you can edit, backup, or sync anywhere.
 
 ```
-> add task call mom
+> add action call mom
 ✓ Added: "call mom" (@inbox)
 
 > new note meeting with scott
@@ -44,7 +44,7 @@ Configure in `.env` with `SIGNAL_ENABLED=true`. See `help reminders`.
 
 **Garden** — Your personal wiki (markdown files):
 - Actions, notes, contacts, projects
-- `add task`, `new note`, `show next actions`
+- `add action`, `new note`, `show next actions`
 
 **Shed** — Documents you want to search:
 - `ingest <file or url>` (indexes for search + creates wiki page)
@@ -84,10 +84,10 @@ pnpm start
 
 ### Actions (GTD)
 ```
-add task <text>              Add an action
-add task <text> @phone       With context
-add task <text> +project     With project
-add task <text> due:friday   With due date
+add action <text>            Add an action
+add action <text> @phone     With context
+add action <text> +project   With project
+add action <text> due:friday With due date
 show next actions            List by context
 show overdue                 Past-due actions
 done <number>                Complete action
