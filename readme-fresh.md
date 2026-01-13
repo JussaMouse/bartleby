@@ -27,7 +27,10 @@ A local-first AI assistant that runs entirely on your machine. Your data stays y
   - [Calendar](#calendar-settings)
   - [Notifications (Signal)](#notifications-signal)
   - [Presence](#presence-settings)
-  - [All Settings](#all-settings-reference)
+  - [Paths](#paths)
+  - [Logging](#logging)
+  - [Scheduler](#scheduler)
+  - [Weather](#weather-optional)
 - [Architecture](#architecture)
   - [Overview](#architecture-overview)
   - [How Routing Works](#how-routing-works)
@@ -58,7 +61,7 @@ Bartleby is a personal AI assistant that runs entirely on your machine using loc
 **What can Bartleby do?**
 - GTD task management (inbox, actions, projects, contexts)
 - Personal wiki (notes, contacts, journal entries)
-- Calendar and reminders with mobile notifications via Signal
+- Calendar with mobile notifications via Signal
 - Document library with semantic search (RAG)
 - Learn your preferences and adapt over time
 
@@ -89,7 +92,9 @@ pnpm build
 cp .env.example .env
 ```
 
-Edit `.env` with your LLM endpoints. At minimum:
+Edit `.env` with your LLM endpoints. You'll need local models running (e.g., via [MLX](https://github.com/ml-explore/mlx), [Ollama](https://ollama.ai), or [llama.cpp](https://github.com/ggerganov/llama.cpp)).
+
+At minimum:
 
 ```env
 FAST_MODEL=your-model-name
@@ -98,6 +103,8 @@ FAST_URL=http://127.0.0.1:8080/v1
 EMBEDDINGS_MODEL=your-embedding-model
 EMBEDDINGS_URL=http://127.0.0.1:8081/v1
 ```
+
+See [Configuration > LLM Models](#llm-models) for the full 4-tier setup.
 
 ### 4. Run
 
@@ -192,7 +199,7 @@ What Bartleby learns about you over time.
 - Conversation history and follow-ups
 
 **How Bartleby uses it:**
-- Startup message surfaces relevant reminders
+- Startup message surfaces relevant follow-ups
 - Responses adapt to your preferences
 - Can recall past conversations
 
@@ -558,7 +565,7 @@ remind me <msg> in <time>    Set reminder
 
 ### Why unified?
 
-You never miss something because it's in the "wrong system." Due dates from GTD, calendar events, and reminders all flow into one temporal view.
+You never miss something because it's in the "wrong system." Due dates from GTD, calendar events, and scheduled notifications all flow into one temporal view.
 
 ### Notifications
 
@@ -626,7 +633,7 @@ Or configure interactively:
 
 ### Notifications (Signal)
 
-Get reminders on your phone via Signal:
+Get notifications on your phone via Signal:
 
 ```env
 SIGNAL_ENABLED=true
@@ -660,20 +667,45 @@ PRESENCE_WEEKLY_DAY=0          # 0=Sunday
 PRESENCE_WEEKLY_HOUR=9
 ```
 
-### All Settings Reference
+### Paths
 
-| Setting | Default | Description |
-|---------|---------|-------------|
-| `GARDEN_PATH` | `./garden` | Where Garden files live |
-| `SHED_PATH` | `./shed` | Where Shed documents live |
-| `DATABASE_PATH` | `./database` | SQLite databases |
-| `LOG_DIR` | `./logs` | Log files |
-| `LOG_LEVEL` | `INFO` | DEBUG, INFO, WARN, ERROR |
-| `LOG_LLM_VERBOSE` | `false` | Show LLM chain-of-thought |
-| `SCHEDULER_ENABLED` | `true` | Enable reminder system |
-| `SCHEDULER_MISSED_REMINDERS` | (unset) | ask, fire, skip, show |
-| `WEATHER_API_KEY` | — | OpenWeatherMap API key |
-| `WEATHER_CITY` | — | City for weather |
+Where Bartleby stores data:
+
+```env
+GARDEN_PATH=./garden      # Your wiki (markdown files)
+SHED_PATH=./shed          # Ingested documents
+DATABASE_PATH=./database  # SQLite databases
+LOG_DIR=./logs            # Log files
+```
+
+### Logging
+
+```env
+LOG_LEVEL=INFO            # DEBUG, INFO, WARN, ERROR
+LOG_LLM_VERBOSE=false     # Show model chain-of-thought (debugging)
+```
+
+### Scheduler
+
+```env
+SCHEDULER_ENABLED=true              # Enable the task manager
+SCHEDULER_CHECK_INTERVAL=60000      # How often to check for due tasks (ms)
+SCHEDULER_MISSED_REMINDERS=         # What to do with missed tasks:
+                                    #   (blank) = ask on first occurrence
+                                    #   ask     = summarize and prompt each time
+                                    #   fire    = execute all immediately
+                                    #   skip    = dismiss silently
+                                    #   show    = display only, don't execute
+```
+
+### Weather (Optional)
+
+```env
+WEATHER_API_KEY=your-key  # OpenWeatherMap API key
+WEATHER_CITY=London       # City for weather queries
+```
+
+Get a free API key at [openweathermap.org](https://openweathermap.org/api).
 
 ---
 
