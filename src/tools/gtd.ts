@@ -917,7 +917,41 @@ export const openPage: Tool = {
     
     if (record.content) {
       lines.push(record.content);
-    } else {
+    }
+    
+    // Special handling for projects: show linked actions and notes
+    if (record.type === 'project') {
+      const projectSlug = record.title.toLowerCase().replace(/\s+/g, '-');
+      const projectTitle = record.title.toLowerCase();
+      
+      // Get linked actions
+      const actions = context.services.garden.getTasks({ status: 'active' })
+        .filter(a => 
+          a.project?.toLowerCase() === projectSlug || 
+          a.project?.toLowerCase() === projectTitle
+        );
+      
+      if (actions.length > 0) {
+        lines.push('\n**Next Actions:**');
+        actions.forEach((a, i) => {
+          const ctx = a.context ? ` ${a.context}` : '';
+          const due = a.due_date ? ` [due: ${a.due_date}]` : '';
+          lines.push(`  ${i + 1}. ${a.title}${ctx}${due}`);
+        });
+      } else {
+        lines.push('\n⚠️ No actions — add one with:');
+        lines.push(`  new action <text> +${projectSlug}`);
+      }
+      
+      // Get linked notes
+      const notes = context.services.garden.getByType('note')
+        .filter(n => n.project?.toLowerCase() === projectSlug || n.project?.toLowerCase() === projectTitle);
+      
+      if (notes.length > 0) {
+        lines.push('\n**Notes:**');
+        notes.forEach(n => lines.push(`  • ${n.title}`));
+      }
+    } else if (!record.content) {
       lines.push('(no content)');
     }
     
