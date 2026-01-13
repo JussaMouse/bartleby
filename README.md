@@ -40,21 +40,18 @@ Configure in `.env` with `SIGNAL_ENABLED=true`. See `help reminders`.
 
 ---
 
-## Three Places, One Garden
+## Where Your Data Lives
 
-Everything lives in the **Garden** — your personal wiki:
+**Garden** — Your personal wiki (markdown files):
+- Actions, notes, contacts, projects
+- `add task`, `new note`, `show next actions`
 
-| What | Examples | Commands |
-|------|----------|----------|
-| **Actions** | Tasks, to-dos, next steps | `add task`, `done`, `show next actions` |
-| **Notes** | Meeting notes, ideas, scratch | `new note`, `show notes`, `open <title>` |
-| **Contacts** | People, relationships | `add contact`, `find <name>` |
-| **Projects** | Multi-step outcomes | `new project`, `show projects` |
-| **Entries** | Wiki pages, reference | `new entry` |
+**Shed** — Documents you want to search (PDFs, articles):
+- `ingest <file>`, `ask shed <question>`
 
-**The Shed** stores documents (PDFs, articles) you want to search.
-
-**Context** is what Bartleby remembers about you and your conversations.
+**Context** — What Bartleby remembers about you:
+- Preferences, past conversations, follow-ups
+- `i prefer morning meetings`, `what do you know about me`
 
 ---
 
