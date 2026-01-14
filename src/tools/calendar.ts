@@ -8,7 +8,7 @@ export const showCalendar: Tool = {
 
   routing: {
     patterns: [
-      /^(show|view|list)?\s*calendar$/i,
+      /^(show|view|list)?\s*cal(endar)?$/i,
       /^upcoming\s+events?$/i,
       /^what('s| is)\s+(on\s+)?(my\s+)?calendar/i,
     ],
