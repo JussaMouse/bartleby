@@ -34,6 +34,33 @@
         <h2 id="edit-title">Edit</h2>
         <button class="modal-close" onclick="closeEditor()">&times;</button>
       </div>
+      <div class="edit-toolbar">
+        <div class="toolbar-group">
+          <label>Context:</label>
+          <select id="edit-context" onchange="updateMetaField('context', this.value)">
+            <option value="">none</option>
+            <option value="@inbox">@inbox</option>
+            <option value="@phone">@phone</option>
+            <option value="@computer">@computer</option>
+            <option value="@errands">@errands</option>
+            <option value="@home">@home</option>
+            <option value="@office">@office</option>
+            <option value="@waiting">@waiting</option>
+            <option value="@focus">@focus</option>
+          </select>
+        </div>
+        <div class="toolbar-group">
+          <label>Project:</label>
+          <select id="edit-project" onchange="updateMetaField('project', this.value)">
+            <option value="">none</option>
+            <!-- Populated dynamically -->
+          </select>
+        </div>
+        <div class="toolbar-group">
+          <label>Due:</label>
+          <input type="date" id="edit-due" onchange="updateMetaField('due', this.value)">
+        </div>
+      </div>
       <textarea id="edit-content"></textarea>
       <div class="modal-footer">
         <button class="btn-secondary" onclick="closeEditor()">Cancel</button>

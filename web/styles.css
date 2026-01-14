@@ -310,9 +310,52 @@ footer button:hover {
   color: var(--text);
 }
 
+.edit-toolbar {
+  display: flex;
+  gap: 16px;
+  padding: 12px 20px;
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
+  flex-wrap: wrap;
+}
+
+.toolbar-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.toolbar-group label {
+  font-size: 11px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.toolbar-group select,
+.toolbar-group input {
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 6px 10px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-family: var(--font-mono);
+}
+
+.toolbar-group select:focus,
+.toolbar-group input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.toolbar-group input[type="date"] {
+  width: 140px;
+}
+
 #edit-content {
   flex: 1;
-  min-height: 300px;
+  min-height: 250px;
   margin: 0;
   padding: 16px 20px;
   background: var(--bg);

@@ -312,17 +312,90 @@ async function openEditor(id, title) {
     const res = await fetch(`/api/page/${id}`);
     if (!res.ok) throw new Error('Failed to load');
     
-    const { content } = await res.json();
+    const { record, content } = await res.json();
     
     editingId = id;
     document.getElementById('edit-title').textContent = title;
     document.getElementById('edit-content').value = content;
+    
+    // Populate project dropdown
+    await populateProjectDropdown();
+    
+    // Set toolbar values from record
+    document.getElementById('edit-context').value = record.context || '';
+    document.getElementById('edit-project').value = record.project || '';
+    document.getElementById('edit-due').value = record.due_date ? record.due_date.split('T')[0] : '';
+    
     document.getElementById('edit-modal').classList.remove('hidden');
     document.getElementById('edit-content').focus();
   } catch (e) {
     console.error('Failed to open editor:', e);
     alert('Failed to load page');
   }
+}
+
+async function populateProjectDropdown() {
+  try {
+    const res = await fetch('/api/projects');
+    const projects = await res.json();
+    
+    const select = document.getElementById('edit-project');
+    // Keep first "none" option, remove rest
+    while (select.options.length > 1) {
+      select.remove(1);
+    }
+    
+    for (const p of projects) {
+      const opt = document.createElement('option');
+      opt.value = p.title.toLowerCase().replace(/\s+/g, '-');
+      opt.textContent = p.title;
+      select.appendChild(opt);
+    }
+  } catch (e) {
+    console.error('Failed to load projects:', e);
+  }
+}
+
+function updateMetaField(field, value) {
+  const textarea = document.getElementById('edit-content');
+  let content = textarea.value;
+  
+  // Parse existing backmatter
+  const backmatterMatch = content.match(/\n---\n([\s\S]*?)---\s*$/);
+  
+  if (backmatterMatch) {
+    let meta = backmatterMatch[1];
+    const fieldRegex = new RegExp(`^${field}:.*$`, 'm');
+    
+    if (value) {
+      // Format value (add quotes if needed, @ for context)
+      let formattedValue = value;
+      if (field === 'context' && !value.startsWith('@') && value) {
+        formattedValue = `"${value}"`;
+      } else if (field === 'context') {
+        formattedValue = `"${value}"`;
+      }
+      
+      if (fieldRegex.test(meta)) {
+        // Update existing field
+        meta = meta.replace(fieldRegex, `${field}: ${formattedValue}`);
+      } else {
+        // Add new field
+        meta = `${field}: ${formattedValue}\n${meta}`;
+      }
+    } else {
+      // Remove field if value is empty
+      meta = meta.replace(fieldRegex, '').replace(/^\n+/gm, '\n');
+    }
+    
+    content = content.replace(/\n---\n[\s\S]*?---\s*$/, `\n---\n${meta}---\n`);
+  } else if (value) {
+    // No backmatter yet, add it
+    let formattedValue = field === 'context' ? `"${value}"` : value;
+    content = content.trim() + `\n\n---\n${field}: ${formattedValue}\n---\n`;
+  }
+  
+  textarea.value = content;
 }
 
 function closeEditor() {
