@@ -239,6 +239,8 @@ function parseEventInput(input: string): {
   ambiguousHour: number | null;
   minute: number;
 } {
+  debug('parseEventInput START', { input });
+  
   let startTime = new Date();
   let hasTime = false;
   let ambiguousHour: number | null = null;
@@ -252,6 +254,7 @@ function parseEventInput(input: string): {
   
   // Check for date-first format: 1/22/26 7:30am title
   const dateFirstMatch = text.match(/^(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?\s+(\d{1,2}):?(\d{2})?\s*(am|pm)?\s+(.+)$/i);
+  debug('parseEventInput dateFirstMatch', { text, matched: !!dateFirstMatch, groups: dateFirstMatch });
   if (dateFirstMatch) {
     const [, m, d, y, hour, min, ampm, titlePart] = dateFirstMatch;
     const month = parseInt(m, 10) - 1;
