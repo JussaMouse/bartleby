@@ -594,13 +594,15 @@ function renderProject(data) {
     html += '<div class="media-grid">';
     html += media.map(m => {
       const meta = m.metadata || {};
-      const filePath = meta.filePath || '';
-      const fileName = meta.fileName || m.title;
-      const isImage = /\.(jpg|jpeg|png|gif|webp)$/i.test(fileName);
+      const fileName = meta.fileName || '';
+      const mimeType = meta.mimeType || '';
+      // Check by extension OR mimeType
+      const isImage = /\.(jpg|jpeg|png|gif|webp)$/i.test(fileName) || 
+                      mimeType.startsWith('image/');
       
-      if (isImage) {
+      if (isImage && fileName) {
         return `<div class="media-item" onclick="openEditor('${m.id}', '${escapeHtml(m.title)}')">
-          <img src="/media/${encodeURIComponent(fileName)}" alt="${escapeHtml(m.title)}" />
+          <img src="/media/${encodeURIComponent(fileName)}" alt="${escapeHtml(m.title)}" onerror="this.parentElement.innerHTML='<span class=media-icon>📎</span><span class=media-title>${escapeHtml(m.title)}</span>'" />
           <span class="media-title">${escapeHtml(m.title)}</span>
         </div>`;
       } else {
