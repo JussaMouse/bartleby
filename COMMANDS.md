@@ -41,15 +41,27 @@ Complete list of all commands. For quick start, see [README.md](README.md).
 
 ---
 
-## Notes & Pages
+## Notes, Entries & Media
 
 | Command | Description |
 |---------|-------------|
-| `new note <title>` | Create note (prompts for content) |
+| `new entry <title>` | Create wiki page (#tags +project inline) |
+| `new note <title>` | Create note (prompts for content, then tags) |
+| `import <path> [name]` | Import image/file (+project #tags inline) |
 | `show notes` | List all notes |
+| `show entries` | List all wiki entries |
+| `show media` | List all imported media |
 | `open <title>` | Display any page inline |
 | `recent` | Last 10 modified pages |
 | `delete <title>` | Remove a page |
+
+**Entry vs Note:** Entries are permanent wiki pages. Notes are scratch/working text.
+
+**Import examples:**
+```
+import ~/photos/beach.jpg vacation photo +thailand #travel
+import "/path with spaces/doc.pdf" project specs +work
+```
 
 ---
 
@@ -83,16 +95,27 @@ Complete list of all commands. For quick start, see [README.md](README.md).
 | `today` | Today's unified schedule |
 | `calendar` | Upcoming events, deadlines, reminders |
 | `new event` | Create event (guided wizard) |
-| `add event <title> at <time>` | Create event (inline) |
-| `add event 1/22/26 7:30am <title>` | Date-first format |
+| `new event <title> <when> <reminder>` | Create event (inline) |
 | `change calendar settings` | Configure calendar preferences |
 | `reset calendar` | Clear settings, restart setup |
 
-**Wizard flow:** Type `new event` and answer prompts for title, time, and reminder.
+**Wizard flow:** Type `new event` and answer prompts for title, time, reminder, and extras.
 
-**Time formats:** `2pm`, `2:30pm`, `14:00`, `noon`, `midnight`
+**Inline examples:**
+```
+new event dentist tomorrow 2pm 15m reminder
+new event call mom tomorrow night with mom
+new event picnic when sunday noon who nicole leena where lakeside 1h reminder
+```
 
-**Day formats:** `today`, `tomorrow`, `monday`, `wed`, `next friday`
+**Keyword style:** Use `when`, `who`, `where` for complex events:
+- `when sunday noon` — date and time
+- `who nicole leena` — contacts (space-separated)
+- `where lakeside` — location
+
+**Time formats:** `2pm`, `2:30pm`, `14:00`, `noon`, `midnight`, `tonight`, `tomorrow night`
+
+**Day formats:** `today`, `tomorrow`, `tomorrow morning/afternoon/evening/night`, `monday`, `wed`, `thurs`, `next friday`
 
 **Date formats:** `1/22` (Jan 22), `1/22/26` (Jan 22, 2026)
 

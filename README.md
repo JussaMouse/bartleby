@@ -63,6 +63,7 @@ You'll see:
 
 ```
 📋 Bartleby is ready. Type "help" for commands, "quit" to exit.
+📊 Dashboard: http://localhost:3333
 ```
 
 **Pro tip:** Hit `TAB` to autocomplete commands, page names, contexts, and projects.
@@ -88,21 +89,25 @@ It consists of two layers: the **files** and the **database**.
 **Page types:**
 | Type | What it's for |
 |------|---------------|
-| `note` | Meeting notes, scratch, working documents |
-| `entry` | Wiki/encyclopedia pages — your accumulated knowledge |
+| `entry` | Wiki/encyclopedia pages — permanent structured knowledge |
+| `note` | Scratch text, meeting notes, working documents |
 | `contact` | People, with email/phone/birthday |
 | `daily` | Journal entries, one per day |
 | `list` | Curated collections (reading list, gift ideas) |
-| `media` | References to ingested documents |
+| `media` | Images and files imported into the garden |
 
-Pages are dynamic so `list` and `project` can programmatically display linked actions, notes, calendar events, contacts, etc. via tagging.
+**Entry vs Note:** An *entry* is a permanent wiki page ("house rules", "packing checklist"). A *note* is scratch/working text, often attached to a project.
+
+Pages are dynamic — projects automatically display linked actions, notes, media, and calendar events.
 
 **Commands:**
 ```
-new note <title>        Create a note (prompts for content)
+new entry <title>       Create a wiki page (+project #tags inline)
+new note <title>        Create a note (prompts for content, then tags)
+import <path> [name]    Import image/file (+project #tags inline)
 add contact <name>      Add a person
 open <title>            View any page
-show notes <project>    List notes tagged with project
+show notes              List all notes
 show contacts           List all contacts
 ```
 
@@ -352,7 +357,7 @@ remind me <msg> in <time>    Set reminder
 
 ### Creating Events
 
-Type `new event` and Bartleby walks you through it:
+**Wizard mode** — type `new event` and answer prompts:
 
 ```
 > new event
@@ -367,7 +372,7 @@ Reminder?
 > 15m
 Add anything else? (Enter to skip)
 → **with <person>**, **at <location>**, **#tag**
-> with sarah, at Blue Bottle, #social
+> with sarah at Blue Bottle #social
 ✓ Created: Coffee with Sarah
   Friday, January 17 at 10:00 AM
   📍 Blue Bottle
@@ -376,7 +381,15 @@ Add anything else? (Enter to skip)
   🔔 Reminder: 15m before
 ```
 
-Or inline: `add event dentist appointment tomorrow at 2pm`
+**Inline mode** — everything in one command:
+
+```
+> new event dentist tomorrow at 2pm 15m reminder
+> new event call mom tomorrow night with mom
+> new event picnic when sunday noon who nicole leena where lakeside 1h reminder
+```
+
+The `when`, `who`, `where` keywords let you structure complex events clearly.
 
 ### Example
 
@@ -567,7 +580,8 @@ pack bags                    →  pack bags @home +thailand-trip due:friday
 - **Tab completion:** Type `@h[TAB]` → `@home`, or `+20[TAB]` → `+2025-taxes`
 - **Save:** `Enter` or click Save
 - **Cancel:** `Escape` or click Cancel
-- **Mark done:** Click the Done button
+- **Done:** Mark action complete (disappears instantly)
+- **→ Action:** (Inbox only) Convert to a real action and start editing
 
 ### Editing Other Pages
 
