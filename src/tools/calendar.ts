@@ -354,7 +354,15 @@ export const eventWizardResponse: Tool = {
 
   shouldHandle: async (input, context) => {
     const pending = context.services.context.getFact('system', 'event_wizard_pending');
-    return !!pending?.value;
+    if (!pending?.value) return false;
+    
+    // Don't intercept if user is trying to restart the wizard
+    const lower = input.toLowerCase().trim();
+    if (/^(new|add|create)\s+event/i.test(lower)) {
+      return false;
+    }
+    
+    return true;
   },
 
   execute: async (args, context) => {
