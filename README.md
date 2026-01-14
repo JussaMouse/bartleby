@@ -529,14 +529,25 @@ Changes are written to the `.md` file. The file watcher syncs everything — bot
 
 ### Remote Access
 
-If Bartleby runs on a server, tunnel the dashboard to your local machine:
+If Bartleby runs on a server, tunnel the dashboard to your local machine.
 
+**Quick command:**
 ```bash
-# On your local machine:
 ssh -L 3333:localhost:3333 user@your-server
-
-# Then open http://localhost:3333 in your browser
 ```
+
+**Or add to `~/.ssh/config` on your local machine:**
+```
+Host bartleby
+    HostName 192.168.1.100
+    User your-user
+    Port 22
+    LocalForward 3333 localhost:3333
+```
+
+Then just `ssh bartleby` — the tunnel is created automatically.
+
+Open http://localhost:3333 in your browser while the SSH session is active.
 
 ### Configuration
 
