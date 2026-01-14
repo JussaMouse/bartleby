@@ -194,9 +194,10 @@ function renderActionItem(task) {
 // Generic inline-editable item renderer
 function renderEditableItem(item, fullText, opts = {}) {
   const { showProject, showDue, projectName, dueDate } = opts;
+  const isInbox = item.context === '@inbox';
   
   return `
-    <li class="item action-item" data-id="${item.id}" data-full="${escapeAttr(fullText)}">
+    <li class="item action-item" data-id="${item.id}" data-full="${escapeAttr(fullText)}" data-context="${item.context || ''}">
       <div class="action-display" onclick="startInlineEdit(this.parentElement)">
         <span class="item-title">${escapeHtml(item.title)}</span>
         <span class="item-meta">
@@ -211,6 +212,7 @@ function renderEditableItem(item, fullText, opts = {}) {
         <div class="inline-actions">
           <button class="btn-inline save" onclick="saveInlineEdit(this.closest('.action-item'))">Save</button>
           <button class="btn-inline cancel" onclick="cancelInlineEdit(this.closest('.action-item'))">Cancel</button>
+          ${isInbox ? `<button class="btn-inline process" onclick="processItem(this.closest('.action-item'))">→ Action</button>` : ''}
           <button class="btn-inline done" onclick="markDone(this.closest('.action-item').dataset.id)">Done</button>
         </div>
         <div class="autocomplete-menu hidden"></div>
@@ -513,6 +515,40 @@ async function markDone(id) {
   } catch (e) {
     console.error('Failed to mark done:', e);
     // Don't show alert - just log
+  }
+}
+
+async function processItem(item) {
+  const id = item.dataset.id;
+  const input = item.querySelector('.inline-input');
+  
+  // Remove @inbox from the input text
+  let text = input.value.replace(/@inbox\s*/gi, '').trim();
+  input.value = text;
+  
+  // Update on server - clear the context
+  try {
+    const res = await fetch(`/api/action/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ context: null }),
+    });
+    
+    if (!res.ok) throw new Error('Failed to process');
+    
+    // Update the data attribute
+    item.dataset.context = '';
+    item.dataset.full = text;
+    
+    // Hide the Process button since it's no longer inbox
+    const processBtn = item.querySelector('.btn-inline.process');
+    if (processBtn) processBtn.style.display = 'none';
+    
+    // Focus at end of input so user can add @context +project
+    input.focus();
+    input.setSelectionRange(input.value.length, input.value.length);
+  } catch (e) {
+    console.error('Failed to process item:', e);
   }
 }
 

@@ -490,6 +490,26 @@ footer button:hover {
   color: white;
 }
 
+.btn-inline.process {
+  color: #f0ad4e;
+  border-color: #f0ad4e;
+}
+
+.btn-inline.process:hover {
+  background: #f0ad4e;
+  color: white;
+}
+
+.btn-inline.done {
+  color: var(--success);
+  border-color: var(--success);
+}
+
+.btn-inline.done:hover {
+  background: var(--success);
+  color: white;
+}
+
 /* Autocomplete dropdown */
 .autocomplete-menu {
   position: absolute;
