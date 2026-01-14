@@ -290,8 +290,8 @@ function parseEventInput(input: string): {
     .trim();
   
   // Extract reminder first (before other parsing)
-  // Formats: "with 15m reminder", "15m reminder", "remind 15m", "reminder 15m"
-  const reminderMatch = text.match(/(?:with\s+)?(\d+)\s*m(?:in(?:ute)?s?)?\s+reminder|remind(?:er)?\s+(\d+)\s*m(?:in(?:ute)?s?)?/i);
+  // Formats: "with 15m reminder", "15m reminder", "remind me 15m", "reminder 15m"
+  const reminderMatch = text.match(/(?:with\s+)?(\d+)\s*m(?:in(?:ute)?s?)?\s+reminder|remind(?:er)?(?:\s+me)?\s+(\d+)\s*m(?:in(?:ute)?s?)?/i);
   if (reminderMatch) {
     reminderMinutes = parseInt(reminderMatch[1] || reminderMatch[2], 10);
     text = text.replace(reminderMatch[0], '').trim();
@@ -418,10 +418,13 @@ function parseEventInput(input: string): {
     text = text.replace(timeMatch[0], '').trim();
   }
   
-  // Clean up am/pm remnants and filler words
+  // Clean up am/pm remnants, filler words, and extra punctuation
   text = text
     .replace(/\b(am|pm)\b/gi, '')
     .replace(/\b(on|for|at|with)\b/gi, '')
+    .replace(/,\s*,/g, ',')           // double commas
+    .replace(/,\s*$/g, '')            // trailing comma
+    .replace(/^\s*,/g, '')            // leading comma
     .replace(/\s+/g, ' ')
     .trim();
   
