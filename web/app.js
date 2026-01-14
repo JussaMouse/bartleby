@@ -493,21 +493,26 @@ function parseDueDate(str) {
 }
 
 async function markDone(id) {
-  if (!confirm('Mark as done?')) return;
-  
   try {
     const res = await fetch(`/api/action/${id}/done`, {
       method: 'POST',
     });
     
-    if (!res.ok) throw new Error('Failed to mark done');
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to mark done');
+    }
     
-    // Panel will auto-refresh via WebSocket
+    // Immediately hide the item for snappy UX (panel will also refresh via WebSocket)
     const item = document.querySelector(`[data-id="${id}"]`);
-    if (item) cancelInlineEdit(item);
+    if (item) {
+      item.style.opacity = '0.5';
+      item.style.pointerEvents = 'none';
+      setTimeout(() => item.remove(), 300);
+    }
   } catch (e) {
     console.error('Failed to mark done:', e);
-    alert('Failed to mark as done');
+    // Don't show alert - just log
   }
 }
 
