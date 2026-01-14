@@ -361,7 +361,9 @@ export async function startRepl(
     completer: createCompleter(services),
   });
 
-  console.log('\n📋 Bartleby is ready. Type "help" for commands, "quit" to exit.\n');
+  const dashboardPort = process.env.DASHBOARD_PORT || '3333';
+  console.log('\n📋 Bartleby is ready. Type "help" for commands, "quit" to exit.');
+  console.log(`📊 Dashboard: http://localhost:${dashboardPort}\n`);
 
   // === Handle Missed Reminders First ===
   await handleMissedReminders(rl, services);
