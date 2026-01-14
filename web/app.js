@@ -828,9 +828,93 @@ document.addEventListener('keydown', (e) => {
   }
 });
 
+// Drag and drop for media import
+let dragCounter = 0;
+
+function initDragDrop() {
+  const overlay = document.getElementById('drop-overlay');
+  
+  document.addEventListener('dragenter', (e) => {
+    e.preventDefault();
+    dragCounter++;
+    if (dragCounter === 1) {
+      overlay.classList.remove('hidden');
+    }
+  });
+  
+  document.addEventListener('dragleave', (e) => {
+    e.preventDefault();
+    dragCounter--;
+    if (dragCounter === 0) {
+      overlay.classList.add('hidden');
+    }
+  });
+  
+  document.addEventListener('dragover', (e) => {
+    e.preventDefault();
+  });
+  
+  document.addEventListener('drop', async (e) => {
+    e.preventDefault();
+    dragCounter = 0;
+    overlay.classList.add('hidden');
+    
+    const files = e.dataTransfer?.files;
+    if (!files || files.length === 0) return;
+    
+    for (const file of files) {
+      await uploadMedia(file);
+    }
+  });
+}
+
+async function uploadMedia(file) {
+  const formData = new FormData();
+  formData.append('file', file);
+  
+  // Prompt for name/project (optional - use filename by default)
+  const defaultName = file.name.replace(/\.[^.]+$/, '');
+  const name = prompt(`Import "${file.name}"\n\nName (or add +project):`, defaultName);
+  
+  if (name === null) return; // Cancelled
+  
+  formData.append('name', name || defaultName);
+  
+  try {
+    const res = await fetch('/api/media/upload', {
+      method: 'POST',
+      body: formData,
+    });
+    
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Upload failed');
+    }
+    
+    const result = await res.json();
+    showToast(`📎 Imported: ${result.title}`);
+  } catch (e) {
+    console.error('Upload failed:', e);
+    showToast(`Failed to import: ${e.message}`, true);
+  }
+}
+
+function showToast(message, isError = false) {
+  const existing = document.querySelector('.toast');
+  if (existing) existing.remove();
+  
+  const toast = document.createElement('div');
+  toast.className = 'toast' + (isError ? ' error' : '');
+  toast.textContent = message;
+  document.body.appendChild(toast);
+  
+  setTimeout(() => toast.remove(), 3000);
+}
+
 // Initialize
 document.addEventListener('DOMContentLoaded', () => {
   connect();
+  initDragDrop();
   
   // Add default panels
   addPanel('inbox');

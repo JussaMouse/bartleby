@@ -545,3 +545,67 @@ footer button:hover {
 .autocomplete-item.selected {
   color: var(--accent);
 }
+
+/* Drop overlay for drag-and-drop */
+.drop-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(13, 17, 23, 0.95);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  border: 4px dashed var(--accent);
+  margin: 20px;
+  border-radius: 12px;
+}
+
+.drop-overlay.hidden {
+  display: none;
+}
+
+.drop-message {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  color: var(--text-bright);
+  font-size: 24px;
+}
+
+.drop-icon {
+  font-size: 64px;
+}
+
+/* Import toast notification */
+.toast {
+  position: fixed;
+  bottom: 80px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--bg-panel);
+  border: 1px solid var(--success);
+  color: var(--text-bright);
+  padding: 12px 24px;
+  border-radius: 8px;
+  z-index: 1001;
+  animation: fadeInUp 0.3s ease;
+}
+
+.toast.error {
+  border-color: var(--danger);
+}
+
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+}

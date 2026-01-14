@@ -6,7 +6,9 @@ import { createServer } from 'http';
 import { WebSocketServer, WebSocket } from 'ws';
 import path from 'path';
 import fs from 'fs';
+import os from 'os';
 import { fileURLToPath } from 'url';
+import multer from 'multer';
 import { GardenService } from '../services/garden.js';
 import { CalendarService } from '../services/calendar.js';
 import { loadConfig } from '../config.js';
@@ -179,6 +181,79 @@ export class DashboardServer {
       
       // Garden watcher will pick up the change and sync
       res.json({ success: true });
+    });
+
+    // Media upload via drag-and-drop
+    const upload = multer({ dest: os.tmpdir() });
+    this.app.post('/api/media/upload', upload.single('file'), (req, res) => {
+      const file = req.file;
+      if (!file) {
+        res.status(400).json({ error: 'No file uploaded' });
+        return;
+      }
+      
+      // Parse name and optional +project from the name field
+      let name = (req.body.name || file.originalname || 'untitled').toString();
+      let projectName: string | undefined;
+      
+      // Extract +project from name
+      const projectMatch = name.match(/\+([^\s#]+)/);
+      if (projectMatch) {
+        projectName = projectMatch[1];
+        name = name.replace(/\+[^\s#]+/g, '').trim();
+      }
+      
+      // Extract #tags from name
+      const tagMatches = name.match(/#(\w+)/g);
+      const tags = tagMatches ? tagMatches.map((t: string) => t.slice(1)) : [];
+      name = name.replace(/#\w+/g, '').trim();
+      
+      // If no name left, use original filename
+      if (!name) {
+        name = file.originalname.replace(/\.[^.]+$/, '');
+      }
+      
+      // Find or create project
+      let projectId: string | undefined;
+      if (projectName) {
+        const projects = this.garden.getByType('project');
+        let project = projects.find(p => p.title.toLowerCase() === projectName!.toLowerCase());
+        if (!project) {
+          project = this.garden.create({
+            type: 'project',
+            title: projectName,
+            status: 'active',
+          });
+        }
+        projectId = project.id;
+      }
+      
+      try {
+        // Import the media file
+        const media = this.garden.importMedia(file.path, name, projectId);
+        
+        // Add tags if specified
+        if (tags.length > 0) {
+          this.garden.update(media.id, { tags });
+        }
+        
+        // Clean up temp file
+        fs.unlinkSync(file.path);
+        
+        debug('Media uploaded via dashboard', { title: media.title, project: projectName });
+        
+        res.json({ 
+          success: true, 
+          id: media.id, 
+          title: media.title,
+          project: projectName,
+        });
+      } catch (err) {
+        // Clean up temp file on error
+        try { fs.unlinkSync(file.path); } catch {}
+        error('Media upload failed', { error: String(err) });
+        res.status(500).json({ error: 'Upload failed' });
+      }
     });
   }
 
