@@ -1022,6 +1022,142 @@ export const createEntry: Tool = {
   },
 };
 
+// === Media Tools ===
+
+export const importMedia: Tool = {
+  name: 'importMedia',
+  description: 'Import an image or file into the garden',
+
+  routing: {
+    patterns: [
+      /^import\s+(.+)$/i,
+      /^(new|add|create)\s+media\s+(.+)$/i,
+    ],
+    keywords: {
+      verbs: ['import', 'add', 'new', 'create'],
+      nouns: ['media', 'image', 'file', 'photo', 'picture'],
+    },
+    examples: [
+      'import /path/to/image.jpg vacation photo +thailand',
+      'new media /path/to/doc.pdf project specs +work',
+    ],
+    priority: 85,
+  },
+
+  parseArgs: (input, match) => {
+    let rest = '';
+    if (match) {
+      rest = match[match.length - 1] || '';
+    } else {
+      rest = input.replace(/^import\s+/i, '').replace(/^(new|add|create)\s+media\s+/i, '').trim();
+    }
+    
+    // Extract project
+    const projectMatch = rest.match(/\+([^\s#]+)/);
+    const project = projectMatch ? projectMatch[1] : undefined;
+    rest = rest.replace(/\+[^\s#]+/g, '').trim();
+    
+    // Extract tags
+    const tagMatches = rest.match(/#(\w+)/g);
+    const tags = tagMatches ? tagMatches.map(t => t.slice(1)) : [];
+    rest = rest.replace(/#\w+/g, '').trim();
+    
+    // First part should be path, rest is title
+    // Handle quoted paths: "path with spaces" title
+    let filePath = '';
+    let title = '';
+    
+    if (rest.startsWith('"')) {
+      const endQuote = rest.indexOf('"', 1);
+      if (endQuote > 0) {
+        filePath = rest.slice(1, endQuote);
+        title = rest.slice(endQuote + 1).trim();
+      }
+    } else if (rest.startsWith("'")) {
+      const endQuote = rest.indexOf("'", 1);
+      if (endQuote > 0) {
+        filePath = rest.slice(1, endQuote);
+        title = rest.slice(endQuote + 1).trim();
+      }
+    } else {
+      // Space-separated: first token is path
+      const parts = rest.split(/\s+/);
+      filePath = parts[0] || '';
+      title = parts.slice(1).join(' ');
+    }
+    
+    // If no title, use filename without extension
+    if (!title && filePath) {
+      const basename = filePath.split('/').pop() || '';
+      title = basename.replace(/\.[^.]+$/, '');
+    }
+    
+    return { filePath, title, project, tags };
+  },
+
+  execute: async (args, context) => {
+    const { filePath, title, project, tags } = args as { 
+      filePath: string; 
+      title: string; 
+      project?: string; 
+      tags: string[];
+    };
+
+    if (!filePath) {
+      return `Please provide a file path. Example:
+  import /path/to/image.jpg vacation photo +thailand
+  import "/path with spaces/doc.pdf" my document`;
+    }
+
+    // Resolve path (handle ~ and relative paths)
+    const fs = await import('fs');
+    const path = await import('path');
+    
+    let resolvedPath = filePath;
+    if (filePath.startsWith('~')) {
+      resolvedPath = filePath.replace('~', process.env.HOME || '');
+    } else if (!path.default.isAbsolute(filePath)) {
+      resolvedPath = path.default.resolve(process.cwd(), filePath);
+    }
+
+    // Check file exists
+    if (!fs.default.existsSync(resolvedPath)) {
+      return `File not found: ${filePath}`;
+    }
+
+    // Auto-create project if specified
+    let projectId: string | undefined;
+    if (project) {
+      const projects = context.services.garden.getByType('project');
+      let proj = projects.find(p => p.title.toLowerCase() === project.toLowerCase());
+      if (!proj) {
+        proj = context.services.garden.create({
+          type: 'project',
+          title: project,
+          status: 'active',
+        });
+      }
+      projectId = proj.id;
+    }
+
+    // Import the media
+    const media = context.services.garden.importMedia(resolvedPath, title, projectId);
+
+    // Add tags if specified
+    if (tags.length > 0) {
+      context.services.garden.update(media.id, { tags });
+    }
+
+    const metadata = media.metadata as { fileName?: string; filePath?: string } | undefined;
+    let response = `📎 **Media imported: ${media.title}**`;
+    if (project) response += `\n  +${project}`;
+    if (tags.length > 0) response += `\n  ${tags.map(t => '#' + t).join(' ')}`;
+    response += `\n  📁 ${metadata?.fileName || 'saved'}`;
+
+    return response;
+  },
+};
+
 // === Navigation Tools ===
 
 export const showByType: Tool = {
@@ -1195,6 +1331,20 @@ export const openPage: Tool = {
       if (notes.length > 0) {
         lines.push('\n**Notes:**');
         notes.forEach(n => lines.push(`  • ${n.title}`));
+      }
+      
+      // Get linked media
+      const media = context.services.garden.getByType('media')
+        .filter(m => m.project?.toLowerCase() === projectSlug || m.project?.toLowerCase() === projectTitle);
+      
+      if (media.length > 0) {
+        lines.push('\n**Media:**');
+        media.forEach(m => {
+          const meta = m.metadata as { fileName?: string; filePath?: string } | undefined;
+          const fileName = meta?.fileName || 'file';
+          const filePath = meta?.filePath || '';
+          lines.push(`  📎 ${m.title} → ${filePath}`);
+        });
       }
     } else if (!record.content) {
       lines.push('(no content)');
@@ -1411,6 +1561,7 @@ export const gtdTools: Tool[] = [
   showProjects,
   createNote,
   createEntry,
+  importMedia,
   showByType,
   showRecent,
   openPage,

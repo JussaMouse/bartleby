@@ -125,6 +125,7 @@ others are permanent knowledge (entry, note, contact). Any can link to any.
   capture <text>          Quick capture to inbox
   new note <title>        Create a note (prompts for content, then +project #tags)
   new entry <title>       Create a wiki-like entry page (#tags +project inline)
+  import <path> [name]    Import image/file to garden (+project #tags inline)
   add contact <name>      Create a contact
   new project <name>      Create a project
   new action <text>       Create an action

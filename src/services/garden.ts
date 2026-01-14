@@ -354,6 +354,69 @@ export class GardenService {
     return this.addTask(text, '@inbox');
   }
 
+  /**
+   * Import a media file (image, document, etc.) into the garden.
+   * Copies the file to garden/media/ and creates a media record.
+   */
+  importMedia(sourcePath: string, title: string, projectId?: string): GardenRecord {
+    // Ensure media directory exists
+    const mediaDir = path.join(this.gardenPath, 'media');
+    ensureDir(mediaDir);
+    
+    // Get file extension and generate unique filename
+    const ext = path.extname(sourcePath);
+    const baseName = sanitizeFilename(title);
+    const fileName = `${baseName}${ext}`;
+    const destPath = path.join(mediaDir, fileName);
+    
+    // Handle name collision
+    let finalPath = destPath;
+    let counter = 1;
+    while (fs.existsSync(finalPath)) {
+      finalPath = path.join(mediaDir, `${baseName}-${counter}${ext}`);
+      counter++;
+    }
+    
+    // Copy file
+    fs.copyFileSync(sourcePath, finalPath);
+    
+    // Create media record with path in metadata
+    const record = this.create({
+      type: 'media',
+      title,
+      status: 'active',
+      project: projectId,
+      metadata: {
+        filePath: finalPath,
+        fileName: path.basename(finalPath),
+        originalPath: sourcePath,
+        mimeType: this.getMimeType(ext),
+      },
+    });
+    
+    info('Media imported', { title, path: finalPath, project: projectId });
+    return record;
+  }
+
+  private getMimeType(ext: string): string {
+    const types: Record<string, string> = {
+      '.jpg': 'image/jpeg',
+      '.jpeg': 'image/jpeg',
+      '.png': 'image/png',
+      '.gif': 'image/gif',
+      '.webp': 'image/webp',
+      '.pdf': 'application/pdf',
+      '.mp3': 'audio/mpeg',
+      '.mp4': 'video/mp4',
+      '.txt': 'text/plain',
+    };
+    return types[ext.toLowerCase()] || 'application/octet-stream';
+  }
+
+  getMediaDir(): string {
+    return path.join(this.gardenPath, 'media');
+  }
+
   // === Stats for Proactive ===
 
   getStaleInboxItems(days: number): GardenRecord[] {
