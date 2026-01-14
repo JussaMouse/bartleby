@@ -213,15 +213,52 @@ You said **${parsed.ambiguousHour}${parsed.minute ? ':' + parsed.minute.toString
       }
     }
     
-    // We have everything - ask about reminder then create
+    const dateStr = parsed.startTime.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+    const timeStr = parsed.startTime.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+    
+    // If reminder was specified inline, create the event directly
+    if (parsed.reminderMinutes !== null) {
+      const endTime = new Date(parsed.startTime);
+      endTime.setHours(endTime.getHours() + 1);
+      
+      const event = context.services.calendar.create({
+        title: parsed.title,
+        start_time: parsed.startTime.toISOString(),
+        end_time: endTime.toISOString(),
+        all_day: false,
+        reminder_minutes: parsed.reminderMinutes,
+      });
+      
+      let response = `✓ Created: "${event.title}"\n  ${dateStr} at ${timeStr}`;
+      
+      // Schedule reminder if requested
+      if (parsed.reminderMinutes > 0) {
+        const reminderTime = new Date(parsed.startTime.getTime() - parsed.reminderMinutes * 60 * 1000);
+        
+        if (reminderTime > new Date()) {
+          context.services.scheduler.create({
+            type: 'reminder',
+            scheduleType: 'once',
+            scheduleValue: reminderTime.toISOString(),
+            actionType: 'notify',
+            actionPayload: `"${event.title}" starts in ${parsed.reminderMinutes} minutes`,
+            nextRun: reminderTime.toISOString(),
+            createdBy: 'system',
+            relatedRecord: event.id,
+          });
+          response += `\n  🔔 Reminder: ${parsed.reminderMinutes}m before`;
+        }
+      }
+      
+      return response;
+    }
+    
+    // Otherwise ask about reminder
     context.services.context.setFact('system', 'event_wizard_pending', {
       step: 'reminder',
       title: parsed.title,
       startTime: parsed.startTime.toISOString(),
     }, { source: 'explicit' });
-    
-    const dateStr = parsed.startTime.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
-    const timeStr = parsed.startTime.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
     
     return `📅 **"${parsed.title}"**
   ${dateStr} at ${timeStr}
@@ -238,17 +275,30 @@ function parseEventInput(input: string): {
   hasTime: boolean;
   ambiguousHour: number | null;
   minute: number;
+  reminderMinutes: number | null;
 } {
   let startTime = new Date();
   let hasTime = false;
   let ambiguousHour: number | null = null;
   let minute = 0;
+  let reminderMinutes: number | null = null;
   
   // Remove command prefix
   let text = input
     .replace(/^(new|add|create)\s+event:?\s*/i, '')
     .replace(/^schedule\s*/i, '')
     .trim();
+  
+  // Extract reminder first (before other parsing)
+  // Formats: "with 15m reminder", "15m reminder", "remind 15m", "reminder 15m"
+  const reminderMatch = text.match(/(?:with\s+)?(\d+)\s*m(?:in(?:ute)?s?)?\s+reminder|remind(?:er)?\s+(\d+)\s*m(?:in(?:ute)?s?)?/i);
+  if (reminderMatch) {
+    reminderMinutes = parseInt(reminderMatch[1] || reminderMatch[2], 10);
+    text = text.replace(reminderMatch[0], '').trim();
+  }
+  
+  // Remove "via signal" or similar (for future notification routing)
+  text = text.replace(/\bvia\s+(signal|sms|email)\b/gi, '').trim();
   
   // Check for date-first format: 1/22/26 7:30am [title]
   // Title is optional (wizard mode provides just date/time)
@@ -273,7 +323,7 @@ function parseEventInput(input: string): {
     startTime = new Date(year, month, day, h, minute, 0, 0);
     hasTime = true;
     
-    return { title: titlePart.trim(), startTime, hasTime, ambiguousHour, minute };
+    return { title: titlePart.trim(), startTime, hasTime, ambiguousHour, minute, reminderMinutes };
   }
   
   // Check for explicit date MM/DD or MM/DD/YY anywhere in text
@@ -301,6 +351,28 @@ function parseEventInput(input: string): {
     text = text.replace(dayMatch[0], '').trim();
   }
   
+  // Check for "tonight" (today at 8pm default)
+  if (/\btonight\b/i.test(text)) {
+    startTime.setHours(20, 0, 0, 0); // 8pm
+    hasTime = true;
+    text = text.replace(/\btonight\b/gi, '').trim();
+  }
+  
+  // Check for "this morning" / "this afternoon" / "this evening"
+  if (/\bthis\s+morning\b/i.test(text)) {
+    startTime.setHours(9, 0, 0, 0);
+    hasTime = true;
+    text = text.replace(/\bthis\s+morning\b/gi, '').trim();
+  } else if (/\bthis\s+afternoon\b/i.test(text)) {
+    startTime.setHours(14, 0, 0, 0);
+    hasTime = true;
+    text = text.replace(/\bthis\s+afternoon\b/gi, '').trim();
+  } else if (/\bthis\s+evening\b/i.test(text)) {
+    startTime.setHours(18, 0, 0, 0);
+    hasTime = true;
+    text = text.replace(/\bthis\s+evening\b/gi, '').trim();
+  }
+  
   // Check for tomorrow
   if (/\btomorrow\b/i.test(text)) {
     startTime.setDate(startTime.getDate() + 1);
@@ -321,33 +393,39 @@ function parseEventInput(input: string): {
   const ampm = hasSpaceAm || endsWithAm ? 'am' :
                hasSpacePm || endsWithPm ? 'pm' : null;
   
-  // Match time: HH:MM or just H (if followed by am/pm)
+  // Match time: HH:MM or just H (with "at" prefix or am/pm suffix)
   const timeMatch = 
-    text.match(/\b(?:at\s+)?(\d{1,2}):(\d{2})/i) ||   // HH:MM
-    text.match(/\b(?:at\s+)?(\d{1,2})(?=\s*(?:am|pm))/i);  // H before am/pm
+    text.match(/\b(?:at\s+)?(\d{1,2}):(\d{2})\s*(am|pm)?/i) ||   // HH:MM [am/pm]
+    text.match(/\bat\s+(\d{1,2})(?:\s*(am|pm))?\b/i) ||           // at H [am/pm]
+    text.match(/\b(\d{1,2})\s*(am|pm)\b/i);                       // H am/pm
   if (timeMatch) {
     let hour = parseInt(timeMatch[1], 10);
-    minute = timeMatch[2] ? parseInt(timeMatch[2], 10) : 0;
+    minute = timeMatch[2] && /^\d+$/.test(timeMatch[2]) ? parseInt(timeMatch[2], 10) : 0;
     
-    if (ampm === 'pm' && hour < 12) hour += 12;
-    if (ampm === 'am' && hour === 12) hour = 0;
-    if (!ampm && hour >= 1 && hour <= 12) {
+    // Get am/pm from match or from earlier detection
+    const matchAmpm = (timeMatch[3] || timeMatch[2] || '').toLowerCase();
+    const finalAmpm = (matchAmpm === 'am' || matchAmpm === 'pm') ? matchAmpm : ampm;
+    
+    if (finalAmpm === 'pm' && hour < 12) hour += 12;
+    if (finalAmpm === 'am' && hour === 12) hour = 0;
+    if (!finalAmpm && hour >= 1 && hour <= 12) {
       ambiguousHour = hour;
       if (hour >= 1 && hour <= 6) hour += 12;
     }
     
     startTime.setHours(hour, minute, 0, 0);
     hasTime = true;
-    text = text.replace(timeMatch[0], '').replace(/\b(am|pm)\b/gi, '').trim();
+    text = text.replace(timeMatch[0], '').trim();
   }
   
-  // Clean up title
-  const title = text
-    .replace(/\b(on|for|at)\b/gi, '')
+  // Clean up am/pm remnants and filler words
+  text = text
+    .replace(/\b(am|pm)\b/gi, '')
+    .replace(/\b(on|for|at|with)\b/gi, '')
     .replace(/\s+/g, ' ')
     .trim();
   
-  return { title, startTime, hasTime, ambiguousHour, minute };
+  return { title: text, startTime, hasTime, ambiguousHour, minute, reminderMinutes };
 }
 
 // Tool to handle wizard responses

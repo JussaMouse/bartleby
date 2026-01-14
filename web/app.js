@@ -150,12 +150,8 @@ function renderInbox(items) {
     return '<div class="empty">Inbox empty ✓</div>';
   }
   
-  return `<ul>${items.map(item => `
-    <li class="item clickable" onclick="openEditor('${item.id}', '${escapeHtml(item.title)}')">
-      <span class="item-title">${escapeHtml(item.title)}</span>
-      <span class="item-meta">${timeAgo(item.created_at)}</span>
-    </li>
-  `).join('')}</ul>`;
+  // Inbox items use inline editing like actions
+  return `<ul>${items.map(item => renderEditableItem(item, item.title)).join('')}</ul>`;
 }
 
 function renderNextActions(tasks) {
@@ -187,13 +183,25 @@ function renderActionItem(task) {
   const context = task.context ? ` ${task.context}` : '';
   const fullText = `${task.title}${context}${project}${due}`;
   
+  return renderEditableItem(task, fullText, {
+    showProject: !!task.project,
+    showDue: !!task.due_date,
+    projectName: task.project,
+    dueDate: task.due_date,
+  });
+}
+
+// Generic inline-editable item renderer
+function renderEditableItem(item, fullText, opts = {}) {
+  const { showProject, showDue, projectName, dueDate } = opts;
+  
   return `
-    <li class="item action-item" data-id="${task.id}" data-full="${escapeAttr(fullText)}">
+    <li class="item action-item" data-id="${item.id}" data-full="${escapeAttr(fullText)}">
       <div class="action-display" onclick="startInlineEdit(this.parentElement)">
-        <span class="item-title">${escapeHtml(task.title)}</span>
+        <span class="item-title">${escapeHtml(item.title)}</span>
         <span class="item-meta">
-          ${task.project ? `<span class="item-project">+${task.project}</span>` : ''}
-          ${task.due_date ? `<span class="item-due">${formatDue(task.due_date)}</span>` : ''}
+          ${showProject ? `<span class="item-project">+${projectName}</span>` : ''}
+          ${showDue ? `<span class="item-due">${formatDue(dueDate)}</span>` : ''}
         </span>
       </div>
       <div class="action-edit hidden">
@@ -203,7 +211,7 @@ function renderActionItem(task) {
         <div class="inline-actions">
           <button class="btn-inline save" onclick="saveInlineEdit(this.closest('.action-item'))">Save</button>
           <button class="btn-inline cancel" onclick="cancelInlineEdit(this.closest('.action-item'))">Cancel</button>
-          <button class="btn-inline delete" onclick="markDone(this.closest('.action-item').dataset.id)">Done</button>
+          <button class="btn-inline done" onclick="markDone(this.closest('.action-item').dataset.id)">Done</button>
         </div>
         <div class="autocomplete-menu hidden"></div>
       </div>
@@ -485,11 +493,22 @@ function parseDueDate(str) {
 }
 
 async function markDone(id) {
-  if (!confirm('Mark action as done?')) return;
+  if (!confirm('Mark as done?')) return;
   
-  // TODO: Implement done API endpoint
-  // For now, just refresh
-  alert('Done functionality coming soon');
+  try {
+    const res = await fetch(`/api/action/${id}/done`, {
+      method: 'POST',
+    });
+    
+    if (!res.ok) throw new Error('Failed to mark done');
+    
+    // Panel will auto-refresh via WebSocket
+    const item = document.querySelector(`[data-id="${id}"]`);
+    if (item) cancelInlineEdit(item);
+  } catch (e) {
+    console.error('Failed to mark done:', e);
+    alert('Failed to mark as done');
+  }
 }
 
 function renderProjects(projects) {
@@ -537,12 +556,13 @@ function renderToday(data) {
   
   if (overdue && overdue.length > 0) {
     html += '<div class="section-header">⚠️ Overdue</div><ul>';
-    html += overdue.map(t => `
-      <li class="item">
-        <span class="item-title">${escapeHtml(t.title)}</span>
-        <span class="item-meta"><span class="item-due overdue">${formatDue(t.due_date)}</span></span>
-      </li>
-    `).join('');
+    html += overdue.map(t => {
+      const fullText = `${t.title}${t.context ? ' ' + t.context : ''}${t.project ? ' +' + t.project : ''} due:${t.due_date.split('T')[0]}`;
+      return renderEditableItem(t, fullText, {
+        showDue: true,
+        dueDate: t.due_date,
+      });
+    }).join('');
     html += '</ul>';
   }
   
@@ -566,12 +586,26 @@ function renderRecent(items) {
     return '<div class="empty">No recent activity</div>';
   }
   
-  return `<ul>${items.map(item => `
-    <li class="item clickable" onclick="openEditor('${item.id}', '${escapeHtml(item.title)}')">
-      <span class="item-title">${escapeHtml(item.title)}</span>
-      <span class="item-meta">${item.type} · ${timeAgo(item.updated_at)}</span>
-    </li>
-  `).join('')}</ul>`;
+  return `<ul>${items.map(item => {
+    // Actions and inbox items get inline editing
+    if (item.type === 'action' || item.context === '@inbox') {
+      const fullText = `${item.title}${item.context ? ' ' + item.context : ''}${item.project ? ' +' + item.project : ''}${item.due_date ? ' due:' + item.due_date.split('T')[0] : ''}`;
+      return renderEditableItem(item, fullText, {
+        showProject: !!item.project,
+        showDue: !!item.due_date,
+        projectName: item.project,
+        dueDate: item.due_date,
+      });
+    }
+    
+    // Other types use the modal editor
+    return `
+      <li class="item clickable" onclick="openEditor('${item.id}', '${escapeHtml(item.title)}')">
+        <span class="item-title">${escapeHtml(item.title)}</span>
+        <span class="item-meta">${item.type} · ${timeAgo(item.updated_at)}</span>
+      </li>
+    `;
+  }).join('')}</ul>`;
 }
 
 // Helpers

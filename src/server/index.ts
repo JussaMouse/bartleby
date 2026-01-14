@@ -147,6 +147,18 @@ export class DashboardServer {
       }
     });
 
+    // Mark action as done
+    this.app.post('/api/action/:id/done', (req, res) => {
+      const completed = this.garden.completeTask(req.params.id);
+      if (!completed) {
+        res.status(404).json({ error: 'Action not found' });
+        return;
+      }
+      
+      debug('Marked action done via dashboard', { id: req.params.id, title: completed.title });
+      res.json({ success: true, title: completed.title });
+    });
+
     // Save raw file content
     this.app.put('/api/page/:id', (req, res) => {
       const record = this.garden.get(req.params.id);
