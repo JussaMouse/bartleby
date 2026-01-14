@@ -57,6 +57,12 @@ export const viewNextActions: Tool = {
       return 'No next actions found. Your list is clear! 🎉';
     }
 
+    // Store the list context so `done <number>` works correctly
+    context.services.context.setFact('system', 'last_displayed_list', {
+      type: 'next_actions',
+      ids: tasks.map(t => t.id),
+    }, { source: 'explicit' });
+
     // Group by context
     const byContext = new Map<string, typeof tasks>();
     for (const task of tasks) {
@@ -106,6 +112,12 @@ export const processInbox: Tool = {
     if (tasks.length === 0) {
       return '📥 Inbox is empty! Nothing to process.\n\nCapture something with: capture <thought>';
     }
+
+    // Store the list context so `done <number>` works correctly
+    context.services.context.setFact('system', 'last_displayed_list', {
+      type: 'inbox',
+      ids: tasks.map(t => t.id),
+    }, { source: 'explicit' });
 
     const lines = [`📥 **Inbox** (${tasks.length} item${tasks.length === 1 ? '' : 's'} to process)\n`];
 
@@ -385,11 +397,24 @@ export const markDone: Tool = {
       return 'Please specify which action to complete. Example: done 1';
     }
 
-    const completed = context.services.garden.completeTask(identifier);
+    // Check if there's a stored list context for numeric lookups
+    let resolvedId: string | number = identifier;
+    if (typeof identifier === 'number') {
+      const lastList = context.services.context.getFact('system', 'last_displayed_list');
+      const listData = lastList?.value as { type?: string; ids?: string[] } | null;
+      if (listData?.ids && identifier > 0 && identifier <= listData.ids.length) {
+        resolvedId = listData.ids[identifier - 1];
+      }
+    }
+
+    const completed = context.services.garden.completeTask(resolvedId);
 
     if (!completed) {
       return `Action not found: "${identifier}". Try "show next actions" to see the list.`;
     }
+
+    // Clear the stored list context after successful completion
+    context.services.context.setFact('system', 'last_displayed_list', null, { source: 'explicit' });
 
     return `✓ Completed: "${completed.title}"`;
   },
@@ -599,28 +624,28 @@ export const showOverdue: Tool = {
       return '✓ No overdue actions. You\'re all caught up!';
     }
 
-    // Get all active tasks to find the correct global numbering
-    const allTasks = context.services.garden.getTasks({ status: 'active' });
-    const taskIdToNumber = new Map<string, number>();
-    allTasks.forEach((t, i) => taskIdToNumber.set(t.id, i + 1));
+    // Store the list context so `done <number>` works correctly
+    context.services.context.setFact('system', 'last_displayed_list', {
+      type: 'overdue',
+      ids: overdue.map(t => t.id),
+    }, { source: 'explicit' });
 
     const lines = [`**Overdue Actions** (${overdue.length})\n`];
     const today = new Date();
     
-    overdue.forEach((t) => {
-      const globalNum = taskIdToNumber.get(t.id) || '?';
+    overdue.forEach((t, i) => {
       const dueDate = new Date(t.due_date!);
       const daysOverdue = Math.floor((today.getTime() - dueDate.getTime()) / (1000 * 60 * 60 * 24));
       const daysStr = daysOverdue === 1 ? '1 day' : `${daysOverdue} days`;
       
-      lines.push(`  ${globalNum}. ${t.title}`);
+      lines.push(`  ${i + 1}. ${t.title}`);
       lines.push(`     ⚠️ Due: ${t.due_date} (${daysStr} ago)`);
       if (t.context && t.context !== '@inbox') {
         lines.push(`     ${t.context}`);
       }
     });
 
-    lines.push('\n💡 Mark done: `done <number>` (numbers match "show next actions")');
+    lines.push('\n💡 Mark done: `done <number>` or reschedule the due date.');
     
     return lines.join('\n');
   },
