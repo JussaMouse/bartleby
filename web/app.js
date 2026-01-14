@@ -600,9 +600,12 @@ function renderProject(data) {
       const isImage = /\.(jpg|jpeg|png|gif|webp)$/i.test(fileName) || 
                       mimeType.startsWith('image/');
       
+      // Debug logging
+      console.log('[MEDIA DEBUG]', m.title, { meta, fileName, mimeType, isImage });
+      
       if (isImage && fileName) {
         return `<div class="media-item" onclick="openEditor('${m.id}', '${escapeHtml(m.title)}')">
-          <img src="/media/${encodeURIComponent(fileName)}" alt="${escapeHtml(m.title)}" onerror="this.parentElement.innerHTML='<span class=media-icon>📎</span><span class=media-title>${escapeHtml(m.title)}</span>'" />
+          <img src="/media/${encodeURIComponent(fileName)}" alt="${escapeHtml(m.title)}" onerror="console.log('Image load error:', this.src); this.parentElement.innerHTML='<span class=media-icon>📎</span><span class=media-title>${escapeHtml(m.title)}</span>'" />
           <span class="media-title">${escapeHtml(m.title)}</span>
         </div>`;
       } else {

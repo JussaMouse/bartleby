@@ -241,7 +241,17 @@ export class DashboardServer {
       
       try {
         // Import the media file (now with proper extension)
+        console.log('[UPLOAD DEBUG] Original filename:', file.originalname);
+        console.log('[UPLOAD DEBUG] Extension:', originalExt);
+        console.log('[UPLOAD DEBUG] Temp path with ext:', tempPathWithExt);
+        
         const media = this.garden.importMedia(tempPathWithExt, name, projectId);
+        
+        console.log('[UPLOAD DEBUG] Media created:', {
+          id: media.id,
+          title: media.title,
+          metadata: media.metadata,
+        });
         
         // Add tags if specified
         if (tags.length > 0) {
@@ -258,6 +268,7 @@ export class DashboardServer {
           id: media.id, 
           title: media.title,
           project: projectName,
+          metadata: media.metadata,  // Include for debugging
         });
       } catch (err) {
         // Clean up temp file on error
