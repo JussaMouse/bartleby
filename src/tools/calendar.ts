@@ -318,8 +318,9 @@ function parseEventInput(input: string): {
   }
   
   // Extract time HH:MM am/pm or H am/pm
-  const timeMatch = text.match(/\b(?:at\s+)?(\d{1,2}):(\d{2})\s*(am|pm)?\b/i) ||
-                    text.match(/\b(?:at\s+)?(\d{1,2})\s*(am|pm)\b/i);
+  // Note: removed trailing \b to handle "7:30 am" with space before am/pm
+  const timeMatch = text.match(/\b(?:at\s+)?(\d{1,2}):(\d{2})\s*(am|pm)?/i) ||
+                    text.match(/\b(?:at\s+)?(\d{1,2})\s*(am|pm)/i);
   if (timeMatch) {
     let hour = parseInt(timeMatch[1], 10);
     minute = timeMatch[2] && !['am', 'pm'].includes(timeMatch[2].toLowerCase())
