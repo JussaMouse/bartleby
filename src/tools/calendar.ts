@@ -1,5 +1,6 @@
 // src/tools/calendar.ts
 import { Tool } from './types.js';
+import { debug } from '../utils/logger.js';
 
 export const showCalendar: Tool = {
   name: 'showCalendar',
@@ -312,8 +313,14 @@ function parseEventInput(input: string): {
   
   // Extract am/pm first (anywhere in text) - use simple string check
   const textLower = text.toLowerCase();
-  const ampm = textLower.includes(' am') || textLower.endsWith('am') ? 'am' :
-               textLower.includes(' pm') || textLower.endsWith('pm') ? 'pm' : null;
+  const hasSpaceAm = textLower.includes(' am');
+  const endsWithAm = textLower.endsWith('am');
+  const hasSpacePm = textLower.includes(' pm');
+  const endsWithPm = textLower.endsWith('pm');
+  const ampm = hasSpaceAm || endsWithAm ? 'am' :
+               hasSpacePm || endsWithPm ? 'pm' : null;
+  
+  debug('parseEventInput am/pm check', { text, textLower, hasSpaceAm, endsWithAm, hasSpacePm, endsWithPm, ampm });
   
   // Match time: HH:MM or just H (if followed by am/pm)
   const timeMatch = 
