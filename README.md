@@ -593,6 +593,25 @@ Click notes, entries, or projects to open the full editor modal:
 
 Changes are written to the `.md` file. The file watcher syncs everything — both CLI and dashboard see updates instantly.
 
+### Project Pages
+
+Click a project name to open its dedicated panel showing:
+
+- **Actions** — all actions linked to this project
+- **Media** — images and files (click for full-size lightbox)
+- **Notes** — notes linked to this project
+
+### Importing Media
+
+**Drag and drop** images or files onto the dashboard:
+
+1. Drag any file onto the dashboard
+2. Blue overlay appears: "Drop to import media"
+3. Enter a name (can include `+project` and `#tags`)
+4. File is copied to `garden/media/` and linked to the project
+
+Images appear as thumbnails on project pages. Click to view full-size.
+
 ### Remote Access
 
 If Bartleby runs on a server, tunnel the dashboard to your local machine.

@@ -52,10 +52,17 @@ Complete list of all commands. For quick start, see [README.md](README.md).
 | `show entries` | List all wiki entries |
 | `show media` | List all imported media |
 | `open <title>` | Display any page inline |
+| `edit <title>` | Edit any page's tags/project (tab-completable) |
 | `recent` | Last 10 modified pages |
 | `delete <title>` | Remove a page |
 
 **Entry vs Note:** Entries are permanent wiki pages. Notes are scratch/working text.
+
+**Edit any page:** Add tags or link to a project:
+```
+edit vacation photo +thailand #travel
+edit nort[TAB]  →  prompts for +project #tags
+```
 
 **Import examples:**
 ```
