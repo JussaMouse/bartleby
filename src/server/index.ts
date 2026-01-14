@@ -196,6 +196,13 @@ export class DashboardServer {
         return;
       }
       
+      // Get original extension from filename
+      const originalExt = path.extname(file.originalname);
+      
+      // Rename temp file to include extension (multer strips it)
+      const tempPathWithExt = file.path + originalExt;
+      fs.renameSync(file.path, tempPathWithExt);
+      
       // Parse name and optional +project from the name field
       let name = (req.body.name || file.originalname || 'untitled').toString();
       let projectName: string | undefined;
@@ -212,7 +219,7 @@ export class DashboardServer {
       const tags = tagMatches ? tagMatches.map((t: string) => t.slice(1)) : [];
       name = name.replace(/#\w+/g, '').trim();
       
-      // If no name left, use original filename
+      // If no name left, use original filename (without extension)
       if (!name) {
         name = file.originalname.replace(/\.[^.]+$/, '');
       }
@@ -233,8 +240,8 @@ export class DashboardServer {
       }
       
       try {
-        // Import the media file
-        const media = this.garden.importMedia(file.path, name, projectId);
+        // Import the media file (now with proper extension)
+        const media = this.garden.importMedia(tempPathWithExt, name, projectId);
         
         // Add tags if specified
         if (tags.length > 0) {
@@ -242,7 +249,7 @@ export class DashboardServer {
         }
         
         // Clean up temp file
-        fs.unlinkSync(file.path);
+        fs.unlinkSync(tempPathWithExt);
         
         debug('Media uploaded via dashboard', { title: media.title, project: projectName });
         
@@ -254,7 +261,7 @@ export class DashboardServer {
         });
       } catch (err) {
         // Clean up temp file on error
-        try { fs.unlinkSync(file.path); } catch {}
+        try { fs.unlinkSync(tempPathWithExt); } catch {}
         error('Media upload failed', { error: String(err) });
         res.status(500).json({ error: 'Upload failed' });
       }
