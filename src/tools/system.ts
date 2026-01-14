@@ -8,7 +8,8 @@ const HELP_OVERVIEW = `
 
 **Quick Commands**
   new action <text>     Add an action
-  new note <title>      Create a note
+  new note <title>      Create a note (prompts for content, then tags)
+  new entry <title>     Create a wiki-like entry page
   show next actions     Your action list
   show notes            Your notes
   recent                Last 10 pages
@@ -96,11 +97,15 @@ actions, projects, contacts, notes, wiki entries, and more.
   Action    Doable next step (has workflow: active → done)
   Project   Multi-action outcome (has child actions)
   Item      Inbox capture, awaiting processing
-  Entry     Wiki/encyclopedia page (permanent knowledge)
-  Note      Working notes, meeting notes
+  Entry     Wiki-like page (structured, permanent knowledge)
+  Note      Scratch/reference text (temporary, part of writing process)
   Contact   Person with details and relationships
   Daily     Journal entries (one per day)
   List      Curated collections (reading list, etc.)
+
+**Entry vs Note**
+  Entry: permanent wiki page, like "house rules" or "packing checklist"
+  Note:  working scratch space, often attached to a project
 
 **All pages are wiki pages.** Some have workflow (item, action, project),
 others are permanent knowledge (entry, note, contact). Any can link to any.
@@ -118,7 +123,8 @@ others are permanent knowledge (entry, note, contact). Any can link to any.
 
 **Create Commands**
   capture <text>          Quick capture to inbox
-  new note <title>        Create a note (prompts for content)
+  new note <title>        Create a note (prompts for content, then +project #tags)
+  new entry <title>       Create a wiki-like entry page (#tags +project inline)
   add contact <name>      Create a contact
   new project <name>      Create a project
   new action <text>       Create an action

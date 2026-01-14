@@ -842,11 +842,19 @@ export const appendToNote: Tool = {
       return '';  // Shouldn't happen, but safety check
     }
 
-    // "done" finishes the note
-    if (input.toLowerCase().trim() === 'done') {
-      await context.services.context.setFact('system', 'pending_note_id', null);
+    // "done" or empty input finishes the note - ask for project/tags
+    if (input.toLowerCase().trim() === 'done' || input.trim() === '') {
       const note = context.services.garden.get(pendingNoteId);
-      return `✓ Note saved: "${note?.title}"`;
+      if (!note) {
+        await context.services.context.setFact('system', 'pending_note_id', null);
+        return 'Note not found.';
+      }
+      
+      // Move to tagging step
+      await context.services.context.setFact('system', 'pending_note_id', null);
+      await context.services.context.setFact('system', 'pending_note_tagging', note.id);
+      
+      return `📝 **${note.title}**\n\nAny project or tags? (e.g., +project #tag1 #tag2, or ENTER to skip)`;
     }
 
     // Append content to note
@@ -860,6 +868,157 @@ export const appendToNote: Tool = {
     context.services.garden.update(note.id, { content: newContent });
 
     return `Added to note. Continue typing, or say "done" to finish.`;
+  },
+};
+
+export const tagNote: Tool = {
+  name: 'tagNote',
+  description: 'Add project/tags to a note being created',
+
+  routing: {
+    patterns: [],
+    keywords: { verbs: [], nouns: [] },
+    examples: [],
+    priority: 100,
+  },
+
+  shouldHandle: async (input: string, context) => {
+    const fact = context.services.context.getFact('system', 'pending_note_tagging');
+    return !!fact?.value;
+  },
+
+  execute: async (args, context) => {
+    const input = (args as any).__raw_input || '';
+    const fact = context.services.context.getFact('system', 'pending_note_tagging');
+    const noteId = fact?.value as string | null;
+    
+    await context.services.context.setFact('system', 'pending_note_tagging', null);
+    
+    if (!noteId) return '';
+    
+    const note = context.services.garden.get(noteId);
+    if (!note) return 'Note not found.';
+    
+    // Parse project and tags from input
+    const projectMatch = input.match(/\+([^\s#]+)/);
+    const tagMatches = input.match(/#(\w+)/g);
+    
+    const updates: { project?: string; tags?: string[] } = {};
+    
+    if (projectMatch) {
+      const projectName = projectMatch[1];
+      // Auto-create project if needed
+      const projects = context.services.garden.getByType('project');
+      let project = projects.find(p => p.title.toLowerCase() === projectName.toLowerCase());
+      if (!project) {
+        project = context.services.garden.create({
+          type: 'project',
+          title: projectName,
+          status: 'active',
+        });
+      }
+      updates.project = project.id;
+    }
+    
+    if (tagMatches) {
+      updates.tags = tagMatches.map((t: string) => t.slice(1));
+    }
+    
+    if (Object.keys(updates).length > 0) {
+      context.services.garden.update(note.id, updates);
+    }
+    
+    let response = `✓ Note saved: "${note.title}"`;
+    if (updates.project) response += `\n  +${projectMatch![1]}`;
+    if (updates.tags) response += `\n  ${updates.tags.map(t => '#' + t).join(' ')}`;
+    
+    return response;
+  },
+};
+
+// === Entry (Wiki) Tools ===
+
+export const createEntry: Tool = {
+  name: 'createEntry',
+  description: 'Create a wiki-like entry page',
+
+  routing: {
+    patterns: [
+      /^(new|create|add)\s+entry\s*:?\s*(.*)$/i,
+      /^entry\s*:?\s*(.+)$/i,
+    ],
+    keywords: {
+      verbs: ['new', 'create', 'add'],
+      nouns: ['entry', 'wiki', 'page'],
+    },
+    examples: ['new entry house rules', 'create entry vacation packing list #travel', 'entry: project guidelines +work'],
+    priority: 90,
+  },
+
+  parseArgs: (input, match) => {
+    let rest = '';
+    if (match) {
+      rest = match[match.length - 1] || '';
+    } else {
+      rest = input.replace(/^(new|create|add)\s+entry\s*:?\s*/i, '').trim();
+    }
+    
+    // Extract project
+    const projectMatch = rest.match(/\+([^\s#]+)/);
+    const project = projectMatch ? projectMatch[1] : undefined;
+    rest = rest.replace(/\+[^\s#]+/g, '').trim();
+    
+    // Extract tags
+    const tagMatches = rest.match(/#(\w+)/g);
+    const tags = tagMatches ? tagMatches.map(t => t.slice(1)) : [];
+    rest = rest.replace(/#\w+/g, '').trim();
+    
+    return { title: rest, project, tags };
+  },
+
+  execute: async (args, context) => {
+    const { title, project, tags } = args as { title: string; project?: string; tags: string[] };
+
+    if (!title) {
+      return 'Please provide an entry title. Example: new entry house rules #family';
+    }
+
+    // Check if entry already exists
+    const existing = context.services.garden.getByTitle(title);
+    if (existing && existing.type === 'entry') {
+      return `Entry "${title}" already exists. Use "open ${title}" to view it.`;
+    }
+
+    // Auto-create project if specified
+    let projectId: string | undefined;
+    if (project) {
+      const projects = context.services.garden.getByType('project');
+      let proj = projects.find(p => p.title.toLowerCase() === project.toLowerCase());
+      if (!proj) {
+        proj = context.services.garden.create({
+          type: 'project',
+          title: project,
+          status: 'active',
+        });
+      }
+      projectId = proj.id;
+    }
+
+    const entry = context.services.garden.create({
+      type: 'entry',
+      title,
+      status: 'active',
+      content: '',
+      project: projectId,
+      tags: tags.length > 0 ? tags : undefined,
+    });
+
+    let response = `📖 **Entry: ${entry.title}**`;
+    if (project) response += `\n  +${project}`;
+    if (tags.length > 0) response += `\n  ${tags.map(t => '#' + t).join(' ')}`;
+    response += `\n\nEdit: \`${context.services.garden.getFilePath(entry)}\``;
+
+    return response;
   },
 };
 
@@ -1243,6 +1402,7 @@ export const deletePage: Tool = {
 
 export const gtdTools: Tool[] = [
   appendToNote,  // Must be first - highest priority contextual check
+  tagNote,       // Second - for note tagging step
   viewNextActions,
   processInbox,
   addTask,
@@ -1250,6 +1410,7 @@ export const gtdTools: Tool[] = [
   deleteProject,  // Higher priority than deletePage
   showProjects,
   createNote,
+  createEntry,
   showByType,
   showRecent,
   openPage,
