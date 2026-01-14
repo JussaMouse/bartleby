@@ -361,7 +361,7 @@ export const markDone: Tool = {
 
   routing: {
     patterns: [
-      /^(done|complete|finish|finished|check)\s+(\d+)$/i,
+      /^(done|complete|finish|finished|check)\s+(\d+(?:\s+\d+)*)$/i,  // done 1 2 3
       /^(done|complete|finish|finished)\s+(.+)$/i,
       /^(\d+)\s+(done|complete|finished)$/i,
     ],
@@ -369,54 +369,68 @@ export const markDone: Tool = {
       verbs: ['done', 'complete', 'finish', 'mark', 'check'],
       nouns: ['task', 'action', 'item'],
     },
-    examples: ['done 1', 'complete 3', 'mark done buy milk'],
+    examples: ['done 1', 'done 1 2 3', 'complete 3', 'mark done buy milk'],
     priority: 95,
   },
 
   parseArgs: (input, match) => {
-    if (match) {
-      for (let i = match.length - 1; i >= 1; i--) {
-        const val = match[i];
-        if (val && !['done', 'complete', 'finish', 'finished', 'check'].includes(val.toLowerCase())) {
-          const num = parseInt(val);
-          if (!isNaN(num)) return { identifier: num };
-          return { identifier: val };
-        }
-      }
-    }
-
     const cleaned = input.replace(/^(done|complete|finish|finished|check)\s*/i, '').trim();
+    
+    // Check for space-separated numbers
+    const numbers = cleaned.split(/\s+/).map(s => parseInt(s)).filter(n => !isNaN(n));
+    if (numbers.length > 1) {
+      return { identifiers: numbers };
+    }
+    
+    // Single identifier (number or text)
     const num = parseInt(cleaned);
-    return { identifier: isNaN(num) ? cleaned : num };
+    return { identifiers: isNaN(num) ? [cleaned] : [num] };
   },
 
   execute: async (args, context) => {
-    const { identifier } = args as { identifier: string | number };
+    const { identifiers } = args as { identifiers: (string | number)[] };
 
-    if (!identifier) {
+    if (!identifiers || identifiers.length === 0) {
       return 'Please specify which action to complete. Example: done 1';
     }
 
-    // Check if there's a stored list context for numeric lookups
-    let resolvedId: string | number = identifier;
-    if (typeof identifier === 'number') {
-      const lastList = context.services.context.getFact('system', 'last_displayed_list');
-      const listData = lastList?.value as { type?: string; ids?: string[] } | null;
-      if (listData?.ids && identifier > 0 && identifier <= listData.ids.length) {
-        resolvedId = listData.ids[identifier - 1];
+    // Get list context for numeric lookups
+    const lastList = context.services.context.getFact('system', 'last_displayed_list');
+    const listData = lastList?.value as { type?: string; ids?: string[] } | null;
+
+    const completed: string[] = [];
+    const notFound: (string | number)[] = [];
+
+    for (const identifier of identifiers) {
+      let resolvedId: string | number = identifier;
+      
+      if (typeof identifier === 'number' && listData?.ids) {
+        if (identifier > 0 && identifier <= listData.ids.length) {
+          resolvedId = listData.ids[identifier - 1];
+        }
+      }
+
+      const result = context.services.garden.completeTask(resolvedId);
+      if (result) {
+        completed.push(result.title);
+      } else {
+        notFound.push(identifier);
       }
     }
 
-    const completed = context.services.garden.completeTask(resolvedId);
-
-    if (!completed) {
-      return `Action not found: "${identifier}". Try "show next actions" to see the list.`;
-    }
-
-    // Clear the stored list context after successful completion
+    // Clear the stored list context after processing
     context.services.context.setFact('system', 'last_displayed_list', null, { source: 'explicit' });
 
-    return `✓ Completed: "${completed.title}"`;
+    const lines: string[] = [];
+    if (completed.length > 0) {
+      lines.push(`✓ Completed ${completed.length} item${completed.length > 1 ? 's' : ''}:`);
+      completed.forEach(title => lines.push(`  • ${title}`));
+    }
+    if (notFound.length > 0) {
+      lines.push(`⚠️ Not found: ${notFound.join(', ')}`);
+    }
+
+    return lines.join('\n');
   },
 };
 
