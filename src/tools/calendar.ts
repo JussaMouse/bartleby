@@ -221,15 +221,32 @@ You said **${parsed.ambiguousHour}${parsed.minute ? ':' + parsed.minute.toString
       const endTime = new Date(parsed.startTime);
       endTime.setHours(endTime.getHours() + 1);
       
+      // Build metadata for contacts and tags
+      const metadata: Record<string, unknown> = {};
+      if (parsed.contacts.length > 0) metadata.contacts = parsed.contacts;
+      if (parsed.tags.length > 0) metadata.tags = parsed.tags;
+      
       const event = context.services.calendar.create({
         title: parsed.title,
         start_time: parsed.startTime.toISOString(),
         end_time: endTime.toISOString(),
         all_day: false,
         reminder_minutes: parsed.reminderMinutes,
+        location: parsed.location || undefined,
+        metadata: Object.keys(metadata).length > 0 ? JSON.stringify(metadata) : undefined,
       });
       
       let response = `✓ Created: "${event.title}"\n  ${dateStr} at ${timeStr}`;
+      
+      if (parsed.location) {
+        response += `\n  📍 ${parsed.location}`;
+      }
+      if (parsed.contacts.length > 0) {
+        response += `\n  👤 ${parsed.contacts.join(', ')}`;
+      }
+      if (parsed.tags.length > 0) {
+        response += `\n  🏷️ ${parsed.tags.map(t => '#' + t).join(' ')}`;
+      }
       
       // Schedule reminder if requested
       if (parsed.reminderMinutes > 0) {
@@ -253,11 +270,14 @@ You said **${parsed.ambiguousHour}${parsed.minute ? ':' + parsed.minute.toString
       return response;
     }
     
-    // Otherwise ask about reminder
+    // Otherwise ask about reminder (carry contacts/location/tags through wizard)
     context.services.context.setFact('system', 'event_wizard_pending', {
       step: 'reminder',
       title: parsed.title,
       startTime: parsed.startTime.toISOString(),
+      contacts: parsed.contacts,
+      location: parsed.location,
+      tags: parsed.tags,
     }, { source: 'explicit' });
     
     return `📅 **"${parsed.title}"**
@@ -276,12 +296,18 @@ function parseEventInput(input: string): {
   ambiguousHour: number | null;
   minute: number;
   reminderMinutes: number | null;
+  contacts: string[];
+  location: string | null;
+  tags: string[];
 } {
   let startTime = new Date();
   let hasTime = false;
   let ambiguousHour: number | null = null;
   let minute = 0;
   let reminderMinutes: number | null = null;
+  let contacts: string[] = [];
+  let location: string | null = null;
+  let tags: string[] = [];
   
   // Remove command prefix
   let text = input
@@ -302,6 +328,33 @@ function parseEventInput(input: string): {
   
   // Remove @context tags (events don't use contexts)
   text = text.replace(/@\w+/g, '').trim();
+  
+  // Extract "with <person>" - but not "with 15m reminder" (already handled)
+  // Match "with <name>" at the end or followed by comma/other keywords
+  const withMatch = text.match(/\bwith\s+([a-zA-Z][a-zA-Z\s]*?)(?=\s*$|\s*,|\s+(?:at|on|for)\b)/gi);
+  if (withMatch) {
+    for (const match of withMatch) {
+      const person = match.replace(/^with\s+/i, '').trim();
+      if (person && !person.match(/^\d+\s*m/i)) { // Not a reminder like "with 15m"
+        contacts.push(person);
+      }
+    }
+    text = text.replace(/\bwith\s+([a-zA-Z][a-zA-Z\s]*?)(?=\s*$|\s*,|\s+(?:at|on|for)\b)/gi, '').trim();
+  }
+  
+  // Extract "at <location>" - but not time like "at 9am"
+  const atLocationMatch = text.match(/\bat\s+(?![\d])(the\s+)?([a-zA-Z][a-zA-Z\s']+?)(?=\s*$|\s*,|\s+(?:with|on|for)\b)/i);
+  if (atLocationMatch) {
+    location = (atLocationMatch[1] || '') + atLocationMatch[2];
+    text = text.replace(atLocationMatch[0], '').trim();
+  }
+  
+  // Extract #tags
+  const tagMatches = text.match(/#(\w+)/g);
+  if (tagMatches) {
+    tags = tagMatches.map(t => t.slice(1));
+    text = text.replace(/#\w+/g, '').trim();
+  }
   
   // Check for date-first format: 1/22/26 7:30am [title]
   // Title is optional (wizard mode provides just date/time)
@@ -326,7 +379,7 @@ function parseEventInput(input: string): {
     startTime = new Date(year, month, day, h, minute, 0, 0);
     hasTime = true;
     
-    return { title: titlePart.trim(), startTime, hasTime, ambiguousHour, minute, reminderMinutes };
+    return { title: titlePart.trim(), startTime, hasTime, ambiguousHour, minute, reminderMinutes, contacts, location, tags };
   }
   
   // Check for explicit date MM/DD or MM/DD/YY anywhere in text
@@ -444,14 +497,14 @@ function parseEventInput(input: string): {
   // Clean up am/pm remnants, filler words, and extra punctuation
   text = text
     .replace(/\b(am|pm)\b/gi, '')
-    .replace(/\b(on|for|at|with)\b/gi, '')
+    .replace(/\b(on|for|at)\b/gi, '')
     .replace(/,\s*,/g, ',')           // double commas
     .replace(/,\s*$/g, '')            // trailing comma
     .replace(/^\s*,/g, '')            // leading comma
     .replace(/\s+/g, ' ')
     .trim();
   
-  return { title: text, startTime, hasTime, ambiguousHour, minute, reminderMinutes };
+  return { title: text, startTime, hasTime, ambiguousHour, minute, reminderMinutes, contacts, location, tags };
 }
 
 // Tool to handle wizard responses
@@ -494,6 +547,9 @@ export const eventWizardResponse: Tool = {
       minute?: number;
       baseDate?: string;
       reminderMinutes?: number;
+      contacts?: string[];
+      location?: string | null;
+      tags?: string[];
     };
     
     const input = context.input.trim();
@@ -586,6 +642,70 @@ export const eventWizardResponse: Tool = {
         else if (lower.includes('30')) reminderMinutes = 30;
         else if (lower.includes('1h') || lower.includes('60') || lower === 'hour') reminderMinutes = 60;
         // 'none', 'no', 'skip', etc. → 0
+        
+        // If contacts/location/tags were already parsed inline, skip extras step
+        const hasExtras = (state.contacts && state.contacts.length > 0) || 
+                          state.location || 
+                          (state.tags && state.tags.length > 0);
+        
+        if (hasExtras) {
+          // Create event directly with pre-parsed extras
+          const startTime = new Date(state.startTime!);
+          const endTime = new Date(startTime);
+          endTime.setHours(endTime.getHours() + 1);
+          
+          const metadata: Record<string, unknown> = {};
+          if (state.contacts && state.contacts.length > 0) metadata.contacts = state.contacts;
+          if (state.tags && state.tags.length > 0) metadata.tags = state.tags;
+          
+          const event = context.services.calendar.create({
+            title: state.title!,
+            start_time: startTime.toISOString(),
+            end_time: endTime.toISOString(),
+            all_day: false,
+            location: state.location || undefined,
+            metadata: Object.keys(metadata).length > 0 ? JSON.stringify(metadata) : undefined,
+          });
+          
+          // Clear wizard state
+          context.services.context.setFact('system', 'event_wizard_pending', null, { source: 'explicit' });
+          
+          const dateStr = startTime.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+          const timeStr = startTime.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+          
+          let response = `✓ Created: "${event.title}"\n  ${dateStr} at ${timeStr}`;
+          
+          if (state.location) {
+            response += `\n  📍 ${state.location}`;
+          }
+          if (state.contacts && state.contacts.length > 0) {
+            response += `\n  👤 ${state.contacts.join(', ')}`;
+          }
+          if (state.tags && state.tags.length > 0) {
+            response += `\n  🏷️ ${state.tags.map((t: string) => '#' + t).join(' ')}`;
+          }
+          
+          // Schedule reminder if requested
+          if (reminderMinutes > 0) {
+            const reminderTime = new Date(startTime.getTime() - reminderMinutes * 60 * 1000);
+            
+            if (reminderTime > new Date()) {
+              context.services.scheduler.create({
+                type: 'reminder',
+                scheduleType: 'once',
+                scheduleValue: reminderTime.toISOString(),
+                actionType: 'notify',
+                actionPayload: `"${event.title}" starts in ${reminderMinutes} minutes`,
+                nextRun: reminderTime.toISOString(),
+                createdBy: 'system',
+                relatedRecord: event.id,
+              });
+              response += `\n  🔔 Reminder: ${reminderMinutes}m before`;
+            }
+          }
+          
+          return response;
+        }
         
         // Move to extras step
         context.services.context.setFact('system', 'event_wizard_pending', {
