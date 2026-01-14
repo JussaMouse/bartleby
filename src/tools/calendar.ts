@@ -365,9 +365,12 @@ export const eventWizardResponse: Tool = {
     const pending = context.services.context.getFact('system', 'event_wizard_pending');
     if (!pending?.value) return false;
     
-    // Don't intercept if user is trying to restart the wizard
     const lower = input.toLowerCase().trim();
-    if (/^(new|add|create)\s+event/i.test(lower)) {
+    
+    // Don't intercept if user is clearly doing something else
+    if (/^(new|add|create|capture|show|done|edit|delete|remove|help|quit|status|calendar|today)/i.test(lower)) {
+      // Clear stale wizard state
+      context.services.context.setFact('system', 'event_wizard_pending', null, { source: 'explicit' });
       return false;
     }
     
