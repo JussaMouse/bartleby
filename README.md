@@ -527,10 +527,22 @@ Click any item to open the editor:
 
 Changes are written to the `.md` file. The file watcher syncs everything — both CLI and dashboard see updates instantly.
 
+### Remote Access
+
+If Bartleby runs on a server, tunnel the dashboard to your local machine:
+
+```bash
+# On your local machine:
+ssh -L 3333:localhost:3333 user@your-server
+
+# Then open http://localhost:3333 in your browser
+```
+
 ### Configuration
 
 ```env
 DASHBOARD_PORT=3333    # Default port
+DASHBOARD_HOST=0.0.0.0 # Bind to all interfaces (if not using tunnel)
 ```
 
 ---
