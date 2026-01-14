@@ -546,6 +546,180 @@ export const editAction: Tool = {
   },
 };
 
+export const editPage: Tool = {
+  name: 'editPage',
+  description: 'Edit any page (tags, project, metadata)',
+
+  routing: {
+    patterns: [
+      /^edit\s+(?!action\s)(?!\d+\s)(.+?)(?:\s+(@[\w-]+|\+[\w-]+|#\w+).*)?$/i,
+    ],
+    keywords: {
+      verbs: ['edit'],
+      nouns: ['page', 'media', 'note', 'entry'],
+    },
+    examples: ['edit vacation photo', 'edit house rules +family', 'edit northside'],
+    priority: 85,  // Lower than editAction
+  },
+
+  parseArgs: (input, match) => {
+    if (!match) return { title: '', changes: '' };
+    
+    const title = match[1].trim();
+    const changes = match[2] ? input.slice(input.indexOf(match[2])) : '';
+    return { title, changes };
+  },
+
+  execute: async (args, context) => {
+    const { title, changes } = args as { title: string; changes: string };
+
+    if (!title) {
+      return 'Usage: edit <page name> [+project #tag]\nExample: edit vacation photo +thailand #travel';
+    }
+
+    // Find the page by partial match
+    const all = context.services.garden.getRecent(200);
+    const search = title.toLowerCase();
+    const record = all.find(r => r.title.toLowerCase().includes(search));
+
+    if (!record) {
+      return `Page not found: "${title}"\nTry: recent`;
+    }
+
+    // If changes provided inline, apply them directly
+    if (changes) {
+      const updates: { project?: string; tags?: string[] } = {};
+      
+      // Parse +project
+      const projectMatch = changes.match(/\+([^\s#]+)/);
+      if (projectMatch) {
+        const projectName = projectMatch[1];
+        const projects = context.services.garden.getByType('project');
+        let project = projects.find(p => p.title.toLowerCase() === projectName.toLowerCase());
+        if (!project) {
+          project = context.services.garden.create({
+            type: 'project',
+            title: projectName,
+            status: 'active',
+          });
+        }
+        updates.project = project.id;
+      }
+      
+      // Parse #tags
+      const tagMatches = changes.match(/#(\w+)/g);
+      if (tagMatches) {
+        const newTags = tagMatches.map((t: string) => t.slice(1));
+        const existingTags = record.tags || [];
+        updates.tags = [...new Set([...existingTags, ...newTags])];
+      }
+      
+      if (Object.keys(updates).length > 0) {
+        context.services.garden.update(record.id, updates);
+        
+        let response = `✓ Updated: "${record.title}"`;
+        if (updates.project) response += `\n  +${projectMatch![1]}`;
+        if (updates.tags) response += `\n  ${updates.tags.map(t => '#' + t).join(' ')}`;
+        return response;
+      }
+    }
+
+    // No inline changes - show current state and prompt
+    const meta = record.metadata as Record<string, unknown> | undefined;
+    let response = `📝 **${record.title}** (${record.type})\n`;
+    
+    if (record.project) {
+      const proj = context.services.garden.get(record.project);
+      response += `  Project: +${proj?.title || record.project}\n`;
+    }
+    if (record.tags && record.tags.length > 0) {
+      response += `  Tags: ${record.tags.map(t => '#' + t).join(' ')}\n`;
+    }
+    if (meta?.filePath) {
+      response += `  File: ${meta.filePath}\n`;
+    }
+    
+    // Set pending edit state
+    context.services.context.setFact('system', 'pending_edit_page', record.id, { source: 'explicit' });
+    
+    response += '\nType new tags/project (e.g., +project #tag1 #tag2) or ENTER to cancel:';
+    return response;
+  },
+};
+
+export const handleEditPage: Tool = {
+  name: 'handleEditPage',
+  description: 'Handle pending page edit input',
+
+  routing: {
+    patterns: [],
+    keywords: { verbs: [], nouns: [] },
+    examples: [],
+    priority: 99,  // High priority to intercept
+  },
+
+  shouldHandle: async (input: string, context) => {
+    const fact = context.services.context.getFact('system', 'pending_edit_page');
+    return !!fact?.value;
+  },
+
+  execute: async (args, context) => {
+    const input = (args as any).__raw_input || '';
+    const fact = context.services.context.getFact('system', 'pending_edit_page');
+    const recordId = fact?.value as string | null;
+    
+    // Clear pending state
+    context.services.context.setFact('system', 'pending_edit_page', null, { source: 'explicit' });
+    
+    if (!recordId) return '';
+    
+    const record = context.services.garden.get(recordId);
+    if (!record) return 'Page not found.';
+    
+    // Empty input = cancel
+    if (!input.trim()) {
+      return 'Edit cancelled.';
+    }
+    
+    const updates: { project?: string; tags?: string[] } = {};
+    
+    // Parse +project
+    const projectMatch = input.match(/\+([^\s#]+)/);
+    if (projectMatch) {
+      const projectName = projectMatch[1];
+      const projects = context.services.garden.getByType('project');
+      let project = projects.find(p => p.title.toLowerCase() === projectName.toLowerCase());
+      if (!project) {
+        project = context.services.garden.create({
+          type: 'project',
+          title: projectName,
+          status: 'active',
+        });
+      }
+      updates.project = project.id;
+    }
+    
+    // Parse #tags (add to existing)
+    const tagMatches = input.match(/#(\w+)/g);
+    if (tagMatches) {
+      const newTags = tagMatches.map((t: string) => t.slice(1));
+      const existingTags = record.tags || [];
+      updates.tags = [...new Set([...existingTags, ...newTags])];
+    }
+    
+    if (Object.keys(updates).length === 0) {
+      return 'No changes. Use +project or #tag format.';
+    }
+    
+    context.services.garden.update(record.id, updates);
+    
+    let response = `✓ Updated: "${record.title}"`;
+    if (updates.project) response += `\n  +${projectMatch![1]}`;
+    if (updates.tags) response += `\n  ${updates.tags.map(t => '#' + t).join(' ')}`;
+    return response;
+  },
+};
+
 export const capture: Tool = {
   name: 'capture',
   description: 'Quick capture to inbox',
@@ -1553,6 +1727,7 @@ export const deletePage: Tool = {
 export const gtdTools: Tool[] = [
   appendToNote,  // Must be first - highest priority contextual check
   tagNote,       // Second - for note tagging step
+  handleEditPage, // Third - for page edit step
   viewNextActions,
   processInbox,
   addTask,
@@ -1568,6 +1743,7 @@ export const gtdTools: Tool[] = [
   showTagged,
   markDone,
   editAction,
+  editPage,       // After editAction (lower priority)
   capture,
   showWaitingFor,
   showOverdue,
