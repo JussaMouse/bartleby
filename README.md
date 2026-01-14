@@ -352,19 +352,20 @@ Type `new event` and Bartleby walks you through it:
 📅 **New Event**
 
 What's the event?
-> Team standup
-📅 **"Team standup"**
-
+> Coffee with Sarah
 When? (e.g., tomorrow 3pm, 1/22 7:30am, friday 2pm)
-> tomorrow 9am
-📅 **"Team standup"**
-  Thursday, January 16 at 9:00 AM
-
+> friday 10am
 Reminder?
 → **none** / **15m** / **30m** / **1h**
 > 15m
-✓ Created: Team standup
-  Thursday, January 16 at 9:00 AM
+Add anything else? (Enter to skip)
+→ **with <person>**, **at <location>**, **#tag**
+> with sarah, at Blue Bottle, #social
+✓ Created: Coffee with Sarah
+  Friday, January 17 at 10:00 AM
+  📍 Blue Bottle
+  👤 sarah
+  🏷️ #social
   🔔 Reminder: 15m before
 ```
 
