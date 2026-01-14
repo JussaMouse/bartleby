@@ -411,6 +411,13 @@ export const eventWizardResponse: Tool = {
       case 'when': {
         // Parse the date/time
         const parsed = parseEventInput(input);
+        debug('eventWizard when parse result', { 
+          title: parsed.title, 
+          hasTime: parsed.hasTime, 
+          ambiguousHour: parsed.ambiguousHour,
+          minute: parsed.minute,
+          startTime: parsed.startTime.toISOString()
+        });
         
         if (!parsed.hasTime && !parsed.title) {
           // Couldn't parse - try again
