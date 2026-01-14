@@ -610,3 +610,5 @@ MIT — see [LICENSE](LICENSE)
 ---
 
 *Built for humans who want to own their data.*
+
+<!-- test: this line will be removed -->
