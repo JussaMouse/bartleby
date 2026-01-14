@@ -318,26 +318,24 @@ export class DashboardServer {
       const name = view.slice(8);
       const project = this.garden.getByTitle(name);
       if (project) {
+        const projectId = project.id;
         const projectSlug = project.title.toLowerCase().replace(/\s+/g, '-');
         const projectTitle = project.title.toLowerCase();
         
+        // Match by project ID or by title/slug (for backwards compat)
+        const matchesProject = (p?: string) => 
+          p === projectId || 
+          p?.toLowerCase() === projectSlug || 
+          p?.toLowerCase() === projectTitle;
+        
         const actions = this.garden.getTasks({ status: 'active' })
-          .filter(a => 
-            a.project?.toLowerCase() === projectSlug || 
-            a.project?.toLowerCase() === projectTitle
-          );
+          .filter(a => matchesProject(a.project));
         
         const media = this.garden.getByType('media')
-          .filter(m => 
-            m.project?.toLowerCase() === projectSlug || 
-            m.project?.toLowerCase() === projectTitle
-          );
+          .filter(m => matchesProject(m.project));
         
         const notes = this.garden.getByType('note')
-          .filter(n => 
-            n.project?.toLowerCase() === projectSlug || 
-            n.project?.toLowerCase() === projectTitle
-          );
+          .filter(n => matchesProject(n.project));
         
         data = { project, actions, media, notes };
       }
