@@ -315,12 +315,49 @@ function parseEventInput(input: string): {
     .replace(/^schedule\s*/i, '')
     .trim();
   
-  // Extract reminder first (before other parsing)
-  // Formats: "with 15m reminder", "15m reminder", "remind me 15m before", "reminder 15m"
-  const reminderMatch = text.match(/(?:with\s+)?(\d+)\s*m(?:in(?:ute)?s?)?\s+(?:reminder|before)|remind(?:er)?(?:\s+me)?\s+(\d+)\s*m(?:in(?:ute)?s?)?(?:\s+before)?/i);
+  // === KEYWORD-BASED PARSING ===
+  // Supports: "picnic when sunday noon who nicole eileen where lakeside, 1h reminder"
+  
+  // Extract "when <datetime>" - everything until next keyword or end
+  const whenMatch = text.match(/\bwhen\s+([^,]+?)(?=\s+(?:who|where|with)\b|\s*,|\s*$)/i);
+  let whenClause: string | null = null;
+  if (whenMatch) {
+    whenClause = whenMatch[1].trim();
+    text = text.replace(whenMatch[0], '').trim();
+  }
+  
+  // Extract "who <names>" - space or comma separated names until next keyword
+  const whoMatch = text.match(/\bwho\s+([^,]+?)(?=\s+(?:when|where|with)\b|\s*,|\s*$)/i);
+  if (whoMatch) {
+    // Split by comma or space, filter empty
+    const names = whoMatch[1].split(/[,\s]+/).filter(n => n.length > 0);
+    contacts.push(...names);
+    text = text.replace(whoMatch[0], '').trim();
+  }
+  
+  // Extract "where <location>" - until next keyword or comma
+  const whereMatch = text.match(/\bwhere\s+([^,]+?)(?=\s+(?:when|who|with)\b|\s*,|\s*$)/i);
+  if (whereMatch) {
+    location = whereMatch[1].trim();
+    text = text.replace(whereMatch[0], '').trim();
+  }
+  
+  // Extract reminder: "1h reminder", "15m reminder", "30 min reminder"
+  const reminderMatch = text.match(/(\d+)\s*(h(?:our)?|m(?:in(?:ute)?)?)\s*(?:reminder|before)?/i);
   if (reminderMatch) {
-    reminderMinutes = parseInt(reminderMatch[1] || reminderMatch[2], 10);
+    const val = parseInt(reminderMatch[1], 10);
+    const unit = reminderMatch[2].toLowerCase();
+    reminderMinutes = unit.startsWith('h') ? val * 60 : val;
     text = text.replace(reminderMatch[0], '').trim();
+  }
+  
+  // Also check older format: "remind me 15m before", "with 15m reminder"  
+  if (reminderMinutes === null) {
+    const oldReminderMatch = text.match(/(?:with\s+)?(\d+)\s*m(?:in(?:ute)?s?)?\s+(?:reminder|before)|remind(?:er)?(?:\s+me)?\s+(\d+)\s*m(?:in(?:ute)?s?)?(?:\s+before)?/i);
+    if (oldReminderMatch) {
+      reminderMinutes = parseInt(oldReminderMatch[1] || oldReminderMatch[2], 10);
+      text = text.replace(oldReminderMatch[0], '').trim();
+    }
   }
   
   // Remove "via signal" or similar (for future notification routing)
@@ -329,24 +366,29 @@ function parseEventInput(input: string): {
   // Remove @context tags (events don't use contexts)
   text = text.replace(/@\w+/g, '').trim();
   
+  // === FREEFORM PARSING (fallback if no keywords used) ===
+  
   // Extract "with <person>" - but not "with 15m reminder" (already handled)
-  // Match "with <name>" at the end or followed by comma/other keywords
-  const withMatch = text.match(/\bwith\s+([a-zA-Z][a-zA-Z\s]*?)(?=\s*$|\s*,|\s+(?:at|on|for)\b)/gi);
-  if (withMatch) {
-    for (const match of withMatch) {
-      const person = match.replace(/^with\s+/i, '').trim();
-      if (person && !person.match(/^\d+\s*m/i)) { // Not a reminder like "with 15m"
-        contacts.push(person);
+  if (contacts.length === 0) {
+    const withMatch = text.match(/\bwith\s+([a-zA-Z][a-zA-Z\s]*?)(?=\s*$|\s*,|\s+(?:at|on|for)\b)/gi);
+    if (withMatch) {
+      for (const match of withMatch) {
+        const person = match.replace(/^with\s+/i, '').trim();
+        if (person && !person.match(/^\d+\s*m/i)) {
+          contacts.push(person);
+        }
       }
+      text = text.replace(/\bwith\s+([a-zA-Z][a-zA-Z\s]*?)(?=\s*$|\s*,|\s+(?:at|on|for)\b)/gi, '').trim();
     }
-    text = text.replace(/\bwith\s+([a-zA-Z][a-zA-Z\s]*?)(?=\s*$|\s*,|\s+(?:at|on|for)\b)/gi, '').trim();
   }
   
   // Extract "at <location>" - but not time like "at 9am"
-  const atLocationMatch = text.match(/\bat\s+(?![\d])(the\s+)?([a-zA-Z][a-zA-Z\s']+?)(?=\s*$|\s*,|\s+(?:with|on|for)\b)/i);
-  if (atLocationMatch) {
-    location = (atLocationMatch[1] || '') + atLocationMatch[2];
-    text = text.replace(atLocationMatch[0], '').trim();
+  if (!location) {
+    const atLocationMatch = text.match(/\bat\s+(?![\d])(the\s+)?([a-zA-Z][a-zA-Z\s']+?)(?=\s*$|\s*,|\s+(?:with|on|for)\b)/i);
+    if (atLocationMatch) {
+      location = (atLocationMatch[1] || '') + atLocationMatch[2];
+      text = text.replace(atLocationMatch[0], '').trim();
+    }
   }
   
   // Extract #tags
@@ -354,6 +396,11 @@ function parseEventInput(input: string): {
   if (tagMatches) {
     tags = tagMatches.map(t => t.slice(1));
     text = text.replace(/#\w+/g, '').trim();
+  }
+  
+  // If we extracted a "when" clause, parse it for date/time and prepend to remaining text
+  if (whenClause) {
+    text = whenClause + (text ? ' ' + text : '');
   }
   
   // Check for date-first format: 1/22/26 7:30am [title]
