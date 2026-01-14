@@ -21,7 +21,8 @@ async function main() {
   // Start dashboard server
   const dashboard = new DashboardServer(garden, calendar);
   const port = parseInt(process.env.DASHBOARD_PORT || '3333', 10);
-  dashboard.start(port);
+  const host = process.env.DASHBOARD_HOST || 'localhost';
+  dashboard.start(port, host);
   
   // Watch Garden directory for changes
   const gardenPath = path.resolve(config.paths.garden);
@@ -62,8 +63,9 @@ async function main() {
     process.exit(0);
   });
   
-  console.log(`\n📊 Dashboard running at http://localhost:${port}`);
-  console.log('   Open in browser while using Bartleby CLI in iTerm2\n');
+  const displayHost = host === '0.0.0.0' ? 'YOUR_SERVER_IP' : host;
+  console.log(`\n📊 Dashboard running at http://${displayHost}:${port}`);
+  console.log('   Open in browser while using Bartleby CLI\n');
 }
 
 main().catch((err) => {

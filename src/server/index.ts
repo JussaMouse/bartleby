@@ -227,9 +227,9 @@ export class DashboardServer {
     }
   }
 
-  start(port: number = 3333) {
-    this.server.listen(port, () => {
-      info(`Dashboard server running at http://localhost:${port}`);
+  start(port: number = 3333, host: string = 'localhost') {
+    this.server.listen(port, host, () => {
+      info(`Dashboard server running at http://${host}:${port}`);
     });
   }
 
