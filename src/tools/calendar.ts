@@ -311,8 +311,12 @@ function parseEventInput(input: string): {
   }
   
   // Extract am/pm first (anywhere in text), then extract time numbers
-  const ampmMatch = text.match(/\b(am|pm)\b/i);
+  // Use simple pattern without word boundaries for robustness
+  const ampmMatch = text.match(/(am|pm)/i);
   const ampm = ampmMatch ? ampmMatch[1].toLowerCase() : null;
+  
+  // Debug: log what we found
+  console.log('[TIME DEBUG]', { text, ampmMatch: ampmMatch?.[0], ampm });
   
   // Match time: HH:MM or just H (if followed by am/pm)
   const timeMatch = 
