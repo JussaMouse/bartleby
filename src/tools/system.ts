@@ -168,14 +168,15 @@ Bartleby's Time System shows everything temporal in one place.
 **Commands**
   calendar                Show upcoming (all types)
   today                   Today's unified schedule
-  add event <details>     Create an event
+  new event               Create event (guided wizard)
+  add event <details>     Create event (inline)
   change calendar settings   Configure preferences
   reset calendar          Clear settings, restart setup
 
-**Event Syntax**
-  add event <title> at <time>
-  add event <title> <time> <day>
-  add event <title> tomorrow at <time>
+**Creating Events**
+  new event               Wizard: prompts for title, time, reminder
+  add event <title> at <time>           Inline
+  add event 1/22/26 7:30am <title>       Date-first format
 
 **Reminders** (see "help reminders")
   remind me to stretch in 30 min

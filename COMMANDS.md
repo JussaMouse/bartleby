@@ -81,14 +81,19 @@ Complete list of all commands. For quick start, see [README.md](README.md).
 |---------|-------------|
 | `today` | Today's unified schedule |
 | `calendar` | Upcoming events, deadlines, reminders |
-| `add event <title> at <time>` | Create an event |
-| `add event <title> tomorrow at <time>` | Future event |
+| `new event` | Create event (guided wizard) |
+| `add event <title> at <time>` | Create event (inline) |
+| `add event 1/22/26 7:30am <title>` | Date-first format |
 | `change calendar settings` | Configure calendar preferences |
 | `reset calendar` | Clear settings, restart setup |
+
+**Wizard flow:** Type `new event` and answer prompts for title, time, and reminder.
 
 **Time formats:** `2pm`, `2:30pm`, `14:00`, `noon`, `midnight`
 
 **Day formats:** `today`, `tomorrow`, `monday`, `wed`, `next friday`
+
+**Date formats:** `1/22` (Jan 22), `1/22/26` (Jan 22, 2026)
 
 ---
 

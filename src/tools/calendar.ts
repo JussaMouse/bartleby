@@ -132,202 +132,390 @@ export const showToday: Tool = {
 
 export const addEvent: Tool = {
   name: 'addEvent',
-  description: 'Create a calendar event',
+  description: 'Create a calendar event (wizard flow)',
 
   routing: {
     patterns: [
-      /^add\s+event\s+["']?(.+?)["']?\s+(on|at|tomorrow|today)\s+(.+)$/i,
-      /^schedule\s+["']?(.+?)["']?\s+(for|on|at|tomorrow)\s+(.+)$/i,
+      /^(new|add|create)\s+event$/i,  // Bare command starts wizard
+      /^(new|add)\s+event\s+.+$/i,    // With inline args - try to parse
+      /^schedule\s+.+$/i,
     ],
     keywords: {
-      verbs: ['add', 'schedule', 'create'],
+      verbs: ['add', 'schedule', 'create', 'new'],
       nouns: ['event', 'meeting', 'appointment'],
     },
     priority: 85,
   },
 
   parseArgs: (input) => {
-    let startTime = new Date();
-    const lower = input.toLowerCase();
-    let ambiguousHour: number | null = null;  // Track if time was ambiguous
-
-    // Check for day of week
-    const days = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
-    const dayMatch = lower.match(/\b(sun|mon|tue|wed|thu|fri|sat)(?:day|s|nes|urs|ur)?\b/i);
-    if (dayMatch) {
-      const targetDay = days.findIndex(d => dayMatch[1].startsWith(d));
-      if (targetDay >= 0) {
-        const today = startTime.getDay();
-        let daysToAdd = targetDay - today;
-        if (daysToAdd <= 0) daysToAdd += 7; // Next week if today or past
-        startTime.setDate(startTime.getDate() + daysToAdd);
-      }
+    const lower = input.toLowerCase().trim();
+    
+    // Check if bare command (wizard mode)
+    if (/^(new|add|create)\s+event$/i.test(lower)) {
+      return { wizardMode: true };
     }
-
-    // Check for "tomorrow"
-    if (lower.includes('tomorrow')) {
-      startTime.setDate(startTime.getDate() + 1);
-    }
-
-    // Extract time - flexible: "at 3pm", "3pm", "3:30pm", "at 15:00", "8:00"
-    const timeMatch = lower.match(/\b(?:at\s+)?(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\b/i);
-    let minute = 0;
-    if (timeMatch) {
-      let hour = parseInt(timeMatch[1]);
-      minute = timeMatch[2] ? parseInt(timeMatch[2]) : 0;
-      const ampm = timeMatch[3]?.toLowerCase();
-
-      if (ampm === 'pm' && hour < 12) hour += 12;
-      if (ampm === 'am' && hour === 12) hour = 0;
-      // Handle ambiguous times (no am/pm)
-      if (!ampm && hour < 13 && hour >= 1 && hour <= 12) {
-        // This is ambiguous - mark it for potential clarification
-        ambiguousHour = hour;
-        // Default: assume PM for 1-6, AM for 7-12
-        if (hour >= 1 && hour <= 6) hour += 12;
-      }
-
-      startTime.setHours(hour, minute, 0, 0);
-    }
-
-    // Extract title - remove all the temporal stuff
-    let title = input
-      .replace(/^(add\s+event|create\s+event|schedule)\s*/i, '')
-      // Remove day of week
-      .replace(/\b(sun|mon|tue|wed|thu|fri|sat)(?:day|s|nes|urs|ur)?\b/gi, '')
-      // Remove "today" and "tomorrow"
-      .replace(/\b(today|tomorrow)\b/gi, '')
-      // Remove time expressions (with or without "at")
-      .replace(/\b(?:at\s+)?\d{1,2}(?::\d{2})?\s*(am|pm)?\b/gi, '')
-      // Remove prepositions
-      .replace(/\b(on|for|at)\b/gi, '')
-      // Stop at sentence boundary
-      .split(/[.!?]|,\s*(and|then|also)\s+/i)[0]
-      // Clean up extra whitespace
-      .replace(/\s+/g, ' ')
-      .trim();
-
-    const endTime = new Date(startTime);
-    endTime.setHours(endTime.getHours() + 1);
-
-    return {
-      title,
-      start_time: startTime.toISOString(),
-      end_time: endTime.toISOString(),
-      ambiguousHour,  // Pass this to execute for "ask" preference handling
-      minute,
-    };
+    
+    // Otherwise try to parse inline
+    return { wizardMode: false, rawInput: input };
   },
 
   execute: async (args, context) => {
-    const { title, start_time, end_time, ambiguousHour, minute } = args as {
-      title: string;
-      start_time: string;
-      end_time: string;
-      ambiguousHour: number | null;
-      minute: number;
-    };
-
-    if (!title) {
-      return 'Please provide an event title. Example: add event "Meeting" at 3pm';
+    const { wizardMode, rawInput } = args as { wizardMode: boolean; rawInput?: string };
+    
+    // Check if we're continuing a wizard flow
+    const pendingEvent = context.services.context.getFact('system', 'event_wizard_pending');
+    if (pendingEvent?.value) {
+      // This shouldn't happen - wizard responses are handled by eventWizardResponse
+      return "I'm waiting for event details. What's the event title?";
     }
-
-    // Check if we need to ask about ambiguous time
-    if (ambiguousHour !== null) {
-      // Read from config (source of truth from .env)
-      const pref = context.services.config.calendar.ambiguousTime;
+    
+    // Start wizard mode
+    if (wizardMode) {
+      context.services.context.setFact('system', 'event_wizard_pending', {
+        step: 'title',
+      }, { source: 'explicit' });
       
+      return "📅 **New Event**\n\nWhat's the event?";
+    }
+    
+    // Parse inline input
+    const parsed = parseEventInput(rawInput || '');
+    
+    if (!parsed.title) {
+      // Not enough info - start wizard
+      context.services.context.setFact('system', 'event_wizard_pending', {
+        step: 'title',
+      }, { source: 'explicit' });
+      
+      return "📅 **New Event**\n\nWhat's the event?";
+    }
+    
+    // If we have title but no time, ask for when
+    if (!parsed.hasTime) {
+      context.services.context.setFact('system', 'event_wizard_pending', {
+        step: 'when',
+        title: parsed.title,
+      }, { source: 'explicit' });
+      
+      return `📅 **"${parsed.title}"**\n\nWhen? (e.g., tomorrow 3pm, 1/22 7:30am, friday 2pm)`;
+    }
+    
+    // Check for ambiguous time
+    if (parsed.ambiguousHour !== null) {
+      const pref = context.services.config.calendar.ambiguousTime;
       if (pref === 'ask') {
-        // Store pending event data and ask for clarification
-        context.services.context.setFact('system', 'event_pending_clarification', {
-          title,
-          ambiguousHour,
-          minute,
-          baseDate: start_time,  // Has the correct date, just wrong hour potentially
+        context.services.context.setFact('system', 'event_wizard_pending', {
+          step: 'ampm',
+          title: parsed.title,
+          ambiguousHour: parsed.ambiguousHour,
+          minute: parsed.minute,
+          baseDate: parsed.startTime.toISOString(),
         }, { source: 'explicit' });
         
-        const dateObj = new Date(start_time);
-        const dateStr = dateObj.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+        return `📅 **"${parsed.title}"**
+
+You said **${parsed.ambiguousHour}${parsed.minute ? ':' + parsed.minute.toString().padStart(2, '0') : ''}** - did you mean:
+→ **am** or **pm**`;
+      }
+    }
+    
+    // We have everything - ask about reminder then create
+    context.services.context.setFact('system', 'event_wizard_pending', {
+      step: 'reminder',
+      title: parsed.title,
+      startTime: parsed.startTime.toISOString(),
+    }, { source: 'explicit' });
+    
+    const dateStr = parsed.startTime.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+    const timeStr = parsed.startTime.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+    
+    return `📅 **"${parsed.title}"**
+  ${dateStr} at ${timeStr}
+
+Reminder?
+→ **none** / **15m** / **30m** / **1h**`;
+  },
+};
+
+// Helper to parse event input for dates/times
+function parseEventInput(input: string): {
+  title: string;
+  startTime: Date;
+  hasTime: boolean;
+  ambiguousHour: number | null;
+  minute: number;
+} {
+  let startTime = new Date();
+  let hasTime = false;
+  let ambiguousHour: number | null = null;
+  let minute = 0;
+  
+  // Remove command prefix
+  let text = input
+    .replace(/^(new|add|create)\s+event:?\s*/i, '')
+    .replace(/^schedule\s*/i, '')
+    .trim();
+  
+  // Check for date-first format: 1/22/26 7:30am title
+  const dateFirstMatch = text.match(/^(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?\s+(\d{1,2}):?(\d{2})?\s*(am|pm)?\s+(.+)$/i);
+  if (dateFirstMatch) {
+    const [, m, d, y, hour, min, ampm, titlePart] = dateFirstMatch;
+    const month = parseInt(m, 10) - 1;
+    const day = parseInt(d, 10);
+    let year = y ? parseInt(y, 10) : startTime.getFullYear();
+    if (year < 100) year += 2000;
+    
+    let h = parseInt(hour, 10);
+    minute = min ? parseInt(min, 10) : 0;
+    
+    if (ampm?.toLowerCase() === 'pm' && h < 12) h += 12;
+    if (ampm?.toLowerCase() === 'am' && h === 12) h = 0;
+    if (!ampm && h >= 1 && h <= 12) {
+      ambiguousHour = h;
+      if (h >= 1 && h <= 6) h += 12;
+    }
+    
+    startTime = new Date(year, month, day, h, minute, 0, 0);
+    hasTime = true;
+    
+    return { title: titlePart.trim(), startTime, hasTime, ambiguousHour, minute };
+  }
+  
+  // Check for explicit date MM/DD or MM/DD/YY anywhere in text
+  const dateMatch = text.match(/\b(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?\b/);
+  if (dateMatch) {
+    const month = parseInt(dateMatch[1], 10) - 1;
+    const day = parseInt(dateMatch[2], 10);
+    let year = dateMatch[3] ? parseInt(dateMatch[3], 10) : startTime.getFullYear();
+    if (year < 100) year += 2000;
+    startTime = new Date(year, month, day);
+    text = text.replace(dateMatch[0], '').trim();
+  }
+  
+  // Check for day of week
+  const days = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
+  const dayMatch = text.match(/\b(sun|mon|tue|wed|thu|fri|sat)(?:day|s|nes|urs|ur)?\b/i);
+  if (dayMatch) {
+    const targetDay = days.findIndex(d => dayMatch[1].toLowerCase().startsWith(d));
+    if (targetDay >= 0) {
+      const today = startTime.getDay();
+      let daysToAdd = targetDay - today;
+      if (daysToAdd <= 0) daysToAdd += 7;
+      startTime.setDate(startTime.getDate() + daysToAdd);
+    }
+    text = text.replace(dayMatch[0], '').trim();
+  }
+  
+  // Check for tomorrow
+  if (/\btomorrow\b/i.test(text)) {
+    startTime.setDate(startTime.getDate() + 1);
+    text = text.replace(/\btomorrow\b/gi, '').trim();
+  }
+  
+  // Check for today
+  if (/\btoday\b/i.test(text)) {
+    text = text.replace(/\btoday\b/gi, '').trim();
+  }
+  
+  // Extract time HH:MM am/pm or H am/pm
+  const timeMatch = text.match(/\b(?:at\s+)?(\d{1,2}):(\d{2})\s*(am|pm)?\b/i) ||
+                    text.match(/\b(?:at\s+)?(\d{1,2})\s*(am|pm)\b/i);
+  if (timeMatch) {
+    let hour = parseInt(timeMatch[1], 10);
+    minute = timeMatch[2] && !['am', 'pm'].includes(timeMatch[2].toLowerCase())
+      ? parseInt(timeMatch[2], 10)
+      : 0;
+    const ampm = (timeMatch[3] || (timeMatch[2] && ['am', 'pm'].includes(timeMatch[2].toLowerCase()) ? timeMatch[2] : null))?.toLowerCase();
+    
+    if (ampm === 'pm' && hour < 12) hour += 12;
+    if (ampm === 'am' && hour === 12) hour = 0;
+    if (!ampm && hour >= 1 && hour <= 12) {
+      ambiguousHour = hour;
+      if (hour >= 1 && hour <= 6) hour += 12;
+    }
+    
+    startTime.setHours(hour, minute, 0, 0);
+    hasTime = true;
+    text = text.replace(timeMatch[0], '').trim();
+  }
+  
+  // Clean up title
+  const title = text
+    .replace(/\b(on|for|at)\b/gi, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  
+  return { title, startTime, hasTime, ambiguousHour, minute };
+}
+
+// Tool to handle wizard responses
+export const eventWizardResponse: Tool = {
+  name: 'eventWizardResponse',
+  description: 'Handle responses during event creation wizard',
+
+  routing: {
+    patterns: [], // No patterns - uses shouldHandle
+    priority: 100,
+  },
+
+  shouldHandle: async (input, context) => {
+    const pending = context.services.context.getFact('system', 'event_wizard_pending');
+    return !!pending?.value;
+  },
+
+  execute: async (args, context) => {
+    const pending = context.services.context.getFact('system', 'event_wizard_pending');
+    if (!pending?.value) {
+      return null; // Let other tools handle
+    }
+    
+    const state = pending.value as {
+      step: string;
+      title?: string;
+      startTime?: string;
+      ambiguousHour?: number;
+      minute?: number;
+      baseDate?: string;
+    };
+    
+    const input = context.input.trim();
+    
+    switch (state.step) {
+      case 'title': {
+        // User provided the event title
+        context.services.context.setFact('system', 'event_wizard_pending', {
+          step: 'when',
+          title: input,
+        }, { source: 'explicit' });
         
-        return `
-📅 **"${title}"** on ${dateStr}
-
-You said **${ambiguousHour}${minute ? ':' + minute.toString().padStart(2, '0') : ''}** - did you mean:
-→ **am** (${ambiguousHour}:${minute.toString().padStart(2, '0')} AM)
-→ **pm** (${ambiguousHour + 12 > 12 ? ambiguousHour : ambiguousHour + 12}:${minute.toString().padStart(2, '0')} PM)`;
+        return `📅 **"${input}"**\n\nWhen? (e.g., tomorrow 3pm, 1/22 7:30am, friday 2pm)`;
       }
-      // Otherwise continue with default behavior (morning/afternoon already applied in parseArgs)
-    }
-
-    // Check for first-time calendar use
-    const hasOnboarded = context.services.context.getFact('system', 'calendar_onboarded');
-    const existingEvents = context.services.calendar.getUpcoming(1);
-    const isFirstEvent = !hasOnboarded && existingEvents.length === 0;
-
-    // Create the event
-    const event = context.services.calendar.create({
-      title,
-      start_time,
-      end_time,
-      all_day: false,
-    });
-
-    const date = new Date(event.start_time);
-    const dateStr = date.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
-    const timeStr = date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
-
-    let response = `✓ Created: ${event.title}\n  ${dateStr} at ${timeStr}`;
-
-    // Schedule reminder if configured
-    const reminderMinutes = context.services.config.calendar.reminderMinutes;
-    if (reminderMinutes > 0) {
-      const reminderTime = new Date(date.getTime() - reminderMinutes * 60 * 1000);
       
-      // Only schedule if reminder time is in the future
-      if (reminderTime > new Date()) {
-        context.services.scheduler.create({
-          type: 'reminder',
-          scheduleType: 'once',
-          scheduleValue: reminderTime.toISOString(),
-          actionType: 'notify',
-          actionPayload: `"${event.title}" starts in ${reminderMinutes} minutes`,
-          nextRun: reminderTime.toISOString(),
-          createdBy: 'system',
-          relatedRecord: event.id,
+      case 'when': {
+        // Parse the date/time
+        const parsed = parseEventInput(input);
+        
+        if (!parsed.hasTime && !parsed.title) {
+          // Couldn't parse - try again
+          return "I didn't understand that. Try: tomorrow 3pm, 1/22 7:30am, or friday 2pm";
+        }
+        
+        // Use parsed time, keep the title from state
+        const title = state.title!;
+        
+        // Check for ambiguous time
+        if (parsed.ambiguousHour !== null) {
+          const pref = context.services.config.calendar.ambiguousTime;
+          if (pref === 'ask') {
+            context.services.context.setFact('system', 'event_wizard_pending', {
+              step: 'ampm',
+              title,
+              ambiguousHour: parsed.ambiguousHour,
+              minute: parsed.minute,
+              baseDate: parsed.startTime.toISOString(),
+            }, { source: 'explicit' });
+            
+            return `You said **${parsed.ambiguousHour}${parsed.minute ? ':' + parsed.minute.toString().padStart(2, '0') : ''}** - did you mean:\n→ **am** or **pm**`;
+          }
+        }
+        
+        // Move to reminder step
+        context.services.context.setFact('system', 'event_wizard_pending', {
+          step: 'reminder',
+          title,
+          startTime: parsed.startTime.toISOString(),
+        }, { source: 'explicit' });
+        
+        const dateStr = parsed.startTime.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+        const timeStr = parsed.startTime.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+        
+        return `📅 **"${title}"**\n  ${dateStr} at ${timeStr}\n\nReminder?\n→ **none** / **15m** / **30m** / **1h**`;
+      }
+      
+      case 'ampm': {
+        const lower = input.toLowerCase();
+        const isPM = lower === 'pm' || lower === 'afternoon';
+        const isAM = lower === 'am' || lower === 'morning';
+        
+        if (!isPM && !isAM) {
+          return "Please type **am** or **pm**";
+        }
+        
+        let hour = state.ambiguousHour!;
+        if (isPM && hour < 12) hour += 12;
+        if (isAM && hour === 12) hour = 0;
+        
+        const startTime = new Date(state.baseDate!);
+        startTime.setHours(hour, state.minute || 0, 0, 0);
+        
+        context.services.context.setFact('system', 'event_wizard_pending', {
+          step: 'reminder',
+          title: state.title,
+          startTime: startTime.toISOString(),
+        }, { source: 'explicit' });
+        
+        const dateStr = startTime.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+        const timeStr = startTime.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+        
+        return `📅 **"${state.title}"**\n  ${dateStr} at ${timeStr}\n\nReminder?\n→ **none** / **15m** / **30m** / **1h**`;
+      }
+      
+      case 'reminder': {
+        const lower = input.toLowerCase();
+        let reminderMinutes = 0;
+        
+        if (lower.includes('15')) reminderMinutes = 15;
+        else if (lower.includes('30')) reminderMinutes = 30;
+        else if (lower.includes('1h') || lower.includes('60') || lower === 'hour') reminderMinutes = 60;
+        // 'none', 'no', 'skip', etc. → 0
+        
+        // Create the event!
+        const startTime = new Date(state.startTime!);
+        const endTime = new Date(startTime);
+        endTime.setHours(endTime.getHours() + 1);
+        
+        const event = context.services.calendar.create({
+          title: state.title!,
+          start_time: startTime.toISOString(),
+          end_time: endTime.toISOString(),
+          all_day: false,
         });
-        response += `\n  🔔 Reminder set for ${reminderMinutes}m before`;
+        
+        // Clear wizard state
+        context.services.context.setFact('system', 'event_wizard_pending', null, { source: 'explicit' });
+        
+        const dateStr = startTime.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+        const timeStr = startTime.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+        
+        let response = `✓ Created: ${event.title}\n  ${dateStr} at ${timeStr}`;
+        
+        // Schedule reminder if requested
+        if (reminderMinutes > 0) {
+          const reminderTime = new Date(startTime.getTime() - reminderMinutes * 60 * 1000);
+          
+          if (reminderTime > new Date()) {
+            context.services.scheduler.create({
+              type: 'reminder',
+              scheduleType: 'once',
+              scheduleValue: reminderTime.toISOString(),
+              actionType: 'notify',
+              actionPayload: `"${event.title}" starts in ${reminderMinutes} minutes`,
+              nextRun: reminderTime.toISOString(),
+              createdBy: 'system',
+              relatedRecord: event.id,
+            });
+            response += `\n  🔔 Reminder: ${reminderMinutes}m before`;
+          }
+        }
+        
+        return response;
       }
-    }
-
-    // First-time onboarding - start the step-by-step setup flow
-    if (isFirstEvent) {
-      const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
-      const tzOffset = new Date().getTimezoneOffset();
-      const tzHours = Math.abs(Math.floor(tzOffset / 60));
-      const tzSign = tzOffset <= 0 ? '+' : '-';
       
-      // Initialize setup state
-      context.services.context.setFact('system', 'calendar_setup_step', 1, { source: 'explicit' });
-      context.services.context.setFact('system', 'calendar_setup_data', {}, { source: 'explicit' });
-      context.services.context.setFact('system', 'calendar_setup_pending', true, { source: 'explicit' });
-      
-      response += `
-
-───────────────────────────────────────────
-📅 **Welcome to Bartleby's Calendar!**
-
-Let me set things up for you. Just answer each question.
-(Or type "defaults" to skip with standard settings)
-
-**Setup (1/5) - Timezone**
-I detected: **${tz}** (UTC${tzSign}${tzHours})
-
-Is this correct?
-→ **yes** or type your timezone
-───────────────────────────────────────────`;
+      default:
+        // Unknown state - clear and let other tools handle
+        context.services.context.setFact('system', 'event_wizard_pending', null, { source: 'explicit' });
+        return null;
     }
-
-    return response;
   },
 };
 
@@ -760,4 +948,4 @@ export const clarifyEventTime: Tool = {
   },
 };
 
-export const calendarTools: Tool[] = [showCalendar, showToday, addEvent, calendarSetup, resetCalendar, clarifyEventTime];
+export const calendarTools: Tool[] = [showCalendar, showToday, addEvent, eventWizardResponse, calendarSetup, resetCalendar, clarifyEventTime];

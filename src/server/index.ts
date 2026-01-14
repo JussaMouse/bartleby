@@ -102,8 +102,52 @@ export class DashboardServer {
       }
     });
 
-    // Save raw file content
+    // Autocomplete data for inline editing
+    this.app.get('/api/autocomplete', (req, res) => {
+      const tasks = this.garden.getTasks({ status: 'active' });
+      const projects = this.garden.getByType('project').filter(p => p.status === 'active');
+      
+      // Collect unique contexts
+      const contexts = new Set<string>();
+      for (const task of tasks) {
+        if (task.context) contexts.add(task.context);
+      }
+      // Add common defaults
+      ['@inbox', '@phone', '@computer', '@errands', '@home', '@office', '@waiting', '@focus'].forEach(c => contexts.add(c));
+      
+      res.json({
+        contexts: Array.from(contexts).sort(),
+        projects: projects.map(p => p.title),
+      });
+    });
+
+    // Quick update action metadata (inline edit)
     this.app.use(express.json());
+    this.app.patch('/api/action/:id', (req, res) => {
+      const record = this.garden.get(req.params.id);
+      if (!record || record.type !== 'action') {
+        res.status(404).json({ error: 'Action not found' });
+        return;
+      }
+      
+      const { title, context, project, due_date } = req.body;
+      const updates: any = {};
+      
+      if (title !== undefined) updates.title = title;
+      if (context !== undefined) updates.context = context || null;
+      if (project !== undefined) updates.project = project || null;
+      if (due_date !== undefined) updates.due_date = due_date || null;
+      
+      const updated = this.garden.update(record.id, updates);
+      if (updated) {
+        debug('Updated action via dashboard', { id: record.id, updates });
+        res.json({ success: true, record: updated });
+      } else {
+        res.status(500).json({ error: 'Failed to update' });
+      }
+    });
+
+    // Save raw file content
     this.app.put('/api/page/:id', (req, res) => {
       const record = this.garden.get(req.params.id);
       if (!record) {

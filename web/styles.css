@@ -408,3 +408,120 @@ footer button:hover {
   background: var(--bg-hover);
   color: var(--text);
 }
+
+/* Inline editing for actions */
+.action-item {
+  position: relative;
+}
+
+.action-item .action-display {
+  cursor: pointer;
+}
+
+.action-item .action-edit {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.action-item .action-edit.hidden {
+  display: none;
+}
+
+.action-item.editing .action-display.hidden {
+  display: none;
+}
+
+.inline-input {
+  width: 100%;
+  background: var(--bg);
+  border: 1px solid var(--accent);
+  color: var(--text-bright);
+  padding: 8px 10px;
+  border-radius: 4px;
+  font-family: var(--font-mono);
+  font-size: 13px;
+}
+
+.inline-input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(88, 166, 255, 0.2);
+}
+
+.inline-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.btn-inline {
+  padding: 4px 10px;
+  border-radius: 3px;
+  font-size: 11px;
+  cursor: pointer;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text-muted);
+  transition: all 0.15s;
+}
+
+.btn-inline:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+.btn-inline.save {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: white;
+}
+
+.btn-inline.save:hover {
+  background: #4c9aed;
+}
+
+.btn-inline.delete {
+  color: var(--success);
+  border-color: var(--success);
+}
+
+.btn-inline.delete:hover {
+  background: var(--success);
+  color: white;
+}
+
+/* Autocomplete dropdown */
+.autocomplete-menu {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  max-height: 200px;
+  overflow-y: auto;
+  z-index: 100;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.autocomplete-menu.hidden {
+  display: none;
+}
+
+.autocomplete-item {
+  padding: 8px 12px;
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text);
+}
+
+.autocomplete-item:hover,
+.autocomplete-item.selected {
+  background: var(--bg-hover);
+}
+
+.autocomplete-item.selected {
+  color: var(--accent);
+}

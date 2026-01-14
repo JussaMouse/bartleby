@@ -338,9 +338,37 @@ Everything with a "when" shows up in one place.
 ```
 today                        Today's unified view
 calendar                     Upcoming events
-add event <title> at <time>  Create event
+new event                    Create event (guided wizard)
+add event <title> at <time>  Create event (inline)
 remind me <msg> in <time>    Set reminder
 ```
+
+### Creating Events
+
+Type `new event` and Bartleby walks you through it:
+
+```
+> new event
+📅 **New Event**
+
+What's the event?
+> Team standup
+📅 **"Team standup"**
+
+When? (e.g., tomorrow 3pm, 1/22 7:30am, friday 2pm)
+> tomorrow 9am
+📅 **"Team standup"**
+  Thursday, January 16 at 9:00 AM
+
+Reminder?
+→ **none** / **15m** / **30m** / **1h**
+> 15m
+✓ Created: Team standup
+  Thursday, January 16 at 9:00 AM
+  🔔 Reminder: 15m before
+```
+
+Or inline: `add event dentist appointment tomorrow at 2pm`
 
 ### Example
 
@@ -517,9 +545,25 @@ The dashboard shows live-updating panels:
 
 Click the `+` buttons in the footer to add panels.
 
-### Editing
+### Editing Actions
 
-Click any item to open the editor:
+Click any action to edit inline:
+
+```
+pack bags                    →  pack bags @home +thailand-trip due:friday
+       ↑ click                        ↑ full text with tags appears
+```
+
+- Line expands showing the full action text with `@context`, `+project`, and `due:date`
+- Cursor appears at end — start typing to add/change tags
+- **Tab completion:** Type `@h[TAB]` → `@home`, or `+20[TAB]` → `+2025-taxes`
+- **Save:** `Enter` or click Save
+- **Cancel:** `Escape` or click Cancel
+- **Mark done:** Click the Done button
+
+### Editing Other Pages
+
+Click notes, entries, or projects to open the full editor modal:
 
 - Edit the raw markdown (including backmatter)
 - **Save:** `Cmd+S` or click Save

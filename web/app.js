@@ -5,6 +5,9 @@ let reconnectTimer = null;
 const panels = new Map(); // view -> panel element
 let editingId = null; // Currently editing page ID
 
+// Autocomplete data (fetched once, refreshed on updates)
+let autocompleteData = { contexts: [], projects: [] };
+
 function connect() {
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
   const wsUrl = `${protocol}//${window.location.host}`;
@@ -13,6 +16,7 @@ function connect() {
   
   ws.onopen = () => {
     updateStatus('connected');
+    fetchAutocompleteData();
     // Resubscribe to all existing panels
     for (const view of panels.keys()) {
       ws.send(JSON.stringify({ type: 'subscribe', view }));
@@ -39,6 +43,15 @@ function connect() {
   };
 }
 
+async function fetchAutocompleteData() {
+  try {
+    const res = await fetch('/api/autocomplete');
+    autocompleteData = await res.json();
+  } catch (e) {
+    console.error('Failed to fetch autocomplete data:', e);
+  }
+}
+
 function updateStatus(status) {
   const el = document.getElementById('status');
   el.textContent = status === 'connected' ? '● Connected' : '○ Disconnected';
@@ -48,6 +61,8 @@ function updateStatus(status) {
 function handleMessage(msg) {
   if (msg.type === 'data' && msg.view && msg.data) {
     renderPanel(msg.view, msg.data);
+    // Refresh autocomplete when data changes
+    fetchAutocompleteData();
   }
 }
 
@@ -159,19 +174,322 @@ function renderNextActions(tasks) {
   let html = '';
   for (const [ctx, ctxTasks] of Object.entries(byContext)) {
     html += `<div class="section-header">${ctx}</div><ul>`;
-    html += ctxTasks.map(task => `
-      <li class="item clickable" onclick="openEditor('${task.id}', '${escapeHtml(task.title)}')">
+    html += ctxTasks.map(task => renderActionItem(task)).join('');
+    html += '</ul>';
+  }
+  
+  return html;
+}
+
+function renderActionItem(task) {
+  const project = task.project ? ` +${task.project}` : '';
+  const due = task.due_date ? ` due:${task.due_date.split('T')[0]}` : '';
+  const context = task.context ? ` ${task.context}` : '';
+  const fullText = `${task.title}${context}${project}${due}`;
+  
+  return `
+    <li class="item action-item" data-id="${task.id}" data-full="${escapeAttr(fullText)}">
+      <div class="action-display" onclick="startInlineEdit(this.parentElement)">
         <span class="item-title">${escapeHtml(task.title)}</span>
         <span class="item-meta">
           ${task.project ? `<span class="item-project">+${task.project}</span>` : ''}
           ${task.due_date ? `<span class="item-due">${formatDue(task.due_date)}</span>` : ''}
         </span>
-      </li>
-    `).join('');
-    html += '</ul>';
+      </div>
+      <div class="action-edit hidden">
+        <input type="text" class="inline-input" value="${escapeAttr(fullText)}" 
+               onkeydown="handleInlineKeydown(event, this)"
+               onblur="handleInlineBlur(event, this)">
+        <div class="inline-actions">
+          <button class="btn-inline save" onclick="saveInlineEdit(this.closest('.action-item'))">Save</button>
+          <button class="btn-inline cancel" onclick="cancelInlineEdit(this.closest('.action-item'))">Cancel</button>
+          <button class="btn-inline delete" onclick="markDone(this.closest('.action-item').dataset.id)">Done</button>
+        </div>
+        <div class="autocomplete-menu hidden"></div>
+      </div>
+    </li>
+  `;
+}
+
+function startInlineEdit(item) {
+  // Close any other open inline edits
+  document.querySelectorAll('.action-item.editing').forEach(el => {
+    if (el !== item) cancelInlineEdit(el);
+  });
+  
+  item.classList.add('editing');
+  item.querySelector('.action-display').classList.add('hidden');
+  item.querySelector('.action-edit').classList.remove('hidden');
+  
+  const input = item.querySelector('.inline-input');
+  input.focus();
+  input.setSelectionRange(input.value.length, input.value.length);
+}
+
+function cancelInlineEdit(item) {
+  if (!item) return;
+  
+  item.classList.remove('editing');
+  item.querySelector('.action-display').classList.remove('hidden');
+  item.querySelector('.action-edit').classList.add('hidden');
+  
+  // Reset input to original value
+  const input = item.querySelector('.inline-input');
+  input.value = item.dataset.full;
+  
+  // Hide autocomplete
+  hideAutocomplete(item);
+}
+
+function handleInlineBlur(event, input) {
+  // Delay to allow clicking buttons
+  setTimeout(() => {
+    const item = input.closest('.action-item');
+    if (!item) return;
+    
+    // Check if focus is still within the edit area
+    const editArea = item.querySelector('.action-edit');
+    if (!editArea.contains(document.activeElement)) {
+      cancelInlineEdit(item);
+    }
+  }, 150);
+}
+
+function handleInlineKeydown(event, input) {
+  const item = input.closest('.action-item');
+  const menu = item.querySelector('.autocomplete-menu');
+  
+  if (event.key === 'Escape') {
+    event.preventDefault();
+    cancelInlineEdit(item);
+    return;
   }
   
-  return html;
+  if (event.key === 'Enter') {
+    event.preventDefault();
+    // If autocomplete is visible and has selection, apply it
+    const selected = menu.querySelector('.autocomplete-item.selected');
+    if (selected && !menu.classList.contains('hidden')) {
+      applyAutocomplete(input, selected.dataset.value);
+      hideAutocomplete(item);
+    } else {
+      saveInlineEdit(item);
+    }
+    return;
+  }
+  
+  if (event.key === 'Tab') {
+    event.preventDefault();
+    
+    // If autocomplete visible, apply selection
+    if (!menu.classList.contains('hidden')) {
+      const selected = menu.querySelector('.autocomplete-item.selected');
+      if (selected) {
+        applyAutocomplete(input, selected.dataset.value);
+        hideAutocomplete(item);
+        return;
+      }
+    }
+    
+    // Try to trigger autocomplete
+    const cursorPos = input.selectionStart;
+    const text = input.value;
+    const beforeCursor = text.slice(0, cursorPos);
+    
+    // Find if we're typing a @context or +project
+    const contextMatch = beforeCursor.match(/@(\w*)$/);
+    const projectMatch = beforeCursor.match(/\+([^\s]*)$/);
+    
+    if (contextMatch) {
+      const partial = contextMatch[1].toLowerCase();
+      const matches = autocompleteData.contexts.filter(c => 
+        c.toLowerCase().startsWith('@' + partial) || c.toLowerCase().startsWith(partial)
+      );
+      showAutocomplete(item, matches, '@');
+    } else if (projectMatch) {
+      const partial = projectMatch[1].toLowerCase();
+      const matches = autocompleteData.projects.filter(p => 
+        p.toLowerCase().startsWith(partial) || 
+        p.toLowerCase().replace(/\s+/g, '-').startsWith(partial)
+      );
+      showAutocomplete(item, matches.map(p => '+' + p.toLowerCase().replace(/\s+/g, '-')), '+');
+    }
+    return;
+  }
+  
+  // Arrow keys for autocomplete navigation
+  if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+    if (!menu.classList.contains('hidden')) {
+      event.preventDefault();
+      navigateAutocomplete(menu, event.key === 'ArrowDown' ? 1 : -1);
+    }
+  }
+}
+
+function showAutocomplete(item, matches, prefix) {
+  const menu = item.querySelector('.autocomplete-menu');
+  
+  if (matches.length === 0) {
+    hideAutocomplete(item);
+    return;
+  }
+  
+  menu.innerHTML = matches.slice(0, 8).map((m, i) => `
+    <div class="autocomplete-item ${i === 0 ? 'selected' : ''}" data-value="${escapeAttr(m)}"
+         onclick="applyAutocompleteClick(this)">${escapeHtml(m)}</div>
+  `).join('');
+  
+  menu.classList.remove('hidden');
+}
+
+function hideAutocomplete(item) {
+  const menu = item.querySelector('.autocomplete-menu');
+  if (menu) menu.classList.add('hidden');
+}
+
+function navigateAutocomplete(menu, direction) {
+  const items = menu.querySelectorAll('.autocomplete-item');
+  const current = menu.querySelector('.autocomplete-item.selected');
+  let currentIndex = Array.from(items).indexOf(current);
+  
+  currentIndex += direction;
+  if (currentIndex < 0) currentIndex = items.length - 1;
+  if (currentIndex >= items.length) currentIndex = 0;
+  
+  items.forEach((item, i) => {
+    item.classList.toggle('selected', i === currentIndex);
+  });
+}
+
+function applyAutocompleteClick(el) {
+  const item = el.closest('.action-item');
+  const input = item.querySelector('.inline-input');
+  applyAutocomplete(input, el.dataset.value);
+  hideAutocomplete(item);
+  input.focus();
+}
+
+function applyAutocomplete(input, value) {
+  const cursorPos = input.selectionStart;
+  const text = input.value;
+  const beforeCursor = text.slice(0, cursorPos);
+  const afterCursor = text.slice(cursorPos);
+  
+  // Replace the partial @context or +project with the full value
+  let newBefore;
+  if (value.startsWith('@')) {
+    newBefore = beforeCursor.replace(/@\w*$/, value);
+  } else if (value.startsWith('+')) {
+    newBefore = beforeCursor.replace(/\+[^\s]*$/, value);
+  } else {
+    newBefore = beforeCursor + value;
+  }
+  
+  input.value = newBefore + afterCursor;
+  input.setSelectionRange(newBefore.length, newBefore.length);
+}
+
+async function saveInlineEdit(item) {
+  const input = item.querySelector('.inline-input');
+  const text = input.value.trim();
+  const id = item.dataset.id;
+  
+  // Parse the text for title, @context, +project, due:date
+  let title = text;
+  let context = null;
+  let project = null;
+  let due_date = null;
+  
+  // Extract context (@word)
+  const contextMatch = text.match(/@(\w+)/);
+  if (contextMatch) {
+    context = '@' + contextMatch[1];
+    title = title.replace(/@\w+/, '').trim();
+  }
+  
+  // Extract project (+word or +word-word)
+  const projectMatch = text.match(/\+([^\s]+)/);
+  if (projectMatch) {
+    project = projectMatch[1];
+    title = title.replace(/\+[^\s]+/, '').trim();
+  }
+  
+  // Extract due date (due:YYYY-MM-DD or due:date)
+  const dueMatch = text.match(/due:(\S+)/i);
+  if (dueMatch) {
+    due_date = parseDueDate(dueMatch[1]);
+    title = title.replace(/due:\S+/i, '').trim();
+  }
+  
+  // Clean up extra spaces
+  title = title.replace(/\s+/g, ' ').trim();
+  
+  try {
+    const res = await fetch(`/api/action/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title, context, project, due_date }),
+    });
+    
+    if (!res.ok) throw new Error('Failed to save');
+    
+    // Panel will auto-refresh via WebSocket
+    cancelInlineEdit(item);
+  } catch (e) {
+    console.error('Failed to save:', e);
+    alert('Failed to save action');
+  }
+}
+
+function parseDueDate(str) {
+  // Handle common formats
+  const today = new Date();
+  const s = str.toLowerCase();
+  
+  if (s === 'today') {
+    return today.toISOString().split('T')[0];
+  }
+  if (s === 'tomorrow') {
+    const d = new Date(today);
+    d.setDate(d.getDate() + 1);
+    return d.toISOString().split('T')[0];
+  }
+  
+  // Days of week
+  const days = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+  const dayIndex = days.indexOf(s);
+  if (dayIndex !== -1) {
+    const d = new Date(today);
+    const diff = (dayIndex - d.getDay() + 7) % 7 || 7;
+    d.setDate(d.getDate() + diff);
+    return d.toISOString().split('T')[0];
+  }
+  
+  // Try parsing as date
+  if (/^\d{4}-\d{2}-\d{2}$/.test(str)) {
+    return str;
+  }
+  
+  // MM/DD format
+  const mdMatch = str.match(/^(\d{1,2})\/(\d{1,2})$/);
+  if (mdMatch) {
+    const m = parseInt(mdMatch[1], 10) - 1;
+    const d = parseInt(mdMatch[2], 10);
+    let year = today.getFullYear();
+    const parsed = new Date(year, m, d);
+    if (parsed < today) year++;
+    return `${year}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+  }
+  
+  return str; // Return as-is if can't parse
+}
+
+async function markDone(id) {
+  if (!confirm('Mark action as done?')) return;
+  
+  // TODO: Implement done API endpoint
+  // For now, just refresh
+  alert('Done functionality coming soon');
 }
 
 function renderProjects(projects) {
@@ -207,15 +525,7 @@ function renderProject(data) {
   if (!actions || actions.length === 0) {
     html += '<div class="empty">No actions</div>';
   } else {
-    html += `<ul>${actions.map(a => `
-      <li class="item clickable" onclick="openEditor('${a.id}', '${escapeHtml(a.title)}')">
-        <span class="item-title">${escapeHtml(a.title)}</span>
-        <span class="item-meta">
-          ${a.context ? `<span class="item-context">${a.context}</span>` : ''}
-          ${a.due_date ? `<span class="item-due">${formatDue(a.due_date)}</span>` : ''}
-        </span>
-      </li>
-    `).join('')}</ul>`;
+    html += `<ul>${actions.map(a => renderActionItem(a)).join('')}</ul>`;
   }
   
   return html;
@@ -270,6 +580,11 @@ function escapeHtml(str) {
   return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
+function escapeAttr(str) {
+  if (!str) return '';
+  return str.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
 function timeAgo(dateStr) {
   if (!dateStr) return '';
   const date = new Date(dateStr);
@@ -306,7 +621,7 @@ function promptProjectPanel() {
   }
 }
 
-// Editor functions
+// Modal editor (for notes, entries, etc. - complex content)
 async function openEditor(id, title) {
   try {
     const res = await fetch(`/api/page/${id}`);
