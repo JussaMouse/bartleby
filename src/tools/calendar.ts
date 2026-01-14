@@ -310,13 +310,10 @@ function parseEventInput(input: string): {
     text = text.replace(/\btoday\b/gi, '').trim();
   }
   
-  // Extract am/pm first (anywhere in text), then extract time numbers
-  // Use simple pattern without word boundaries for robustness
-  const ampmMatch = text.match(/(am|pm)/i);
-  const ampm = ampmMatch ? ampmMatch[1].toLowerCase() : null;
-  
-  // Debug: log what we found
-  console.log('[TIME DEBUG]', { text, ampmMatch: ampmMatch?.[0], ampm });
+  // Extract am/pm first (anywhere in text) - use simple string check
+  const textLower = text.toLowerCase();
+  const ampm = textLower.includes(' am') || textLower.endsWith('am') ? 'am' :
+               textLower.includes(' pm') || textLower.endsWith('pm') ? 'pm' : null;
   
   // Match time: HH:MM or just H (if followed by am/pm)
   const timeMatch = 
