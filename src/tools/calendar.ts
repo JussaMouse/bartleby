@@ -252,11 +252,12 @@ function parseEventInput(input: string): {
     .replace(/^schedule\s*/i, '')
     .trim();
   
-  // Check for date-first format: 1/22/26 7:30am title
-  const dateFirstMatch = text.match(/^(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?\s+(\d{1,2}):?(\d{2})?\s*(am|pm)?\s+(.+)$/i);
+  // Check for date-first format: 1/22/26 7:30am [title]
+  // Title is optional (wizard mode provides just date/time)
+  const dateFirstMatch = text.match(/^(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?\s+(\d{1,2}):?(\d{2})?\s*(am|pm)?(?:\s+(.+))?$/i);
   debug('parseEventInput dateFirstMatch', { text, matched: !!dateFirstMatch, groups: dateFirstMatch });
   if (dateFirstMatch) {
-    const [, m, d, y, hour, min, ampm, titlePart] = dateFirstMatch;
+    const [, m, d, y, hour, min, ampm, titlePart = ''] = dateFirstMatch;
     const month = parseInt(m, 10) - 1;
     const day = parseInt(d, 10);
     let year = y ? parseInt(y, 10) : startTime.getFullYear();
