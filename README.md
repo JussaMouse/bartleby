@@ -319,6 +319,13 @@ edit scr[TAB] @ho[TAB] +20[TAB]  →  edit screenshot tax form @home +2025-taxes
 ✓ Added: "research flights" (thailand-trip)
 ```
 
+**Batch completion.** Complete multiple items at once after viewing any list:
+```
+> show inbox
+> done 1 3 5
+✓ Completed 3 items
+```
+
 ---
 
 ## The Time System

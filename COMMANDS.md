@@ -15,6 +15,7 @@ Complete list of all commands. For quick start, see [README.md](README.md).
 | `show next actions` | List actions grouped by context |
 | `show overdue` | Actions past their due date |
 | `done <number>` | Complete action by number |
+| `done 1 2 3` | Complete multiple items at once |
 | `done <name>` | Complete by name (partial match, tab-completable) |
 | `edit <number> @context` | Change action's context |
 | `edit <number> +project` | Change action's project |
