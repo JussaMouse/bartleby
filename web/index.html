@@ -35,6 +35,15 @@
     </div>
   </div>
   
+  <!-- Image Lightbox -->
+  <div id="lightbox" class="lightbox hidden" onclick="closeLightbox()">
+    <div class="lightbox-content" onclick="event.stopPropagation()">
+      <button class="lightbox-close" onclick="closeLightbox()">&times;</button>
+      <img id="lightbox-img" src="" alt="" />
+      <div class="lightbox-title" id="lightbox-title"></div>
+    </div>
+  </div>
+  
   <!-- Edit Modal -->
   <div id="edit-modal" class="modal hidden">
     <div class="modal-content">

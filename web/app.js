@@ -604,8 +604,9 @@ function renderProject(data) {
       console.log('[MEDIA DEBUG]', m.title, { meta, fileName, mimeType, isImage });
       
       if (isImage && fileName) {
-        return `<div class="media-item" onclick="openEditor('${m.id}', '${escapeHtml(m.title)}')">
-          <img src="/media/${encodeURIComponent(fileName)}" alt="${escapeHtml(m.title)}" onerror="console.log('Image load error:', this.src); this.parentElement.innerHTML='<span class=media-icon>📎</span><span class=media-title>${escapeHtml(m.title)}</span>'" />
+        const imgUrl = `/media/${encodeURIComponent(fileName)}`;
+        return `<div class="media-item" onclick="openLightbox('${imgUrl}', '${escapeHtml(m.title)}')">
+          <img src="${imgUrl}" alt="${escapeHtml(m.title)}" onerror="console.log('Image load error:', this.src); this.parentElement.innerHTML='<span class=media-icon>📎</span><span class=media-title>${escapeHtml(m.title)}</span>'" />
           <span class="media-title">${escapeHtml(m.title)}</span>
         </div>`;
       } else {
@@ -949,6 +950,32 @@ function showToast(message, isError = false) {
   document.body.appendChild(toast);
   
   setTimeout(() => toast.remove(), 3000);
+}
+
+// Lightbox for full-size image view
+function openLightbox(src, title) {
+  const lightbox = document.getElementById('lightbox');
+  const img = document.getElementById('lightbox-img');
+  const titleEl = document.getElementById('lightbox-title');
+  
+  img.src = src;
+  titleEl.textContent = title;
+  lightbox.classList.remove('hidden');
+  
+  // Close on Escape
+  document.addEventListener('keydown', lightboxEscHandler);
+}
+
+function closeLightbox() {
+  const lightbox = document.getElementById('lightbox');
+  lightbox.classList.add('hidden');
+  document.removeEventListener('keydown', lightboxEscHandler);
+}
+
+function lightboxEscHandler(e) {
+  if (e.key === 'Escape') {
+    closeLightbox();
+  }
 }
 
 // Initialize
