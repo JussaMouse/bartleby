@@ -162,14 +162,7 @@ export const addEvent: Tool = {
   execute: async (args, context) => {
     const { wizardMode, rawInput } = args as { wizardMode: boolean; rawInput?: string };
     
-    // Check if we're continuing a wizard flow
-    const pendingEvent = context.services.context.getFact('system', 'event_wizard_pending');
-    if (pendingEvent?.value) {
-      // This shouldn't happen - wizard responses are handled by eventWizardResponse
-      return "I'm waiting for event details. What's the event title?";
-    }
-    
-    // Start wizard mode
+    // Start wizard mode - always clear any existing state and start fresh
     if (wizardMode) {
       context.services.context.setFact('system', 'event_wizard_pending', {
         step: 'title',
