@@ -316,18 +316,19 @@ function parseEventInput(input: string): {
     .trim();
   
   // === KEYWORD-BASED PARSING ===
-  // Supports: "picnic when sunday noon who nicole eileen where lakeside, 1h reminder"
+  // Supports: "picnic when sunday noon who nicole where lakeside"
+  // Also supports colon-style: "time: 1/17 10am who:eileen where: HSR"
   
-  // Extract "when <datetime>" - everything until next keyword or end
-  const whenMatch = text.match(/\bwhen\s+([^,]+?)(?=\s+(?:who|where|with)\b|\s*,|\s*$)/i);
+  // Extract "when <datetime>" or "time: <datetime>" - everything until next keyword or end
+  const whenMatch = text.match(/\b(?:when|time)\s*:?\s*([^,]+?)(?=\s+(?:who|where|with)\b|\s+who:|\s+where:|\s*,|\s*$)/i);
   let whenClause: string | null = null;
   if (whenMatch) {
     whenClause = whenMatch[1].trim();
     text = text.replace(whenMatch[0], '').trim();
   }
   
-  // Extract "who <names>" - space or comma separated names until next keyword
-  const whoMatch = text.match(/\bwho\s+([^,]+?)(?=\s+(?:when|where|with)\b|\s*,|\s*$)/i);
+  // Extract "who <names>" or "who: <names>" - space or comma separated names until next keyword
+  const whoMatch = text.match(/\bwho\s*:?\s*([^,]+?)(?=\s+(?:when|time|where|with)\b|\s+when:|\s+time:|\s+where:|\s*,|\s*$)/i);
   if (whoMatch) {
     // Split by comma or space, filter empty
     const names = whoMatch[1].split(/[,\s]+/).filter(n => n.length > 0);
@@ -335,8 +336,8 @@ function parseEventInput(input: string): {
     text = text.replace(whoMatch[0], '').trim();
   }
   
-  // Extract "where <location>" - until next keyword or comma
-  const whereMatch = text.match(/\bwhere\s+([^,]+?)(?=\s+(?:when|who|with)\b|\s*,|\s*$)/i);
+  // Extract "where <location>" or "where: <location>" - until next keyword or comma
+  const whereMatch = text.match(/\bwhere\s*:?\s*([^,]+?)(?=\s+(?:when|time|who|with)\b|\s+when:|\s+time:|\s+who:|\s*,|\s*$)/i);
   if (whereMatch) {
     location = whereMatch[1].trim();
     text = text.replace(whereMatch[0], '').trim();
