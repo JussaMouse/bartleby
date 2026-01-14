@@ -569,7 +569,7 @@ function renderProject(data) {
     return '<div class="empty">Project not found</div>';
   }
   
-  const { project, actions } = data;
+  const { project, actions, media, notes } = data;
   let html = '';
   
   // Project itself is editable
@@ -580,12 +580,47 @@ function renderProject(data) {
   }
   html += '</div>';
   
+  // Actions
   html += '<div class="section-header">Actions</div>';
-  
   if (!actions || actions.length === 0) {
     html += '<div class="empty">No actions</div>';
   } else {
     html += `<ul>${actions.map(a => renderActionItem(a)).join('')}</ul>`;
+  }
+  
+  // Media
+  if (media && media.length > 0) {
+    html += '<div class="section-header">Media</div>';
+    html += '<div class="media-grid">';
+    html += media.map(m => {
+      const meta = m.metadata || {};
+      const filePath = meta.filePath || '';
+      const fileName = meta.fileName || m.title;
+      const isImage = /\.(jpg|jpeg|png|gif|webp)$/i.test(fileName);
+      
+      if (isImage) {
+        return `<div class="media-item" onclick="openEditor('${m.id}', '${escapeHtml(m.title)}')">
+          <img src="/media/${encodeURIComponent(fileName)}" alt="${escapeHtml(m.title)}" />
+          <span class="media-title">${escapeHtml(m.title)}</span>
+        </div>`;
+      } else {
+        return `<div class="media-item file" onclick="openEditor('${m.id}', '${escapeHtml(m.title)}')">
+          <span class="media-icon">📎</span>
+          <span class="media-title">${escapeHtml(m.title)}</span>
+        </div>`;
+      }
+    }).join('');
+    html += '</div>';
+  }
+  
+  // Notes
+  if (notes && notes.length > 0) {
+    html += '<div class="section-header">Notes</div>';
+    html += `<ul>${notes.map(n => `
+      <li class="item clickable" onclick="openEditor('${n.id}', '${escapeHtml(n.title)}')">
+        <span class="item-title">${escapeHtml(n.title)}</span>
+      </li>
+    `).join('')}</ul>`;
   }
   
   return html;

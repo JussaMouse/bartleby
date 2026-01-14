@@ -42,6 +42,10 @@ export class DashboardServer {
     const webDir = path.join(__dirname, '..', '..', 'web');
     this.app.use(express.static(webDir));
 
+    // Serve media files from garden/media
+    const mediaDir = this.garden.getMediaDir();
+    this.app.use('/media', express.static(mediaDir));
+
     // API endpoints for initial data
     this.app.get('/api/inbox', (req, res) => {
       const items = this.garden.getTasks({ status: 'active', context: '@inbox' });
@@ -315,12 +319,27 @@ export class DashboardServer {
       const project = this.garden.getByTitle(name);
       if (project) {
         const projectSlug = project.title.toLowerCase().replace(/\s+/g, '-');
+        const projectTitle = project.title.toLowerCase();
+        
         const actions = this.garden.getTasks({ status: 'active' })
           .filter(a => 
             a.project?.toLowerCase() === projectSlug || 
-            a.project?.toLowerCase() === project.title.toLowerCase()
+            a.project?.toLowerCase() === projectTitle
           );
-        data = { project, actions };
+        
+        const media = this.garden.getByType('media')
+          .filter(m => 
+            m.project?.toLowerCase() === projectSlug || 
+            m.project?.toLowerCase() === projectTitle
+          );
+        
+        const notes = this.garden.getByType('note')
+          .filter(n => 
+            n.project?.toLowerCase() === projectSlug || 
+            n.project?.toLowerCase() === projectTitle
+          );
+        
+        data = { project, actions, media, notes };
       }
     } else if (view === 'today') {
       data = {
