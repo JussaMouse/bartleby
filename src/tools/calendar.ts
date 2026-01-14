@@ -392,6 +392,8 @@ export const eventWizardResponse: Tool = {
     
     const input = context.input.trim();
     
+    debug('eventWizardResponse', { step: state.step, input, stateKeys: Object.keys(state) });
+    
     switch (state.step) {
       case 'title': {
         // User provided the event title
