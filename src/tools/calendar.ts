@@ -290,8 +290,8 @@ function parseEventInput(input: string): {
     .trim();
   
   // Extract reminder first (before other parsing)
-  // Formats: "with 15m reminder", "15m reminder", "remind me 15m", "reminder 15m"
-  const reminderMatch = text.match(/(?:with\s+)?(\d+)\s*m(?:in(?:ute)?s?)?\s+reminder|remind(?:er)?(?:\s+me)?\s+(\d+)\s*m(?:in(?:ute)?s?)?/i);
+  // Formats: "with 15m reminder", "15m reminder", "remind me 15m before", "reminder 15m"
+  const reminderMatch = text.match(/(?:with\s+)?(\d+)\s*m(?:in(?:ute)?s?)?\s+(?:reminder|before)|remind(?:er)?(?:\s+me)?\s+(\d+)\s*m(?:in(?:ute)?s?)?(?:\s+before)?/i);
   if (reminderMatch) {
     reminderMinutes = parseInt(reminderMatch[1] || reminderMatch[2], 10);
     text = text.replace(reminderMatch[0], '').trim();
@@ -299,6 +299,9 @@ function parseEventInput(input: string): {
   
   // Remove "via signal" or similar (for future notification routing)
   text = text.replace(/\bvia\s+(signal|sms|email)\b/gi, '').trim();
+  
+  // Remove @context tags (events don't use contexts)
+  text = text.replace(/@\w+/g, '').trim();
   
   // Check for date-first format: 1/22/26 7:30am [title]
   // Title is optional (wizard mode provides just date/time)
@@ -337,9 +340,9 @@ function parseEventInput(input: string): {
     text = text.replace(dateMatch[0], '').trim();
   }
   
-  // Check for day of week
+  // Check for day of week (sun, mon, tue/tues, wed, thu/thur/thurs, fri, sat)
   const days = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
-  const dayMatch = text.match(/\b(sun|mon|tue|wed|thu|fri|sat)(?:day|s|nes|urs|ur)?\b/i);
+  const dayMatch = text.match(/\b(sun|mon|tue|wed|thu|fri|sat)(?:day|s|sday|nes|nesday|urs|rsday|ur|r|ri|riday)?\b/i);
   if (dayMatch) {
     const targetDay = days.findIndex(d => dayMatch[1].toLowerCase().startsWith(d));
     if (targetDay >= 0) {
@@ -373,8 +376,28 @@ function parseEventInput(input: string): {
     text = text.replace(/\bthis\s+evening\b/gi, '').trim();
   }
   
-  // Check for tomorrow
-  if (/\btomorrow\b/i.test(text)) {
+  // Check for tomorrow (with optional time of day modifier)
+  if (/\btomorrow\s+night\b/i.test(text)) {
+    startTime.setDate(startTime.getDate() + 1);
+    startTime.setHours(20, 0, 0, 0); // 8pm
+    hasTime = true;
+    text = text.replace(/\btomorrow\s+night\b/gi, '').trim();
+  } else if (/\btomorrow\s+morning\b/i.test(text)) {
+    startTime.setDate(startTime.getDate() + 1);
+    startTime.setHours(9, 0, 0, 0);
+    hasTime = true;
+    text = text.replace(/\btomorrow\s+morning\b/gi, '').trim();
+  } else if (/\btomorrow\s+afternoon\b/i.test(text)) {
+    startTime.setDate(startTime.getDate() + 1);
+    startTime.setHours(14, 0, 0, 0);
+    hasTime = true;
+    text = text.replace(/\btomorrow\s+afternoon\b/gi, '').trim();
+  } else if (/\btomorrow\s+evening\b/i.test(text)) {
+    startTime.setDate(startTime.getDate() + 1);
+    startTime.setHours(18, 0, 0, 0);
+    hasTime = true;
+    text = text.replace(/\btomorrow\s+evening\b/gi, '').trim();
+  } else if (/\btomorrow\b/i.test(text)) {
     startTime.setDate(startTime.getDate() + 1);
     text = text.replace(/\btomorrow\b/gi, '').trim();
   }
