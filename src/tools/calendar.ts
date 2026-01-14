@@ -239,8 +239,6 @@ function parseEventInput(input: string): {
   ambiguousHour: number | null;
   minute: number;
 } {
-  debug('parseEventInput START', { input });
-  
   let startTime = new Date();
   let hasTime = false;
   let ambiguousHour: number | null = null;
@@ -255,7 +253,6 @@ function parseEventInput(input: string): {
   // Check for date-first format: 1/22/26 7:30am [title]
   // Title is optional (wizard mode provides just date/time)
   const dateFirstMatch = text.match(/^(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?\s+(\d{1,2}):?(\d{2})?\s*(am|pm)?(?:\s+(.+))?$/i);
-  debug('parseEventInput dateFirstMatch', { text, matched: !!dateFirstMatch, groups: dateFirstMatch });
   if (dateFirstMatch) {
     const [, m, d, y, hour, min, ampm, titlePart = ''] = dateFirstMatch;
     const month = parseInt(m, 10) - 1;
@@ -323,8 +320,6 @@ function parseEventInput(input: string): {
   const endsWithPm = textLower.endsWith('pm');
   const ampm = hasSpaceAm || endsWithAm ? 'am' :
                hasSpacePm || endsWithPm ? 'pm' : null;
-  
-  debug('parseEventInput am/pm check', { text, textLower, hasSpaceAm, endsWithAm, hasSpacePm, endsWithPm, ampm });
   
   // Match time: HH:MM or just H (if followed by am/pm)
   const timeMatch = 
@@ -399,8 +394,6 @@ export const eventWizardResponse: Tool = {
     
     const input = context.input.trim();
     
-    debug('eventWizardResponse', { step: state.step, input, stateKeys: Object.keys(state) });
-    
     switch (state.step) {
       case 'title': {
         // User provided the event title
@@ -415,13 +408,6 @@ export const eventWizardResponse: Tool = {
       case 'when': {
         // Parse the date/time
         const parsed = parseEventInput(input);
-        debug('eventWizard when parse result', { 
-          title: parsed.title, 
-          hasTime: parsed.hasTime, 
-          ambiguousHour: parsed.ambiguousHour,
-          minute: parsed.minute,
-          startTime: parsed.startTime.toISOString()
-        });
         
         if (!parsed.hasTime && !parsed.title) {
           // Couldn't parse - try again
