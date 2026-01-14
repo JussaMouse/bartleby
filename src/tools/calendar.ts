@@ -310,17 +310,17 @@ function parseEventInput(input: string): {
     text = text.replace(/\btoday\b/gi, '').trim();
   }
   
-  // Extract time - try patterns with am/pm first, then without (ambiguous)
+  // Extract am/pm first (anywhere in text), then extract time numbers
+  const ampmMatch = text.match(/\b(am|pm)\b/i);
+  const ampm = ampmMatch ? ampmMatch[1].toLowerCase() : null;
+  
+  // Match time: HH:MM or just H (if followed by am/pm)
   const timeMatch = 
-    text.match(/\b(?:at\s+)?(\d{1,2}):(\d{2})\s*(am|pm)/i) ||   // HH:MM am/pm
-    text.match(/\b(?:at\s+)?(\d{1,2})\s*(am|pm)/i) ||           // H am/pm  
-    text.match(/\b(?:at\s+)?(\d{1,2}):(\d{2})\b/i);             // HH:MM (no am/pm = ambiguous)
+    text.match(/\b(?:at\s+)?(\d{1,2}):(\d{2})/i) ||   // HH:MM
+    text.match(/\b(?:at\s+)?(\d{1,2})(?=\s*(?:am|pm))/i);  // H before am/pm
   if (timeMatch) {
     let hour = parseInt(timeMatch[1], 10);
-    minute = timeMatch[2] && !['am', 'pm'].includes(timeMatch[2].toLowerCase())
-      ? parseInt(timeMatch[2], 10)
-      : 0;
-    const ampm = (timeMatch[3] || (timeMatch[2] && ['am', 'pm'].includes(timeMatch[2].toLowerCase()) ? timeMatch[2] : null))?.toLowerCase();
+    minute = timeMatch[2] ? parseInt(timeMatch[2], 10) : 0;
     
     if (ampm === 'pm' && hour < 12) hour += 12;
     if (ampm === 'am' && hour === 12) hour = 0;
@@ -331,7 +331,7 @@ function parseEventInput(input: string): {
     
     startTime.setHours(hour, minute, 0, 0);
     hasTime = true;
-    text = text.replace(timeMatch[0], '').trim();
+    text = text.replace(timeMatch[0], '').replace(/\b(am|pm)\b/gi, '').trim();
   }
   
   // Clean up title
