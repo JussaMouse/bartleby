@@ -310,10 +310,11 @@ function parseEventInput(input: string): {
     text = text.replace(/\btoday\b/gi, '').trim();
   }
   
-  // Extract time HH:MM am/pm or H am/pm
-  // Note: removed trailing \b to handle "7:30 am" with space before am/pm
-  const timeMatch = text.match(/\b(?:at\s+)?(\d{1,2}):(\d{2})\s*(am|pm)?/i) ||
-                    text.match(/\b(?:at\s+)?(\d{1,2})\s*(am|pm)/i);
+  // Extract time - try patterns with am/pm first, then without (ambiguous)
+  const timeMatch = 
+    text.match(/\b(?:at\s+)?(\d{1,2}):(\d{2})\s*(am|pm)/i) ||   // HH:MM am/pm
+    text.match(/\b(?:at\s+)?(\d{1,2})\s*(am|pm)/i) ||           // H am/pm  
+    text.match(/\b(?:at\s+)?(\d{1,2}):(\d{2})\b/i);             // HH:MM (no am/pm = ambiguous)
   if (timeMatch) {
     let hour = parseInt(timeMatch[1], 10);
     minute = timeMatch[2] && !['am', 'pm'].includes(timeMatch[2].toLowerCase())
