@@ -9,7 +9,9 @@ The personal exocortex, locally.
 - [GTD Workflow](#gtd-workflow)
 - [The Time System](#the-time-system)
 - [Dashboard](#dashboard)
+- [Running on a Server](#running-on-a-server)
 - [Configuration](#configuration)
+- [Backups](#backups)
 - [Troubleshooting](#troubleshooting)
 
 ## What is Bartleby?
@@ -20,7 +22,7 @@ At its heart are **The Garden** and **The Shed**. The Garden is a personal wiki 
 
 Your tasks, calendar, contacts, journal — they all live in the Garden too. Everything connects. Everything is plain markdown you own forever.
 
-Talk to Bartleby naturally. It figures out what you mean.
+**Talk to Bartleby naturally.** Type or speak — both are just channels for the same conversation. The CLI gives you a keyboard, the Dashboard gives you a mic. Same commands, same brain, same data.
 
 ---
 
@@ -416,9 +418,9 @@ new event <details>          Create event (inline)
 remind me <msg> in <time>    Set reminder
 ```
 
-### Timed Actions (new behavior)
+### Timed Actions
 
-If you add a **time** to an action’s `due:` it becomes a scheduled event in the Time System (30m default duration). It still behaves like a normal action, but you’ll see it on the calendar for that day.
+If you add a **time** to an action's `due:` it becomes a scheduled event in the Time System (30m default duration). It still behaves like a normal action, but you'll see it on the calendar for that day.
 
 ```
 > new action submit report due:tomorrow 11am
@@ -483,64 +485,175 @@ If you weren't running when something was due, Bartleby handles missed items on 
 
 ---
 
-## Voice UI (iPhone Safari)
+## Dashboard
 
-A mobile-first voice interface for Bartleby that runs in Safari and talks to the same command router as the CLI.
+A web interface for Bartleby — view panels, edit pages, or speak commands.
 
-### Start the Voice UI
+The CLI and Dashboard are two windows into the same system. Type commands in the terminal or speak them through the mic. Same brain, same data, real-time sync.
+
+### Starting the Dashboard
 
 ```bash
 # Terminal 1: Bartleby CLI
 pnpm start
 
-# Terminal 2: Voice UI server
+# Terminal 2: Dashboard server
 pnpm dashboard
 ```
 
-Open http://localhost:3333 in iPhone Safari. Tap the mic, speak a command, and Bartleby replies with both text and voice.
+Open http://localhost:3333 in your browser.
 
-### API Token (optional)
+### Panels
 
-If you want to secure remote access, set an API token for `/api/chat`:
+The dashboard shows live-updating panels:
 
+| Panel | What it shows |
+|-------|---------------|
+| **Inbox** | Uncategorized captures |
+| **Next Actions** | Actions grouped by context |
+| **Projects** | Active projects (click to open) |
+| **Calendar** | Upcoming events + deadlines |
+| **Today** | Today's events + overdue items |
+| **Recent** | Last 10 modified pages |
+| **Project: X** | Specific project with its actions |
+
+Click the `+` buttons in the footer to add panels. Layout persists across reloads.
+
+### Editing Actions
+
+Click any action to edit inline:
+
+```
+pack bags                    →  pack bags @home +thailand-trip due:friday
+       ↑ click                        ↑ full text with tags appears
+```
+
+- Line expands showing the full action text with `@context`, `+project`, and `due:date`
+- Cursor appears at end — start typing to add/change tags
+- **Tab completion:** Type `@h[TAB]` → `@home`, or `+20[TAB]` → `+2025-taxes`
+- **Save:** `Enter` or click Save
+- **Cancel:** `Escape` or click Cancel
+- **Done:** Mark action complete (disappears instantly)
+- **→ Action:** (Inbox only) Convert to a real action and start editing
+
+### Editing Other Pages
+
+Click notes, entries, or projects to open the full editor modal:
+
+- Edit the raw markdown (including backmatter)
+- **Save:** `Cmd+S` or click Save
+- **Cancel:** `Escape` or click Cancel
+
+Changes are written to the `.md` file. The file watcher syncs everything — both CLI and dashboard see updates instantly.
+
+### Project Pages
+
+Click a project name to open its dedicated panel showing:
+
+- **Actions** — all actions linked to this project
+- **Media** — images and files (click for full-size lightbox)
+- **Notes** — notes linked to this project
+
+### Importing Media
+
+**Drag and drop** images or files onto the dashboard:
+
+1. Drag any file onto the dashboard
+2. Blue overlay appears: "Drop to import media"
+3. Enter a name (can include `+project` and `#tags`)
+4. File is copied to `garden/media/` and linked to the project
+
+Images appear as thumbnails on project pages. Click to view full-size.
+
+### Voice Commands
+
+On mobile (Safari), tap the mic and speak a command. Bartleby transcribes, processes, and replies with text and voice.
+
+Works with any command you'd type in the CLI.
+
+---
+
+## Running on a Server
+
+Bartleby works great on a home server or VPS. Run it headless, access from anywhere.
+
+### Basic Server Setup
+
+```bash
+# On server
+git clone https://github.com/JussaMouse/bartleby.git
+cd bartleby
+pnpm install && pnpm approve-builds && pnpm build
+cp .env.example .env
+# Edit .env with your config
+
+# Start in tmux or screen
+tmux new -s bartleby
+pnpm start
+# Ctrl+B D to detach
+```
+
+### Accessing the Dashboard Remotely
+
+**Option 1: SSH Tunnel (simplest, most secure)**
+
+From your local machine:
+```bash
+ssh -L 3333:localhost:3333 user@your-server
+```
+
+Then open http://localhost:3333 locally.
+
+Add to `~/.ssh/config` for convenience:
+```
+Host bartleby
+    HostName your-server-ip
+    User your-user
+    LocalForward 3333 localhost:3333
+```
+
+Then just `ssh bartleby` — tunnel is created automatically.
+
+**Option 2: VPN (Tailscale, WireGuard)**
+
+For mobile access, a VPN is more practical than tunnels:
+
+1. Install Tailscale on server and phone
+2. Run `tailscale up` on both
+3. Access via tailnet hostname: `http://your-server:3333`
+
+When using a VPN, bind to all interfaces:
 ```env
-BARTLEBY_API_TOKEN=your-secret-token
+DASHBOARD_HOST=0.0.0.0
+DASHBOARD_PORT=3333
 ```
 
-Requests should include:
+**Option 3: Siri Shortcuts**
 
-```
-Authorization: Bearer your-secret-token
-```
-
-### Siri + Shortcuts
-
-Create a Shortcut that uses the same `/api/chat` endpoint:
+Create an iOS Shortcut for hands-free access:
 
 1. **Dictate Text** → Variable `spokenText`
 2. **Get Contents of URL**
    - URL: `http://your-server:3333/api/chat`
    - Method: `POST`
-   - Headers: `Content-Type: application/json`
-   - Optional header: `Authorization: Bearer your-secret-token`
+   - Headers: `Content-Type: application/json`, `Authorization: Bearer YOUR_TOKEN`
    - Body: JSON `{ "text": spokenText }`
 3. **Speak Text** from the JSON response field `reply`
 
-### Remote Access (Tailscale)
+### API Token
 
-For reliable iPhone access, prefer a VPN over SSH tunnels.
-
-1. Install Tailscale on the server and iPhone.
-2. Run `tailscale up` on the server and sign in on iPhone.
-3. Use your tailnet hostname in Safari and Shortcuts:
-   - `http://your-server-name:3333`
-
-If using a VPN, make sure the server binds to all interfaces:
+For remote access, set an API token:
 
 ```env
-DASHBOARD_PORT=3333
-DASHBOARD_HOST=0.0.0.0
+BARTLEBY_API_TOKEN=your-secret-token
 ```
+
+Requests must include:
+```
+Authorization: Bearer your-secret-token
+```
+
+**Note:** Only set `DASHBOARD_HOST=0.0.0.0` when access is protected by VPN, firewall, or API token. On an open network, keep it as `localhost` and use SSH tunnels.
 
 ---
 
@@ -660,6 +773,61 @@ WEATHER_CITY=London       # City for weather queries
 ```
 
 Get a free API key at [openweathermap.org](https://openweathermap.org/api).
+
+### Dashboard
+
+```env
+DASHBOARD_PORT=3333       # Default port
+DASHBOARD_HOST=localhost  # Use 0.0.0.0 only with VPN/firewall
+BARTLEBY_API_TOKEN=       # Optional: require token for /api/chat
+```
+
+---
+
+## Backups
+
+Your data is yours. Back it up.
+
+### What to Back Up
+
+| Path | Contains | Format |
+|------|----------|--------|
+| `garden/` | All your pages, notes, media | Markdown files |
+| `garden/archive.log` | Completed/deleted items | Text log |
+| `database/` | SQLite indexes | `.sqlite3` files |
+| `shed/` | Ingested documents and embeddings | Mixed |
+
+### Quick Backup
+
+```bash
+# Backup everything personal
+tar -czvf bartleby-backup-$(date +%Y%m%d).tar.gz \
+    garden/ \
+    database/*.sqlite3 \
+    shed/ \
+    .env
+```
+
+### Restore
+
+```bash
+# Stop Bartleby first
+tar -xzvf bartleby-backup-20260115.tar.gz
+pnpm start
+```
+
+### Sync to Cloud
+
+The `garden/` folder is just markdown — sync it however you like:
+
+```bash
+# rsync to another machine
+rsync -avz garden/ user@backup-server:~/bartleby-garden/
+
+# Or use any cloud sync (Syncthing, Dropbox, iCloud Drive)
+```
+
+**Tip:** The SQLite databases are indexes derived from the markdown files. If you lose them, Bartleby rebuilds them on startup from the files in `garden/`.
 
 ---
 
