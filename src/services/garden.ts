@@ -40,6 +40,7 @@ export interface GardenRecord {
   birthday?: string;
   content?: string;
   tags?: string[];
+  contacts?: string[];  // Array of contact record IDs
   metadata?: Record<string, unknown>;
   created_at: string;
   updated_at: string;
@@ -91,6 +92,11 @@ CREATE INDEX IF NOT EXISTS idx_garden_project ON garden_records(project);
 CREATE INDEX IF NOT EXISTS idx_garden_due ON garden_records(due_date);
 `;
 
+// Migrations for existing databases
+const MIGRATIONS = [
+  `ALTER TABLE garden_records ADD COLUMN contacts TEXT`,  // JSON array of contact IDs
+];
+
 // === Service ===
 
 export class GardenService {
@@ -126,6 +132,16 @@ export class GardenService {
 
   async initialize(): Promise<void> {
     this.db.exec(SCHEMA);
+    
+    // Run migrations for existing databases
+    for (const migration of MIGRATIONS) {
+      try {
+        this.db.exec(migration);
+      } catch {
+        // Column already exists, ignore
+      }
+    }
+    
     ensureDir(this.gardenPath);
 
     await this.syncFromFiles();
@@ -150,13 +166,14 @@ export class GardenService {
 
     this.db.prepare(`
       INSERT INTO garden_records 
-      (id, type, title, status, context, project, due_date, email, phone, birthday, content, tags, metadata, created_at, updated_at, completed_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      (id, type, title, status, context, project, due_date, email, phone, birthday, content, tags, contacts, metadata, created_at, updated_at, completed_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       record.id, record.type, record.title, record.status,
       record.context, record.project, record.due_date,
       record.email, record.phone, record.birthday,
       record.content, JSON.stringify(record.tags || []),
+      JSON.stringify(record.contacts || []),
       JSON.stringify(record.metadata || {}),
       record.created_at, record.updated_at, record.completed_at
     );
@@ -197,7 +214,7 @@ export class GardenService {
     this.db.prepare(`
       UPDATE garden_records SET
         type=?, title=?, status=?, context=?, project=?, due_date=?,
-        email=?, phone=?, birthday=?, content=?, tags=?, metadata=?,
+        email=?, phone=?, birthday=?, content=?, tags=?, contacts=?, metadata=?,
         updated_at=?, completed_at=?
       WHERE id=?
     `).run(
@@ -205,6 +222,7 @@ export class GardenService {
       updated.context, updated.project, updated.due_date,
       updated.email, updated.phone, updated.birthday,
       updated.content, JSON.stringify(updated.tags || []),
+      JSON.stringify(updated.contacts || []),
       JSON.stringify(updated.metadata || {}),
       updated.updated_at, updated.completed_at, id
     );
@@ -507,6 +525,73 @@ export class GardenService {
     return rows.map(r => this.rowToRecord(r));
   }
 
+  /**
+   * Resolve a contact name to a contact ID.
+   * Returns: { id, title } if unique match, null if no match, array if ambiguous
+   */
+  resolveContact(name: string): { id: string; title: string } | null | GardenRecord[] {
+    const matches = this.searchContacts(name);
+    
+    if (matches.length === 0) return null;
+    if (matches.length === 1) return { id: matches[0].id, title: matches[0].title };
+    
+    // Check for exact match (case-insensitive)
+    const exact = matches.find(m => m.title.toLowerCase() === name.toLowerCase());
+    if (exact) return { id: exact.id, title: exact.title };
+    
+    // Ambiguous - return all matches
+    return matches;
+  }
+
+  /**
+   * Resolve multiple contact names to IDs.
+   * Returns { resolved: [{id, title}], unresolved: [name], ambiguous: [{name, matches}] }
+   */
+  resolveContacts(names: string[]): {
+    resolved: { id: string; title: string }[];
+    unresolved: string[];
+    ambiguous: { name: string; matches: GardenRecord[] }[];
+  } {
+    const resolved: { id: string; title: string }[] = [];
+    const unresolved: string[] = [];
+    const ambiguous: { name: string; matches: GardenRecord[] }[] = [];
+
+    for (const name of names) {
+      const result = this.resolveContact(name);
+      if (result === null) {
+        unresolved.push(name);
+      } else if (Array.isArray(result)) {
+        ambiguous.push({ name, matches: result });
+      } else {
+        resolved.push(result);
+      }
+    }
+
+    return { resolved, unresolved, ambiguous };
+  }
+
+  /**
+   * Get all records linked to a contact.
+   */
+  getByContact(contactId: string): GardenRecord[] {
+    const pattern = `%"${contactId}"%`;
+    const rows = this.db.prepare(`
+      SELECT * FROM garden_records 
+      WHERE contacts LIKE ? AND status = 'active'
+      ORDER BY updated_at DESC
+    `).all(pattern) as any[];
+    return rows.map(r => this.rowToRecord(r));
+  }
+
+  /**
+   * Get all records linked to a contact, by contact name (convenience method).
+   */
+  getByContactName(name: string): GardenRecord[] | null {
+    const result = this.resolveContact(name);
+    if (result === null || Array.isArray(result)) return null;
+    return this.getByContact(result.id);
+  }
+
   // === File Sync ===
 
   getFilePath(record: GardenRecord): string {
@@ -525,6 +610,7 @@ export class GardenService {
     // Build metadata (backmatter format - human-first ordering handled by toGardenPage)
     const meta: Record<string, unknown> = {
       tags: record.tags?.length ? record.tags : undefined,
+      contacts: record.contacts?.length ? record.contacts : undefined,
       context: record.context,
       project: record.project,
       due: record.due_date,
@@ -644,6 +730,7 @@ export class GardenService {
       birthday: row.birthday || undefined,
       content: row.content || undefined,
       tags: row.tags ? JSON.parse(row.tags) : [],
+      contacts: row.contacts ? JSON.parse(row.contacts) : [],
       metadata: row.metadata ? JSON.parse(row.metadata) : {},
       created_at: row.created_at,
       updated_at: row.updated_at,

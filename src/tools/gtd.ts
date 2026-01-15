@@ -185,6 +185,19 @@ export const addTask: Tool = {
       description = description.replace(/\+[\w-]+/, '').trim();
     }
 
+    // Parse "with <person>" for contact linking
+    let contactNames: string[] = [];
+    const withMatches = description.match(/\bwith\s+([a-zA-Z][a-zA-Z\s]*?)(?=\s*$|\s*,|\s+(?:@|\+|due:|by\s))/gi);
+    if (withMatches) {
+      for (const match of withMatches) {
+        const person = match.replace(/^with\s+/i, '').trim();
+        if (person) {
+          contactNames.push(person);
+        }
+      }
+      description = description.replace(/\bwith\s+([a-zA-Z][a-zA-Z\s]*?)(?=\s*$|\s*,|\s+(?:@|\+|due:|by\s))/gi, '').trim();
+    }
+
     // Parse due date - multiple formats supported:
     // due:today, due:tomorrow, due:2026-01-15, due:tomorrow am
     // (due today), (due 8pm), (due tomorrow)
@@ -302,15 +315,16 @@ export const addTask: Tool = {
       }
     }
 
-    return { description, context, project, dueDate };
+    return { description, context, project, dueDate, contactNames };
   },
 
   execute: async (args, context) => {
-    const { description, context: ctx, project, dueDate } = args as {
+    const { description, context: ctx, project, dueDate, contactNames } = args as {
       description: string;
       context?: string;
       project?: string;
       dueDate?: string;
+      contactNames?: string[];
     };
 
     if (!description) {
@@ -337,19 +351,61 @@ export const addTask: Tool = {
       }
     }
 
+    // Resolve contact names to IDs
+    let contactIds: string[] = [];
+    let contactsCreated: string[] = [];
+    let contactsAmbiguous: string[] = [];
+    
+    if (contactNames && contactNames.length > 0) {
+      const resolution = context.services.garden.resolveContacts(contactNames);
+      
+      // Add resolved contacts
+      contactIds = resolution.resolved.map(c => c.id);
+      
+      // Auto-create unresolved contacts
+      for (const name of resolution.unresolved) {
+        const newContact = context.services.garden.addContact(name);
+        contactIds.push(newContact.id);
+        contactsCreated.push(name);
+      }
+      
+      // Report ambiguous (don't auto-resolve, let user clarify)
+      for (const { name, matches } of resolution.ambiguous) {
+        contactsAmbiguous.push(`${name} (${matches.map(m => m.title).join(', ')})`);
+      }
+    }
+
     // Determine context:
     // - If explicitly set, use it
     // - If project or due date is set (action is "processed"), no context needed
     // - Otherwise, default to @inbox (unprocessed capture)
     const finalContext = ctx || (project || dueDate ? undefined : '@inbox');
     
-    const task = context.services.garden.addTask(description, finalContext, project, dueDate);
+    // Create task with contacts
+    const task = context.services.garden.create({
+      type: 'action',
+      title: description,
+      status: 'active',
+      context: finalContext,
+      project,
+      due_date: dueDate,
+      contacts: contactIds.length > 0 ? contactIds : undefined,
+    });
 
     let response = `✓ Added: "${task.title}"`;
     if (task.context) response += ` (${task.context})`;
     if (task.project) response += ` +${task.project}`;
     if (task.due_date) response += ` [due: ${task.due_date}]`;
+    if (contactIds.length > 0) {
+      const contactNames = contactIds.map(id => {
+        const c = context.services.garden.get(id);
+        return c?.title || id;
+      });
+      response += `\n  👤 ${contactNames.join(', ')}`;
+    }
     if (projectCreated) response += `\n✓ Created project: "${project}"`;
+    if (contactsCreated.length > 0) response += `\n✓ Created contact(s): ${contactsCreated.join(', ')}`;
+    if (contactsAmbiguous.length > 0) response += `\n⚠️ Ambiguous contact(s): ${contactsAmbiguous.join('; ')}`;
 
     return response;
   },
@@ -1520,6 +1576,63 @@ export const openPage: Tool = {
           lines.push(`  📎 ${m.title} → ${filePath}`);
         });
       }
+    } else if (record.type === 'contact') {
+      // Show contact info and linked records
+      if (record.email) lines.push(`📧 ${record.email}`);
+      if (record.phone) lines.push(`📱 ${record.phone}`);
+      if (record.birthday) lines.push(`🎂 ${record.birthday}`);
+      
+      // Get all records linked to this contact
+      const linkedRecords = context.services.garden.getByContact(record.id);
+      
+      // Get calendar events linked to this contact
+      const calendarEvents = context.services.calendar.getUpcoming(30);
+      const linkedEvents = calendarEvents.filter(e => {
+        if (!e.metadata) return false;
+        try {
+          const meta = JSON.parse(e.metadata);
+          return meta.contactIds?.includes(record.id);
+        } catch {
+          return false;
+        }
+      });
+      
+      const linkedActions = linkedRecords.filter(r => r.type === 'action');
+      const linkedProjects = linkedRecords.filter(r => r.type === 'project');
+      const linkedNotes = linkedRecords.filter(r => r.type === 'note');
+      
+      if (linkedActions.length > 0) {
+        lines.push('\n**Actions:**');
+        linkedActions.forEach(a => {
+          const ctx = a.context ? ` ${a.context}` : '';
+          const due = a.due_date ? ` [due: ${a.due_date}]` : '';
+          lines.push(`  • ${a.title}${ctx}${due}`);
+        });
+      }
+      
+      if (linkedEvents.length > 0) {
+        lines.push('\n**Events:**');
+        linkedEvents.forEach(e => {
+          const d = new Date(e.start_time);
+          const dateStr = d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+          const timeStr = e.all_day ? '' : ` ${d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}`;
+          lines.push(`  • ${e.title} — ${dateStr}${timeStr}`);
+        });
+      }
+      
+      if (linkedProjects.length > 0) {
+        lines.push('\n**Projects:**');
+        linkedProjects.forEach(p => lines.push(`  • ${p.title}`));
+      }
+      
+      if (linkedNotes.length > 0) {
+        lines.push('\n**Notes:**');
+        linkedNotes.forEach(n => lines.push(`  • ${n.title}`));
+      }
+      
+      if (linkedRecords.length === 0 && linkedEvents.length === 0) {
+        lines.push('\n(no linked items)');
+      }
     } else if (!record.content) {
       lines.push('(no content)');
     }
@@ -1531,6 +1644,14 @@ export const openPage: Tool = {
     if (record.project) meta.push(`Project: ${record.project}`);
     if (record.due_date) meta.push(`Due: ${record.due_date}`);
     if (record.tags?.length) meta.push(`Tags: ${record.tags.join(', ')}`);
+    if (record.contacts?.length) {
+      // Look up contact names
+      const contactNames = record.contacts.map(id => {
+        const c = context.services.garden.get(id);
+        return c?.title || id;
+      });
+      meta.push(`With: ${contactNames.join(', ')}`);
+    }
     if (record.email) meta.push(`Email: ${record.email}`);
     if (record.phone) meta.push(`Phone: ${record.phone}`);
     

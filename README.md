@@ -290,13 +290,36 @@ Tags categorize across types. Use them for:
 
 - **Priority:** `urgent`, `important`
 - **Topics:** `taxes`, `health`, `house`
-- **People:** `sarah`, `boss`
 - **Time horizons:** `thisweek`, `q1`
 
 ```
 > new action call accountant @phone #taxes #urgent
 > show tagged urgent
 ```
+
+### Contacts
+
+Link actions and events to people using `with <name>`:
+
+```
+> new contact Sarah Chen, email sarah@example.com, phone 555-1234
+> new action lunch meeting with sarah @calendar
+> new event coffee with sarah friday 10am
+```
+
+**How it works:**
+- Contact names are fuzzy-matched ("sarah" finds "Sarah Chen")
+- If no contact exists, one is created automatically
+- Actions and events store contact IDs for proper linking
+
+**Query by contact:**
+```
+> show all with sarah
+> do i have anything with nicole?
+> open sarah chen
+```
+
+Opening a contact shows all linked actions, events, projects, and notes.
 
 ### Projects
 

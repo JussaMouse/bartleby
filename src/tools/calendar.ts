@@ -715,8 +715,37 @@ export const eventWizardResponse: Tool = {
           const endTime = new Date(startTime);
           endTime.setHours(endTime.getHours() + 1);
           
+          // Resolve contact names to IDs
+          let contactIds: string[] = [];
+          let contactNames: string[] = [];
+          let contactsCreated: string[] = [];
+          
+          if (state.contacts && state.contacts.length > 0) {
+            const resolution = context.services.garden.resolveContacts(state.contacts);
+            
+            // Add resolved contacts
+            for (const c of resolution.resolved) {
+              contactIds.push(c.id);
+              contactNames.push(c.title);
+            }
+            
+            // Auto-create unresolved contacts
+            for (const name of resolution.unresolved) {
+              const newContact = context.services.garden.addContact(name);
+              contactIds.push(newContact.id);
+              contactNames.push(name);
+              contactsCreated.push(name);
+            }
+            
+            // For ambiguous, just use the name (user can clarify later)
+            for (const { name } of resolution.ambiguous) {
+              contactNames.push(name + ' (?)');
+            }
+          }
+          
           const metadata: Record<string, unknown> = {};
-          if (state.contacts && state.contacts.length > 0) metadata.contacts = state.contacts;
+          if (contactIds.length > 0) metadata.contactIds = contactIds;
+          if (contactNames.length > 0) metadata.contacts = contactNames; // Keep names for display
           if (state.tags && state.tags.length > 0) metadata.tags = state.tags;
           
           const event = context.services.calendar.create({
@@ -739,11 +768,14 @@ export const eventWizardResponse: Tool = {
           if (state.location) {
             response += `\n  📍 ${state.location}`;
           }
-          if (state.contacts && state.contacts.length > 0) {
-            response += `\n  👤 ${state.contacts.join(', ')}`;
+          if (contactNames.length > 0) {
+            response += `\n  👤 ${contactNames.join(', ')}`;
           }
           if (state.tags && state.tags.length > 0) {
             response += `\n  🏷️ ${state.tags.map((t: string) => '#' + t).join(' ')}`;
+          }
+          if (contactsCreated.length > 0) {
+            response += `\n✓ Created contact(s): ${contactsCreated.join(', ')}`;
           }
           
           // Schedule reminder if requested
@@ -782,7 +814,7 @@ export const eventWizardResponse: Tool = {
       case 'extras': {
         // Parse extras: with <person>, at <location>, #tags
         let location: string | undefined;
-        let contacts: string[] = [];
+        let parsedContactNames: string[] = [];
         let tags: string[] = [];
         
         const text = input.trim();
@@ -793,7 +825,7 @@ export const eventWizardResponse: Tool = {
           if (withMatch) {
             for (const match of withMatch) {
               const person = match.replace(/^with\s+/i, '').trim();
-              if (person) contacts.push(person);
+              if (person) parsedContactNames.push(person);
             }
           }
           
@@ -810,6 +842,31 @@ export const eventWizardResponse: Tool = {
           }
         }
         
+        // Resolve contact names to IDs
+        let contactIds: string[] = [];
+        let contactNames: string[] = [];
+        let contactsCreated: string[] = [];
+        
+        if (parsedContactNames.length > 0) {
+          const resolution = context.services.garden.resolveContacts(parsedContactNames);
+          
+          for (const c of resolution.resolved) {
+            contactIds.push(c.id);
+            contactNames.push(c.title);
+          }
+          
+          for (const name of resolution.unresolved) {
+            const newContact = context.services.garden.addContact(name);
+            contactIds.push(newContact.id);
+            contactNames.push(name);
+            contactsCreated.push(name);
+          }
+          
+          for (const { name } of resolution.ambiguous) {
+            contactNames.push(name + ' (?)');
+          }
+        }
+        
         // Create the event!
         const startTime = new Date(state.startTime!);
         const endTime = new Date(startTime);
@@ -819,7 +876,8 @@ export const eventWizardResponse: Tool = {
         
         // Build metadata for contacts and tags
         const metadata: Record<string, unknown> = {};
-        if (contacts.length > 0) metadata.contacts = contacts;
+        if (contactIds.length > 0) metadata.contactIds = contactIds;
+        if (contactNames.length > 0) metadata.contacts = contactNames;
         if (tags.length > 0) metadata.tags = tags;
         
         const event = context.services.calendar.create({
@@ -842,11 +900,14 @@ export const eventWizardResponse: Tool = {
         if (location) {
           response += `\n  📍 ${location}`;
         }
-        if (contacts.length > 0) {
-          response += `\n  👤 ${contacts.join(', ')}`;
+        if (contactNames.length > 0) {
+          response += `\n  👤 ${contactNames.join(', ')}`;
         }
         if (tags.length > 0) {
           response += `\n  🏷️ ${tags.map(t => '#' + t).join(' ')}`;
+        }
+        if (contactsCreated.length > 0) {
+          response += `\n✓ Created contact(s): ${contactsCreated.join(', ')}`;
         }
         
         // Schedule reminder if requested
