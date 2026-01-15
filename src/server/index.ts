@@ -9,8 +9,9 @@ import fs from 'fs';
 import os from 'os';
 import { fileURLToPath } from 'url';
 import multer from 'multer';
-import { GardenService } from '../services/garden.js';
-import { CalendarService } from '../services/calendar.js';
+import { Agent } from '../agent/index.js';
+import { CommandRouter } from '../router/index.js';
+import { ServiceContainer } from '../services/index.js';
 import { loadConfig } from '../config.js';
 import { info, error, debug } from '../utils/logger.js';
 
@@ -26,18 +27,27 @@ export class DashboardServer {
   private server = createServer(this.app);
   private wss = new WebSocketServer({ server: this.server });
   private clients: Set<DashboardClient> = new Set();
-  private garden: GardenService;
-  private calendar: CalendarService;
+  private services: ServiceContainer;
+  private router: CommandRouter;
+  private agent: Agent;
+  private garden: ServiceContainer['garden'];
+  private calendar: ServiceContainer['calendar'];
+  private apiToken = process.env.BARTLEBY_API_TOKEN?.trim() || '';
   private config = loadConfig();
 
-  constructor(garden: GardenService, calendar: CalendarService) {
-    this.garden = garden;
-    this.calendar = calendar;
+  constructor(services: ServiceContainer, router: CommandRouter, agent: Agent) {
+    this.services = services;
+    this.router = router;
+    this.agent = agent;
+    this.garden = services.garden;
+    this.calendar = services.calendar;
     this.setupRoutes();
     this.setupWebSocket();
   }
 
   private setupRoutes() {
+    this.app.use(express.json({ limit: '1mb' }));
+
     // Serve static files from web directory
     const webDir = path.join(__dirname, '..', '..', 'web');
     this.app.use(express.static(webDir));
@@ -91,6 +101,52 @@ export class DashboardServer {
       res.json(recent);
     });
 
+    this.app.post('/api/chat', async (req, res) => {
+      if (!this.isAuthorized(req)) {
+        res.status(401).json({ error: 'Unauthorized' });
+        return;
+      }
+
+      const text = typeof req.body?.text === 'string' ? req.body.text.trim() : '';
+      if (!text) {
+        res.status(400).json({ error: 'Text is required' });
+        return;
+      }
+
+      try {
+        this.services.context.recordMessage(text, true);
+
+        const routerResult = await this.router.route(text);
+        let response: string;
+
+        switch (routerResult.type) {
+          case 'routed':
+            if (routerResult.route) {
+              response = await this.router.execute(routerResult.route, text);
+            } else {
+              response = "I didn't understand that. Try 'help' for commands.";
+            }
+            break;
+          case 'llm-simple':
+            response = await this.agent.handleSimple(text);
+            break;
+          case 'llm-complex':
+            response = await this.agent.handleComplex(text);
+            break;
+          default:
+            response = "I'm not sure how to help with that. Try 'help' for commands.";
+        }
+
+        const reply = response === '__EXIT__' ? 'Goodbye.' : response;
+        this.services.context.recordMessage(reply, false);
+
+        res.json({ reply });
+      } catch (err) {
+        error('Chat request failed', { error: String(err) });
+        res.status(500).json({ error: 'Failed to process request' });
+      }
+    });
+
     // Get raw file content for editing
     this.app.get('/api/page/:id', (req, res) => {
       const record = this.garden.get(req.params.id);
@@ -128,7 +184,6 @@ export class DashboardServer {
     });
 
     // Quick update action metadata (inline edit)
-    this.app.use(express.json());
     this.app.patch('/api/action/:id', (req, res) => {
       const record = this.garden.get(req.params.id);
       if (!record || record.type !== 'action') {
@@ -277,6 +332,14 @@ export class DashboardServer {
         res.status(500).json({ error: 'Upload failed' });
       }
     });
+  }
+
+  private isAuthorized(req: express.Request): boolean {
+    if (!this.apiToken) return true;
+    const authHeader = req.headers.authorization || '';
+    const bearerMatch = authHeader.match(/^Bearer\s+(.+)$/i);
+    const token = bearerMatch?.[1] || (req.headers['x-bartleby-token'] as string | undefined);
+    return token === this.apiToken;
   }
 
   private setupWebSocket() {

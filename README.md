@@ -483,111 +483,63 @@ If you weren't running when something was due, Bartleby handles missed items on 
 
 ---
 
-## Dashboard
+## Voice UI (iPhone Safari)
 
-A minimal web UI for viewing and editing Garden pages while you work in the CLI.
+A mobile-first voice interface for Bartleby that runs in Safari and talks to the same command router as the CLI.
 
-### Starting the Dashboard
+### Start the Voice UI
 
 ```bash
 # Terminal 1: Bartleby CLI
 pnpm start
 
-# Terminal 2: Dashboard server
+# Terminal 2: Voice UI server
 pnpm dashboard
 ```
 
-Open http://localhost:3333 in your browser.
+Open http://localhost:3333 in iPhone Safari. Tap the mic, speak a command, and Bartleby replies with both text and voice.
 
-### Panels
+### API Token (optional)
 
-The dashboard shows live-updating panels:
-
-| Panel | What it shows |
-|-------|---------------|
-| **Inbox** | Uncategorized captures |
-| **Next Actions** | Actions grouped by context |
-| **Projects** | Active projects (click to open) |
-| **Calendar** | Upcoming events + deadlines |
-| **Today** | Today's events + overdue items |
-| **Recent** | Last 10 modified pages |
-| **Project: X** | Specific project with its actions |
-
-Click the `+` buttons in the footer to add panels.
-
-### Editing Actions
-
-Click any action to edit inline:
-
-```
-pack bags                    →  pack bags @home +thailand-trip due:friday
-       ↑ click                        ↑ full text with tags appears
-```
-
-- Line expands showing the full action text with `@context`, `+project`, and `due:date`
-- Cursor appears at end — start typing to add/change tags
-- **Tab completion:** Type `@h[TAB]` → `@home`, or `+20[TAB]` → `+2025-taxes`
-- **Save:** `Enter` or click Save
-- **Cancel:** `Escape` or click Cancel
-- **Done:** Mark action complete (disappears instantly)
-- **→ Action:** (Inbox only) Convert to a real action and start editing
-
-### Editing Other Pages
-
-Click notes, entries, or projects to open the full editor modal:
-
-- Edit the raw markdown (including backmatter)
-- **Save:** `Cmd+S` or click Save
-- **Cancel:** `Escape` or click Cancel
-
-Changes are written to the `.md` file. The file watcher syncs everything — both CLI and dashboard see updates instantly.
-
-### Project Pages
-
-Click a project name to open its dedicated panel showing:
-
-- **Actions** — all actions linked to this project
-- **Media** — images and files (click for full-size lightbox)
-- **Notes** — notes linked to this project
-
-### Importing Media
-
-**Drag and drop** images or files onto the dashboard:
-
-1. Drag any file onto the dashboard
-2. Blue overlay appears: "Drop to import media"
-3. Enter a name (can include `+project` and `#tags`)
-4. File is copied to `garden/media/` and linked to the project
-
-Images appear as thumbnails on project pages. Click to view full-size.
-
-### Remote Access
-
-If Bartleby runs on a server, tunnel the dashboard to your local machine.
-
-**Quick command:**
-```bash
-ssh -L 3333:localhost:3333 user@your-server
-```
-
-**Or add to `~/.ssh/config` on your local machine:**
-```
-Host bartleby
-    HostName 192.168.1.100
-    User your-user
-    Port 22
-    LocalForward 3333 localhost:3333
-```
-
-Then just `ssh bartleby` — the tunnel is created automatically.
-
-Open http://localhost:3333 in your browser while the SSH session is active.
-
-### Configuration
+If you want to secure remote access, set an API token for `/api/chat`:
 
 ```env
-DASHBOARD_PORT=3333    # Default port
-DASHBOARD_HOST=0.0.0.0 # Bind to all interfaces (if not using tunnel)
+BARTLEBY_API_TOKEN=your-secret-token
+```
+
+Requests should include:
+
+```
+Authorization: Bearer your-secret-token
+```
+
+### Siri + Shortcuts
+
+Create a Shortcut that uses the same `/api/chat` endpoint:
+
+1. **Dictate Text** → Variable `spokenText`
+2. **Get Contents of URL**
+   - URL: `http://your-server:3333/api/chat`
+   - Method: `POST`
+   - Headers: `Content-Type: application/json`
+   - Optional header: `Authorization: Bearer your-secret-token`
+   - Body: JSON `{ "text": spokenText }`
+3. **Speak Text** from the JSON response field `reply`
+
+### Remote Access (Tailscale)
+
+For reliable iPhone access, prefer a VPN over SSH tunnels.
+
+1. Install Tailscale on the server and iPhone.
+2. Run `tailscale up` on the server and sign in on iPhone.
+3. Use your tailnet hostname in Safari and Shortcuts:
+   - `http://your-server-name:3333`
+
+If using a VPN, make sure the server binds to all interfaces:
+
+```env
+DASHBOARD_PORT=3333
+DASHBOARD_HOST=0.0.0.0
 ```
 
 ---

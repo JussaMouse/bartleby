@@ -2,91 +2,49 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Bartleby Dashboard</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>Bartleby Voice</title>
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
   <div id="app">
-    <header>
-      <h1>Bartleby</h1>
-      <span class="status" id="status">Connecting...</span>
+    <header class="app-header">
+      <div class="title">
+        <h1>Bartleby</h1>
+        <p class="subtitle">Voice interface</p>
+      </div>
+      <div class="status-pill" id="status">Idle</div>
     </header>
-    
-    <main id="panels">
-      <!-- Panels are added dynamically -->
+
+    <main class="app-main">
+      <section class="conversation">
+        <div id="log" class="log"></div>
+      </section>
+
+      <section class="controls">
+        <div id="transcript" class="transcript">Tap the mic to speak.</div>
+
+        <div class="control-row">
+          <button id="mic-button" class="mic-button" type="button">Start Listening</button>
+          <button id="stop-button" class="secondary-button" type="button">Stop Speaking</button>
+        </div>
+
+        <form id="text-form" class="text-form">
+          <input id="text-input" type="text" autocomplete="off" placeholder="Type a command or question" />
+          <button type="submit" class="primary-button">Send</button>
+        </form>
+
+        <div class="control-row">
+          <button id="token-button" class="ghost-button" type="button">Set API Token</button>
+          <label class="toggle">
+            <input id="tts-toggle" type="checkbox" checked />
+            <span>Speak replies</span>
+          </label>
+        </div>
+      </section>
     </main>
-    
-    <footer>
-      <button onclick="addPanel('inbox')">+ Inbox</button>
-      <button onclick="addPanel('next-actions')">+ Actions</button>
-      <button onclick="addPanel('projects')">+ Projects</button>
-      <button onclick="addPanel('calendar')">+ Calendar</button>
-      <button onclick="addPanel('today')">+ Today</button>
-      <button onclick="addPanel('recent')">+ Recent</button>
-      <button onclick="promptProjectPanel()">+ Project...</button>
-    </footer>
   </div>
-  
-  <!-- Drop Zone Overlay -->
-  <div id="drop-overlay" class="drop-overlay hidden">
-    <div class="drop-message">
-      <span class="drop-icon">📎</span>
-      <span>Drop to import media</span>
-    </div>
-  </div>
-  
-  <!-- Image Lightbox -->
-  <div id="lightbox" class="lightbox hidden" onclick="closeLightbox()">
-    <div class="lightbox-content" onclick="event.stopPropagation()">
-      <button class="lightbox-close" onclick="closeLightbox()">&times;</button>
-      <img id="lightbox-img" src="" alt="" />
-      <div class="lightbox-title" id="lightbox-title"></div>
-    </div>
-  </div>
-  
-  <!-- Edit Modal -->
-  <div id="edit-modal" class="modal hidden">
-    <div class="modal-content">
-      <div class="modal-header">
-        <h2 id="edit-title">Edit</h2>
-        <button class="modal-close" onclick="closeEditor()">&times;</button>
-      </div>
-      <div class="edit-toolbar">
-        <div class="toolbar-group">
-          <label>Context:</label>
-          <select id="edit-context" onchange="updateMetaField('context', this.value)">
-            <option value="">none</option>
-            <option value="@inbox">@inbox</option>
-            <option value="@phone">@phone</option>
-            <option value="@computer">@computer</option>
-            <option value="@errands">@errands</option>
-            <option value="@home">@home</option>
-            <option value="@office">@office</option>
-            <option value="@waiting">@waiting</option>
-            <option value="@focus">@focus</option>
-          </select>
-        </div>
-        <div class="toolbar-group">
-          <label>Project:</label>
-          <select id="edit-project" onchange="updateMetaField('project', this.value)">
-            <option value="">none</option>
-            <!-- Populated dynamically -->
-          </select>
-        </div>
-        <div class="toolbar-group">
-          <label>Due:</label>
-          <input type="date" id="edit-due" onchange="updateMetaField('due', this.value)">
-        </div>
-      </div>
-      <textarea id="edit-content"></textarea>
-      <div class="modal-footer">
-        <button class="btn-secondary" onclick="closeEditor()">Cancel</button>
-        <button class="btn-primary" onclick="saveEdit()">Save</button>
-      </div>
-    </div>
-  </div>
-  
+
   <script src="app.js"></script>
 </body>
 </html>

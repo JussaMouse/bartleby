@@ -2,9 +2,10 @@
 // Standalone dashboard server that watches Garden for changes
 
 import { DashboardServer } from './server/index.js';
-import { GardenService } from './services/garden.js';
-import { CalendarService } from './services/calendar.js';
 import { loadConfig } from './config.js';
+import { initServices, closeServices } from './services/index.js';
+import { CommandRouter } from './router/index.js';
+import { Agent } from './agent/index.js';
 import { info, error } from './utils/logger.js';
 import chokidar from 'chokidar';
 import path from 'path';
@@ -14,12 +15,15 @@ async function main() {
   
   info('Starting Bartleby Dashboard...');
   
-  // Initialize services (read-only, no REPL)
-  const calendar = new CalendarService(config);
-  const garden = new GardenService(config);
+  // Initialize full services for chat + dashboard
+  const services = await initServices(config);
+  const router = new CommandRouter();
+  await router.initialize(services);
+  const agent = new Agent(services);
+  services.context.startSession();
   
   // Start dashboard server
-  const dashboard = new DashboardServer(garden, calendar);
+  const dashboard = new DashboardServer(services, router, agent);
   const port = parseInt(process.env.DASHBOARD_PORT || '3333', 10);
   const host = process.env.DASHBOARD_HOST || 'localhost';
   dashboard.start(port, host);
@@ -45,7 +49,7 @@ async function main() {
     debounceTimer = setTimeout(() => {
       info('Garden changed, broadcasting updates');
       // Re-sync Garden from files
-      garden.syncAll();
+      services.garden.syncAll();
       // Broadcast to all dashboard clients
       dashboard.broadcastAll();
     }, 500);
@@ -60,6 +64,7 @@ async function main() {
     info('Shutting down dashboard...');
     watcher.close();
     dashboard.stop();
+    closeServices(services);
     process.exit(0);
   });
   
