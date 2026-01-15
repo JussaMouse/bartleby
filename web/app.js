@@ -698,7 +698,6 @@ function renderCalendar(entries) {
 
   const events = entries.filter(e => e.entry_type === 'event');
   const deadlines = entries.filter(e => e.entry_type === 'deadline');
-  const reminders = entries.filter(e => e.entry_type === 'reminder');
 
   let html = '';
 
@@ -731,23 +730,6 @@ function renderCalendar(entries) {
         <li class="item">
           <span class="item-title">${escapeHtml(dl.title)}</span>
           <span class="item-meta">${dateStr}</span>
-        </li>
-      `;
-    }).join('');
-    html += '</ul>';
-  }
-
-  if (reminders.length > 0) {
-    if (html) html += '<div class="section-header" style="margin-top:12px">🔔 Reminders</div><ul>';
-    else html += '<div class="section-header">🔔 Reminders</div><ul>';
-    html += reminders.map(rem => {
-      const date = new Date(rem.start_time);
-      const dateStr = date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
-      const timeStr = date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
-      return `
-        <li class="item">
-          <span class="item-title">${escapeHtml(rem.title)}</span>
-          <span class="item-meta">${dateStr} ${timeStr}</span>
         </li>
       `;
     }).join('');
