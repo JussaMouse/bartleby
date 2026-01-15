@@ -100,7 +100,7 @@ import "/path with spaces/doc.pdf" project specs +work
 | Command | Description |
 |---------|-------------|
 | `today` | Today's unified schedule |
-| `calendar` | Upcoming events, deadlines, reminders |
+| `calendar` | Upcoming events and deadlines |
 | `new event` | Create event (guided wizard) |
 | `new event <title> <when> <reminder>` | Create event (inline) |
 | `change calendar settings` | Configure calendar preferences |

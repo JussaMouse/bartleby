@@ -29,7 +29,6 @@ export const showCalendar: Tool = {
     // Group by type
     const events = entries.filter(e => e.entry_type === 'event');
     const deadlines = entries.filter(e => e.entry_type === 'deadline');
-    const reminders = entries.filter(e => e.entry_type === 'reminder');
 
     const lines: string[] = [];
 
@@ -71,17 +70,6 @@ export const showCalendar: Tool = {
       }
     }
 
-    if (reminders.length > 0) {
-      if (lines.length > 0) lines.push('');
-      lines.push('**🔔 Reminders**');
-      for (const rem of reminders) {
-        const date = new Date(rem.start_time);
-        const dateStr = date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
-        const timeStr = date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
-        lines.push(`  ${dateStr} ${timeStr} - ${rem.title}`);
-      }
-    }
-
     return lines.join('\n');
   },
 };
@@ -114,7 +102,6 @@ export const showToday: Tool = {
     // Group by type
     const events = entries.filter(e => e.entry_type === 'event');
     const deadlines = entries.filter(e => e.entry_type === 'deadline');
-    const reminders = entries.filter(e => e.entry_type === 'reminder');
 
     const lines: string[] = ["**Today's Schedule**", ''];
 
@@ -150,16 +137,6 @@ export const showToday: Tool = {
       lines.push('**⚠️ Due Today**');
       for (const dl of deadlines) {
         lines.push(`  ${dl.title}`);
-      }
-    }
-
-    if (reminders.length > 0) {
-      if (events.length > 0 || deadlines.length > 0) lines.push('');
-      lines.push('**🔔 Reminders**');
-      for (const rem of reminders) {
-        const date = new Date(rem.start_time);
-        const timeStr = date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
-        lines.push(`  ${timeStr} - ${rem.title}`);
       }
     }
 

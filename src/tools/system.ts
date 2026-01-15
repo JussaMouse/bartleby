@@ -173,7 +173,7 @@ Bartleby's Time System shows everything temporal in one place.
 • **🔔 Reminders** — scheduled notifications
 
 **Commands**
-  calendar                Show upcoming (all types)
+  calendar                Show upcoming (events + deadlines)
   today                   Today's unified schedule
   new event               Create event (guided wizard)
   add event <details>     Create event (inline)
