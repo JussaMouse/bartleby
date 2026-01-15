@@ -36,7 +36,7 @@ function connectWebSocket() {
 
   ws.onmessage = (event) => {
     const msg = JSON.parse(event.data);
-    if (msg.type === 'update' && msg.view) {
+    if (msg.type === 'data' && msg.view) {
       renderPanel(msg.view, msg.data);
     }
   };
@@ -165,20 +165,31 @@ function renderPanel(view, data) {
 }
 
 function renderInbox(data) {
-  if (!data?.items?.length) {
+  // data is array of tasks
+  if (!data?.length) {
     return '<div class="empty">Inbox empty</div>';
   }
-  const items = data.items.map(item => renderActionItem(item, true)).join('');
+  const items = data.map(item => renderActionItem(item, true)).join('');
   return `<ul>${items}</ul>`;
 }
 
 function renderNextActions(data) {
-  if (!data?.contexts) {
+  // data is array of tasks - group by context
+  if (!data?.length) {
     return '<div class="empty">No actions</div>';
   }
 
+  // Group by context
+  const byContext = {};
+  for (const task of data) {
+    const ctx = task.context || 'No Context';
+    if (ctx === '@inbox') continue; // Skip inbox items
+    if (!byContext[ctx]) byContext[ctx] = [];
+    byContext[ctx].push(task);
+  }
+
   let html = '';
-  for (const [ctx, actions] of Object.entries(data.contexts)) {
+  for (const [ctx, actions] of Object.entries(byContext)) {
     if (actions.length === 0) continue;
     html += `<div class="section-header">${ctx}</div>`;
     html += '<ul>' + actions.map(a => renderActionItem(a)).join('') + '</ul>';
@@ -188,15 +199,15 @@ function renderNextActions(data) {
 }
 
 function renderProjects(data) {
-  if (!data?.projects?.length) {
+  // data is array of projects
+  if (!data?.length) {
     return '<div class="empty">No projects</div>';
   }
 
-  const items = data.projects.map(p => `
+  const items = data.map(p => `
     <li>
       <div class="item clickable" onclick="addPanel('project:${esc(p.title)}')">
         <span class="item-title">${esc(p.title)}</span>
-        <span class="item-meta">${p.actionCount || 0} actions</span>
       </div>
     </li>
   `).join('');
@@ -259,11 +270,19 @@ function renderProject(data) {
 }
 
 function renderCalendar(data) {
+  // data is array of calendar entries
+  if (!data?.length) {
+    return '<div class="empty">Nothing scheduled</div>';
+  }
+
+  const events = data.filter(e => e.entry_type === 'event');
+  const deadlines = data.filter(e => e.entry_type === 'deadline');
+
   let html = '';
 
-  if (data.events?.length) {
+  if (events.length) {
     html += '<div class="section-header">Events</div><ul>';
-    for (const e of data.events) {
+    for (const e of events) {
       const d = new Date(e.start_time);
       const dateStr = d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
       const timeStr = e.all_day ? 'all day' : d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
@@ -272,9 +291,9 @@ function renderCalendar(data) {
     html += '</ul>';
   }
 
-  if (data.deadlines?.length) {
+  if (deadlines.length) {
     html += '<div class="section-header">Deadlines</div><ul>';
-    for (const d of data.deadlines) {
+    for (const d of deadlines) {
       const date = new Date(d.start_time);
       const dateStr = date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
       html += `<li><div class="item"><span class="item-title">${esc(d.title)}</span><span class="item-meta">${dateStr}</span></div></li>`;
@@ -286,11 +305,15 @@ function renderCalendar(data) {
 }
 
 function renderToday(data) {
+  // data is { events: [...], overdue: [...] }
   let html = '';
 
-  if (data.events?.length) {
+  const events = data.events?.filter(e => e.entry_type === 'event') || [];
+  const deadlines = data.events?.filter(e => e.entry_type === 'deadline') || [];
+
+  if (events.length) {
     html += '<div class="section-header">Events</div><ul>';
-    for (const e of data.events) {
+    for (const e of events) {
       const d = new Date(e.start_time);
       const timeStr = e.all_day ? 'All day' : d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
       html += `<li><div class="item"><span class="item-title">${esc(e.title)}</span><span class="item-meta">${timeStr}</span></div></li>`;
@@ -298,9 +321,9 @@ function renderToday(data) {
     html += '</ul>';
   }
 
-  if (data.deadlines?.length) {
+  if (deadlines.length) {
     html += '<div class="section-header">Due Today</div><ul>';
-    for (const d of data.deadlines) {
+    for (const d of deadlines) {
       html += `<li><div class="item"><span class="item-title">${esc(d.title)}</span></div></li>`;
     }
     html += '</ul>';
@@ -318,11 +341,12 @@ function renderToday(data) {
 }
 
 function renderRecent(data) {
-  if (!data?.pages?.length) {
+  // data is array of pages
+  if (!data?.length) {
     return '<div class="empty">No recent pages</div>';
   }
 
-  const items = data.pages.map(p => `
+  const items = data.map(p => `
     <li>
       <div class="item">
         <span class="item-title">${esc(p.title)}</span>
