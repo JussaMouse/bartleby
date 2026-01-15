@@ -101,6 +101,29 @@ export class DashboardServer {
       res.json(recent);
     });
 
+    // Fast capture endpoint for voice - skips routing overhead
+    this.app.post('/api/capture', async (req, res) => {
+      if (!this.isAuthorized(req)) {
+        res.status(401).json({ error: 'Unauthorized' });
+        return;
+      }
+
+      const text = typeof req.body?.text === 'string' ? req.body.text.trim() : '';
+      if (!text) {
+        res.status(400).json({ error: 'Text is required' });
+        return;
+      }
+
+      try {
+        const task = this.garden.captureToInbox(text);
+        debug('Captured via voice API', { title: task.title });
+        res.json({ reply: `Captured: ${task.title}` });
+      } catch (err) {
+        error('Capture failed', { error: String(err) });
+        res.status(500).json({ error: 'Capture failed' });
+      }
+    });
+
     this.app.post('/api/chat', async (req, res) => {
       if (!this.isAuthorized(req)) {
         res.status(401).json({ error: 'Unauthorized' });
@@ -112,6 +135,9 @@ export class DashboardServer {
         res.status(400).json({ error: 'Text is required' });
         return;
       }
+
+      // Voice mode strips markdown for TTS
+      const voiceMode = req.query.voice === 'true' || req.query.voice === '1';
 
       try {
         this.services.context.recordMessage(text, true);
@@ -137,7 +163,13 @@ export class DashboardServer {
             response = "I'm not sure how to help with that. Try 'help' for commands.";
         }
 
-        const reply = response === '__EXIT__' ? 'Goodbye.' : response;
+        let reply = response === '__EXIT__' ? 'Goodbye.' : response;
+        
+        // Strip markdown for voice output
+        if (voiceMode) {
+          reply = this.stripMarkdownForVoice(reply);
+        }
+
         this.services.context.recordMessage(reply, false);
 
         res.json({ reply });
@@ -361,6 +393,36 @@ export class DashboardServer {
     const bearerMatch = authHeader.match(/^Bearer\s+(.+)$/i);
     const token = bearerMatch?.[1] || (req.headers['x-bartleby-token'] as string | undefined);
     return token === this.apiToken;
+  }
+
+  /**
+   * Strip markdown formatting for voice/TTS output
+   */
+  private stripMarkdownForVoice(text: string): string {
+    return text
+      // Remove code blocks
+      .replace(/```[\s\S]*?```/g, '')
+      .replace(/`([^`]+)`/g, '$1')
+      // Remove headers
+      .replace(/^#{1,6}\s+/gm, '')
+      // Remove bold/italic
+      .replace(/\*\*([^*]+)\*\*/g, '$1')
+      .replace(/\*([^*]+)\*/g, '$1')
+      .replace(/__([^_]+)__/g, '$1')
+      .replace(/_([^_]+)_/g, '$1')
+      // Remove links, keep text
+      .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+      // Remove bullet points
+      .replace(/^[\s]*[-*+]\s+/gm, '')
+      // Remove numbered lists prefix
+      .replace(/^\s*\d+\.\s+/gm, '')
+      // Remove horizontal rules
+      .replace(/^[-*_]{3,}\s*$/gm, '')
+      // Remove blockquotes
+      .replace(/^>\s*/gm, '')
+      // Collapse multiple newlines
+      .replace(/\n{3,}/g, '\n\n')
+      .trim();
   }
 
   private setupWebSocket() {

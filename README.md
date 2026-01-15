@@ -555,7 +555,7 @@ Images appear as thumbnails on project pages. Click to view full-size.
 
 ### Voice Commands
 
-On mobile (Safari), tap the mic and speak a command. Bartleby transcribes, processes, and replies with text and voice.
+Voice commands work via iOS Siri Shortcuts (see [Running on a Server](#option-3-siri-shortcuts-recommended-for-voice)). The shortcut handles speech-to-text and text-to-speech on-device for speed.
 
 Works with any command you'd type in the CLI.
 
@@ -602,31 +602,98 @@ Host bartleby
 
 Then just `ssh bartleby` — tunnel is created automatically.
 
-**Option 2: VPN (Tailscale, WireGuard)**
+**Option 2: Tailscale VPN (recommended for mobile)**
 
-For mobile access, a VPN is more practical than tunnels:
+Tailscale creates a secure mesh VPN between your devices. No port forwarding needed.
 
-1. Install Tailscale on server and phone
-2. Run `tailscale up` on both
-3. Access via tailnet hostname: `http://your-server:3333`
+**Setup on server (headless macOS):**
 
-When using a VPN, bind to all interfaces:
+```bash
+# Install
+brew install tailscale
+
+# Start daemon
+sudo tailscaled &
+
+# Authenticate (opens a URL to sign in)
+sudo tailscale up
+```
+
+**Make it start on boot:**
+
+```bash
+sudo tee /Library/LaunchDaemons/com.tailscale.tailscaled.plist << 'EOF'
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.tailscale.tailscaled</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/opt/homebrew/bin/tailscaled</string>
+    </array>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+</dict>
+</plist>
+EOF
+
+sudo launchctl load /Library/LaunchDaemons/com.tailscale.tailscaled.plist
+```
+
+**Setup on iPhone:**
+1. Install Tailscale from App Store
+2. Sign in with same account
+3. Access dashboard via Tailscale IP: `http://<server-tailscale-ip>:3333`
+
+Find your server's Tailscale IP:
+```bash
+tailscale ip -4
+```
+
+**Configure Bartleby for VPN access:**
+
 ```env
 DASHBOARD_HOST=0.0.0.0
 DASHBOARD_PORT=3333
 ```
 
-**Option 3: Siri Shortcuts**
+**Option 3: Siri Shortcuts (recommended for voice)**
 
-Create an iOS Shortcut for hands-free access:
+Use iOS Shortcuts for hands-free voice commands. All speech recognition and text-to-speech happens on-device for speed.
 
-1. **Dictate Text** → Variable `spokenText`
-2. **Get Contents of URL**
-   - URL: `http://your-server:3333/api/chat`
-   - Method: `POST`
-   - Headers: `Content-Type: application/json`, `Authorization: Bearer YOUR_TOKEN`
-   - Body: JSON `{ "text": spokenText }`
-3. **Speak Text** from the JSON response field `reply`
+**Quick Capture Shortcut** (fastest — dedicated endpoint):
+
+1. Open Shortcuts app → tap **+**
+2. Add action: **Dictate Text**
+3. Add action: **Get Contents of URL**
+   - URL: `http://<tailscale-ip>:3333/api/capture`
+   - Method: **POST**
+   - Headers: 
+     - `Content-Type`: `application/json`
+     - `Authorization`: `Bearer YOUR_TOKEN`
+   - Request Body: **JSON**
+     - Add field `text` with value: select **Dictated Text** variable
+4. Add action: **Get Dictionary Value**
+   - Key: `reply`
+5. Add action: **Speak Text** → select **Dictionary Value**
+6. Name shortcut "Bartleby Capture" (or "Capture" for shorter invocation)
+
+Now say "Hey Siri, Bartleby Capture" → speak your thought → hear confirmation.
+
+**General Command Shortcut** (any command):
+
+Same as above but use URL: `http://<tailscale-ip>:3333/api/chat?voice=true`
+
+The `?voice=true` parameter strips markdown from responses for cleaner TTS.
+
+**Tips:**
+- Add shortcuts to Home Screen for one-tap access
+- Use Shortcuts widget for quick capture
+- "Hey Siri, Capture" works if you name the shortcut just "Capture"
 
 ### API Token
 
