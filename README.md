@@ -4,11 +4,12 @@ The personal exocortex, locally.
 
 - [What is Bartleby?](#what-is-bartleby)
 - [Quick Start](#quick-start)
+- [First 10 Minutes](#first-10-minutes)
 - [Your Data](#your-data)
 - [GTD Workflow](#gtd-workflow)
 - [The Time System](#the-time-system)
-- [Configuration](#configuration)
 - [Dashboard](#dashboard)
+- [Configuration](#configuration)
 - [Troubleshooting](#troubleshooting)
 
 ## What is Bartleby?
@@ -67,6 +68,66 @@ You'll see:
 ```
 
 **Pro tip:** Hit `TAB` to autocomplete commands, page names, contexts, and projects.
+
+---
+
+## First 10 Minutes
+
+A tiny guided tour to make everything feel obvious.
+
+### 1) Capture anything
+
+```
+> capture call insurance about claim
+> capture idea for blog post
+> capture look into that thing Jake mentioned
+```
+
+### 2) Create your first action
+
+```
+> new action call mom @phone #family
+```
+
+### 3) Make a project and link actions
+
+```
+> new project 2025 taxes
+> new action gather W2 forms +2025-taxes
+> new action call accountant +2025-taxes @phone
+```
+
+### 4) Create a wiki page (entry) and a scratch note
+
+```
+> new entry house rules #family +home
+> new note cherry pie
+What would you like to add to this note?
+> (paste recipe)
+> done
+Any project or tags? (e.g., +project #tag1 #tag2, or ENTER to skip)
+> +thanksgiving #recipe
+```
+
+### 5) Import media
+
+```
+> import ~/photos/beach.jpg vacation photo +thailand #travel
+```
+
+### 6) Add an event in one line
+
+```
+> new event dentist tomorrow 2pm 15m reminder
+```
+
+### 7) Edit anything with tab completion
+
+```
+> edit nort[TAB]
+> edit northside-hs-attendance-zone
+> +home-search #schools
+```
 
 ---
 
@@ -272,7 +333,7 @@ Capture → Clarify → Organize → Review → Do
 **1. Capture everything** — Get it out of your head immediately.
 ```
 > capture call insurance about claim
-> capture idea for blog post  
+> capture idea for blog post
 > capture look into that thing Jake mentioned
 ```
 
@@ -349,10 +410,18 @@ Everything with a "when" shows up in one place.
 
 ```
 today                        Today's unified view
-calendar                     Upcoming events
+calendar                     Upcoming events and deadlines
 new event                    Create event (guided wizard)
-add event <title> at <time>  Create event (inline)
+new event <details>          Create event (inline)
 remind me <msg> in <time>    Set reminder
+```
+
+### Timed Actions (new behavior)
+
+If you add a **time** to an action’s `due:` it becomes a scheduled event in the Time System (30m default duration). It still behaves like a normal action, but you’ll see it on the calendar for that day.
+
+```
+> new action submit report due:tomorrow 11am
 ```
 
 ### Creating Events
@@ -401,8 +470,6 @@ The `when`, `who`, `where` keywords let you structure complex events clearly.
   09:00  📅 Team standup
   14:00  📅 1:1 with Sarah
   17:00  ⚠️ Submit report (due)
-
-> [15:30] 📲 Sent via Signal: "Stretch break"
 ```
 
 ### Notifications
@@ -413,6 +480,115 @@ When scheduled items come due, Bartleby notifies you:
 - **Signal** — Optionally sends to your phone (see [Configuration](#notifications-signal))
 
 If you weren't running when something was due, Bartleby handles missed items on next startup (configurable).
+
+---
+
+## Dashboard
+
+A minimal web UI for viewing and editing Garden pages while you work in the CLI.
+
+### Starting the Dashboard
+
+```bash
+# Terminal 1: Bartleby CLI
+pnpm start
+
+# Terminal 2: Dashboard server
+pnpm dashboard
+```
+
+Open http://localhost:3333 in your browser.
+
+### Panels
+
+The dashboard shows live-updating panels:
+
+| Panel | What it shows |
+|-------|---------------|
+| **Inbox** | Uncategorized captures |
+| **Next Actions** | Actions grouped by context |
+| **Projects** | Active projects (click to open) |
+| **Calendar** | Upcoming events + deadlines |
+| **Today** | Today's events + overdue items |
+| **Recent** | Last 10 modified pages |
+| **Project: X** | Specific project with its actions |
+
+Click the `+` buttons in the footer to add panels.
+
+### Editing Actions
+
+Click any action to edit inline:
+
+```
+pack bags                    →  pack bags @home +thailand-trip due:friday
+       ↑ click                        ↑ full text with tags appears
+```
+
+- Line expands showing the full action text with `@context`, `+project`, and `due:date`
+- Cursor appears at end — start typing to add/change tags
+- **Tab completion:** Type `@h[TAB]` → `@home`, or `+20[TAB]` → `+2025-taxes`
+- **Save:** `Enter` or click Save
+- **Cancel:** `Escape` or click Cancel
+- **Done:** Mark action complete (disappears instantly)
+- **→ Action:** (Inbox only) Convert to a real action and start editing
+
+### Editing Other Pages
+
+Click notes, entries, or projects to open the full editor modal:
+
+- Edit the raw markdown (including backmatter)
+- **Save:** `Cmd+S` or click Save
+- **Cancel:** `Escape` or click Cancel
+
+Changes are written to the `.md` file. The file watcher syncs everything — both CLI and dashboard see updates instantly.
+
+### Project Pages
+
+Click a project name to open its dedicated panel showing:
+
+- **Actions** — all actions linked to this project
+- **Media** — images and files (click for full-size lightbox)
+- **Notes** — notes linked to this project
+
+### Importing Media
+
+**Drag and drop** images or files onto the dashboard:
+
+1. Drag any file onto the dashboard
+2. Blue overlay appears: "Drop to import media"
+3. Enter a name (can include `+project` and `#tags`)
+4. File is copied to `garden/media/` and linked to the project
+
+Images appear as thumbnails on project pages. Click to view full-size.
+
+### Remote Access
+
+If Bartleby runs on a server, tunnel the dashboard to your local machine.
+
+**Quick command:**
+```bash
+ssh -L 3333:localhost:3333 user@your-server
+```
+
+**Or add to `~/.ssh/config` on your local machine:**
+```
+Host bartleby
+    HostName 192.168.1.100
+    User your-user
+    Port 22
+    LocalForward 3333 localhost:3333
+```
+
+Then just `ssh bartleby` — the tunnel is created automatically.
+
+Open http://localhost:3333 in your browser while the SSH session is active.
+
+### Configuration
+
+```env
+DASHBOARD_PORT=3333    # Default port
+DASHBOARD_HOST=0.0.0.0 # Bind to all interfaces (if not using tunnel)
+```
 
 ---
 
@@ -532,114 +708,6 @@ WEATHER_CITY=London       # City for weather queries
 ```
 
 Get a free API key at [openweathermap.org](https://openweathermap.org/api).
-
----
-
-## Dashboard
-
-A minimal web UI for viewing and editing Garden pages while you work in the CLI.
-
-### Starting the Dashboard
-
-```bash
-# Terminal 1: Bartleby CLI
-pnpm start
-
-# Terminal 2: Dashboard server
-pnpm dashboard
-```
-
-Open http://localhost:3333 in your browser.
-
-### Panels
-
-The dashboard shows live-updating panels:
-
-| Panel | What it shows |
-|-------|---------------|
-| **Inbox** | Uncategorized captures |
-| **Next Actions** | Actions grouped by context |
-| **Projects** | Active projects (click to open) |
-| **Today** | Today's events + overdue items |
-| **Recent** | Last 10 modified pages |
-| **Project: X** | Specific project with its actions |
-
-Click the `+` buttons in the footer to add panels.
-
-### Editing Actions
-
-Click any action to edit inline:
-
-```
-pack bags                    →  pack bags @home +thailand-trip due:friday
-       ↑ click                        ↑ full text with tags appears
-```
-
-- Line expands showing the full action text with `@context`, `+project`, and `due:date`
-- Cursor appears at end — start typing to add/change tags
-- **Tab completion:** Type `@h[TAB]` → `@home`, or `+20[TAB]` → `+2025-taxes`
-- **Save:** `Enter` or click Save
-- **Cancel:** `Escape` or click Cancel
-- **Done:** Mark action complete (disappears instantly)
-- **→ Action:** (Inbox only) Convert to a real action and start editing
-
-### Editing Other Pages
-
-Click notes, entries, or projects to open the full editor modal:
-
-- Edit the raw markdown (including backmatter)
-- **Save:** `Cmd+S` or click Save
-- **Cancel:** `Escape` or click Cancel
-
-Changes are written to the `.md` file. The file watcher syncs everything — both CLI and dashboard see updates instantly.
-
-### Project Pages
-
-Click a project name to open its dedicated panel showing:
-
-- **Actions** — all actions linked to this project
-- **Media** — images and files (click for full-size lightbox)
-- **Notes** — notes linked to this project
-
-### Importing Media
-
-**Drag and drop** images or files onto the dashboard:
-
-1. Drag any file onto the dashboard
-2. Blue overlay appears: "Drop to import media"
-3. Enter a name (can include `+project` and `#tags`)
-4. File is copied to `garden/media/` and linked to the project
-
-Images appear as thumbnails on project pages. Click to view full-size.
-
-### Remote Access
-
-If Bartleby runs on a server, tunnel the dashboard to your local machine.
-
-**Quick command:**
-```bash
-ssh -L 3333:localhost:3333 user@your-server
-```
-
-**Or add to `~/.ssh/config` on your local machine:**
-```
-Host bartleby
-    HostName 192.168.1.100
-    User your-user
-    Port 22
-    LocalForward 3333 localhost:3333
-```
-
-Then just `ssh bartleby` — the tunnel is created automatically.
-
-Open http://localhost:3333 in your browser while the SSH session is active.
-
-### Configuration
-
-```env
-DASHBOARD_PORT=3333    # Default port
-DASHBOARD_HOST=0.0.0.0 # Bind to all interfaces (if not using tunnel)
-```
 
 ---
 
