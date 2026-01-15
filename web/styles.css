@@ -70,8 +70,9 @@ header h1 {
 /* Main panels area */
 main#panels {
   flex: 1;
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  display: flex;
+  flex-wrap: wrap;
+  align-content: flex-start;
   gap: 1px;
   background: var(--border);
   overflow: auto;
@@ -82,8 +83,26 @@ main#panels {
   background: var(--bg-panel);
   display: flex;
   flex-direction: column;
+  position: relative;
+  flex: 1 1 300px;
+  min-width: 280px;
+  max-width: 100%;
   min-height: 200px;
   max-height: 100%;
+}
+ 
+.panel-resizer {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 6px;
+  height: 100%;
+  cursor: col-resize;
+  background: transparent;
+}
+
+.panel-resizer:hover {
+  background: rgba(88, 166, 255, 0.15);
 }
 
 .panel-header {

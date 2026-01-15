@@ -5,6 +5,7 @@ let reconnectTimer = null;
 const panels = new Map(); // view -> panel element
 let editingId = null; // Currently editing page ID
 const PANEL_STORAGE_KEY = 'bartleby.dashboard.panels';
+const PANEL_SIZE_KEY = 'bartleby.dashboard.panelSizes';
 
 // Autocomplete data (fetched once, refreshed on updates)
 let autocompleteData = { contexts: [], projects: [] };
@@ -93,6 +94,7 @@ function removePanel(view) {
     panel.remove();
     panels.delete(view);
     savePanelsToStorage();
+    removePanelSize(view);
     
     if (ws && ws.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify({ type: 'unsubscribe', view }));
@@ -138,8 +140,83 @@ function createPanel(view) {
       <div class="empty">Loading...</div>
     </div>
   `;
+
+  // Apply saved width (if any)
+  const savedWidth = getPanelSize(view);
+  if (savedWidth) {
+    panel.style.width = `${savedWidth}px`;
+    panel.style.flex = '0 0 auto';
+  }
+
+  // Add resizer handle
+  const resizer = document.createElement('div');
+  resizer.className = 'panel-resizer';
+  resizer.addEventListener('mousedown', (e) => startResize(e, panel, view));
+  panel.appendChild(resizer);
   
   return panel;
+}
+
+function startResize(e, panel, view) {
+  e.preventDefault();
+  const startX = e.clientX;
+  const startWidth = panel.getBoundingClientRect().width;
+  const minWidth = 280;
+
+  panel.style.flex = '0 0 auto';
+  document.body.style.cursor = 'col-resize';
+
+  const onMove = (evt) => {
+    const delta = evt.clientX - startX;
+    const newWidth = Math.max(minWidth, startWidth + delta);
+    panel.style.width = `${newWidth}px`;
+  };
+
+  const onUp = () => {
+    document.body.style.cursor = '';
+    const width = Math.round(panel.getBoundingClientRect().width);
+    savePanelSize(view, width);
+    window.removeEventListener('mousemove', onMove);
+    window.removeEventListener('mouseup', onUp);
+  };
+
+  window.addEventListener('mousemove', onMove);
+  window.addEventListener('mouseup', onUp);
+}
+
+function savePanelSize(view, width) {
+  try {
+    const raw = localStorage.getItem(PANEL_SIZE_KEY);
+    const sizes = raw ? JSON.parse(raw) : {};
+    sizes[view] = width;
+    localStorage.setItem(PANEL_SIZE_KEY, JSON.stringify(sizes));
+  } catch (e) {
+    console.warn('Failed to save panel size:', e);
+  }
+}
+
+function getPanelSize(view) {
+  try {
+    const raw = localStorage.getItem(PANEL_SIZE_KEY);
+    if (!raw) return null;
+    const sizes = JSON.parse(raw);
+    return sizes[view] || null;
+  } catch (e) {
+    console.warn('Failed to load panel size:', e);
+    return null;
+  }
+}
+
+function removePanelSize(view) {
+  try {
+    const raw = localStorage.getItem(PANEL_SIZE_KEY);
+    if (!raw) return;
+    const sizes = JSON.parse(raw);
+    delete sizes[view];
+    localStorage.setItem(PANEL_SIZE_KEY, JSON.stringify(sizes));
+  } catch (e) {
+    console.warn('Failed to remove panel size:', e);
+  }
 }
 
 function formatViewTitle(view) {
