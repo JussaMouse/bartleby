@@ -16,13 +16,12 @@ The personal exocortex, locally.
 
 ## What is Bartleby?
 
-Bartleby is a personal assistant that runs entirely on your machine. It works best paired with locally run LLMs.
+A local-first personal assistant. Runs on your machine with local LLMs.
 
-At its heart are **The Garden** and **The Shed**. The Garden is a personal wiki that grows with you, letting you curate a vast interconnected knowledgebase of articles, notes, and the projects they support. The Shed is the intelligent reference library. You feed it PDFs, books, and videos to support your knowledge work in The Garden and to power Bartleby's memory.
+- **The Garden** — Your wiki. Actions, projects, notes, contacts, calendar. Plain markdown files.
+- **The Shed** — Your reference library. Ingest PDFs, ask questions.
 
-Your tasks, calendar, contacts, journal — they all live in the Garden too. Everything connects. Everything is plain markdown you own forever.
-
-**Talk to Bartleby naturally.** Type or speak — both are just channels for the same conversation. The CLI gives you a keyboard, the Dashboard gives you a mic. Same commands, same brain, same data.
+Type commands in the CLI or speak them in the Dashboard. Same system, same data.
 
 ---
 
@@ -75,7 +74,7 @@ You'll see:
 
 ## First 10 Minutes
 
-A tiny guided tour to make everything feel obvious.
+Try these commands.
 
 ### 1) Capture anything
 
@@ -139,15 +138,11 @@ Everything lives on your machine in three places.
 
 ### The Garden
 
-Your personal wiki — plain markdown files you own forever.
+Plain markdown files. One file per page.
 
-The Garden is where your knowledge lives: wiki-like pages, projects, and notes. But the same system includes contacts, events, daily journals, and reference media. Over time it becomes your external brain — a searchable map of everything you know.
-
-Your productivity lives here too — actions, projects, and inbox items are all special page types in The Garden.
-
-It consists of two layers: the **files** and the **database**.
-- The files are a flat dir of markdown files, one for each page. The files each have lines of metadata at the bottom (YAML backmatter).
-- The database system monitors these files for changes and updates the database. A db gives Bartleby the speed and flexibility to make the most of this centralized store of knowledge.
+Two layers:
+- **Files** — Flat directory of `.md` files with YAML backmatter
+- **Database** — SQLite index, rebuilt automatically from files
 
 **Page types:**
 | Type | What it's for |
@@ -182,13 +177,10 @@ Location: `./garden/`
 
 ### The Shed
 
-Your reference library. Ingest PDF, YouTube, web page, ebook. Query them with natural language. This is where you feed Bartleby the expertise he needs to help do knowledge work.
+Ingest documents, ask questions.
 
-**How it works:**
-1. You ingest a document (PDF, markdown, text)
-2. Bartleby chunks it and creates embeddings
-3. You ask questions, Bartleby finds relevant chunks
-4. It synthesizes an answer from your documents
+1. `ingest <file>` — chunks and embeds
+2. `ask shed <question>` — searches chunks, synthesizes answer
 
 **Commands:**
 ```
@@ -243,11 +235,7 @@ Location: `./database/memory/`
 
 ## GTD Workflow
 
-Bartleby implements Getting Things Done (GTD) — a system for capturing everything on your mind and organizing it so you always know what to do next.
-
-### The Core Idea
-
-Your brain is for having ideas, not holding them. GTD gets everything out of your head and into a trusted system so you can focus on doing instead of remembering.
+Capture everything. Process later. Work from lists.
 
 ### Things You'll Work With
 
@@ -487,9 +475,7 @@ If you weren't running when something was due, Bartleby handles missed items on 
 
 ## Dashboard
 
-A web interface for Bartleby — view panels, edit pages, or speak commands.
-
-The CLI and Dashboard are two windows into the same system. Type commands in the terminal or speak them through the mic. Same brain, same data, real-time sync.
+Web UI at http://localhost:3333. View panels, edit pages, speak commands. Same data as CLI.
 
 ### Starting the Dashboard
 
@@ -575,7 +561,7 @@ Works with any command you'd type in the CLI.
 
 ## Running on a Server
 
-Bartleby works great on a home server or VPS. Run it headless, access from anywhere.
+Run headless, access remotely.
 
 ### Basic Server Setup
 
@@ -786,8 +772,6 @@ BARTLEBY_API_TOKEN=       # Optional: require token for /api/chat
 
 ## Backups
 
-Your data is yours. Back it up.
-
 ### What to Back Up
 
 | Path | Contains | Format |
@@ -879,7 +863,3 @@ Set `LOG_LEVEL=DEBUG` for verbose output.
 ## License
 
 MIT — see [LICENSE](LICENSE)
-
----
-
-*Built for humans who want to own their data.*
