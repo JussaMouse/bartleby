@@ -357,6 +357,8 @@ export class DashboardServer {
         
         data = { project, actions, media, notes };
       }
+    } else if (view === 'calendar') {
+      data = this.calendar.getUpcoming(15);
     } else if (view === 'today') {
       data = {
         events: this.calendar.getForDay(new Date()),
