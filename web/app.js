@@ -1,240 +1,750 @@
-const state = {
-  status: 'idle',
-  listening: false,
-  speaking: false,
-  pendingTranscript: '',
-};
+// Bartleby Dashboard
 
-const elements = {
-  status: document.getElementById('status'),
-  log: document.getElementById('log'),
-  transcript: document.getElementById('transcript'),
-  micButton: document.getElementById('mic-button'),
-  stopButton: document.getElementById('stop-button'),
-  textForm: document.getElementById('text-form'),
-  textInput: document.getElementById('text-input'),
-  tokenButton: document.getElementById('token-button'),
-  ttsToggle: document.getElementById('tts-toggle'),
-};
+const PANEL_STORAGE_KEY = 'bartleby.panels';
+const panels = new Map();
+let ws = null;
+let autocompleteData = { contexts: [], projects: [] };
 
-const tokenStorageKey = 'bartleby.apiToken';
+// Initialize
+document.addEventListener('DOMContentLoaded', () => {
+  connectWebSocket();
+  loadPanels();
+  fetchAutocomplete();
+  setupDragDrop();
+});
 
-function getApiToken() {
-  return localStorage.getItem(tokenStorageKey) || '';
+// WebSocket
+function connectWebSocket() {
+  const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  ws = new WebSocket(`${protocol}//${location.host}`);
+
+  ws.onopen = () => {
+    document.getElementById('status').textContent = 'connected';
+    document.getElementById('status').className = 'status connected';
+    
+    // Subscribe to all current panels
+    for (const view of panels.keys()) {
+      ws.send(JSON.stringify({ type: 'subscribe', view }));
+    }
+  };
+
+  ws.onclose = () => {
+    document.getElementById('status').textContent = 'disconnected';
+    document.getElementById('status').className = 'status disconnected';
+    setTimeout(connectWebSocket, 3000);
+  };
+
+  ws.onmessage = (event) => {
+    const msg = JSON.parse(event.data);
+    if (msg.type === 'update' && msg.view) {
+      renderPanel(msg.view, msg.data);
+    }
+  };
 }
 
-function setApiToken(token) {
-  if (token) {
-    localStorage.setItem(tokenStorageKey, token);
-  } else {
-    localStorage.removeItem(tokenStorageKey);
-  }
-}
-
-function initTokenFromUrl() {
-  const params = new URLSearchParams(window.location.search);
-  const token = params.get('token');
-  if (token) {
-    setApiToken(token);
-  }
-}
-
-function setStatus(text, kind = 'idle') {
-  elements.status.textContent = text;
-  elements.status.dataset.state = kind;
-}
-
-function appendMessage(role, text) {
-  const item = document.createElement('div');
-  item.className = `message ${role}`;
-
-  const label = document.createElement('div');
-  label.className = 'message-label';
-  label.textContent = role === 'user' ? 'You' : 'Bartleby';
-
-  const content = document.createElement('div');
-  content.className = 'message-text';
-  content.textContent = text;
-
-  item.appendChild(label);
-  item.appendChild(content);
-  elements.log.appendChild(item);
-  elements.log.scrollTop = elements.log.scrollHeight;
-}
-
-function updateTranscript(text) {
-  elements.transcript.textContent = text || 'Tap the mic to speak.';
-}
-
-async function sendText(text, source = 'text') {
-  const clean = text.trim();
-  if (!clean) return;
-
-  appendMessage('user', clean);
-  updateTranscript(source === 'voice' ? clean : '');
-  setStatus('Sending...', 'sending');
-
-  const token = getApiToken();
-  const headers = { 'Content-Type': 'application/json' };
-  if (token) {
-    headers.Authorization = `Bearer ${token}`;
-  }
-
+// Autocomplete data
+async function fetchAutocomplete() {
   try {
-    const res = await fetch('/api/chat', {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({ text: clean }),
-    });
-
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      throw new Error(err.error || 'Request failed');
+    const res = await fetch('/api/autocomplete');
+    if (res.ok) {
+      autocompleteData = await res.json();
     }
+  } catch (e) {
+    console.warn('Failed to fetch autocomplete data:', e);
+  }
+}
 
-    const payload = await res.json();
-    const reply = payload.reply || '';
-    appendMessage('assistant', reply);
+// Panel management
+function addPanel(view) {
+  if (panels.has(view)) return;
 
-    if (elements.ttsToggle.checked) {
-      speak(reply);
-    } else {
-      setStatus('Idle', 'idle');
+  const panel = createPanel(view);
+  document.getElementById('panels').appendChild(panel);
+  panels.set(view, panel);
+  savePanels();
+
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify({ type: 'subscribe', view }));
+  }
+}
+
+function removePanel(view) {
+  const panel = panels.get(view);
+  if (panel) {
+    panel.remove();
+    panels.delete(view);
+    savePanels();
+
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: 'unsubscribe', view }));
     }
-  } catch (err) {
-    console.error('Chat request failed', err);
-    setStatus('Request failed', 'error');
   }
 }
 
-function speak(text) {
-  if (!text) {
-    setStatus('Idle', 'idle');
-    return;
-  }
-
-  stopSpeaking();
-  const utterance = new SpeechSynthesisUtterance(text);
-  utterance.onstart = () => {
-    state.speaking = true;
-    setStatus('Speaking...', 'speaking');
-  };
-  utterance.onend = () => {
-    state.speaking = false;
-    setStatus('Idle', 'idle');
-  };
-  utterance.onerror = () => {
-    state.speaking = false;
-    setStatus('Speech failed', 'error');
-  };
-  speechSynthesis.speak(utterance);
+function savePanels() {
+  const views = Array.from(panels.keys());
+  localStorage.setItem(PANEL_STORAGE_KEY, JSON.stringify(views));
 }
 
-function stopSpeaking() {
-  if (speechSynthesis.speaking || speechSynthesis.pending) {
-    speechSynthesis.cancel();
+function loadPanels() {
+  let views = [];
+  try {
+    const raw = localStorage.getItem(PANEL_STORAGE_KEY);
+    if (raw) {
+      views = JSON.parse(raw);
+    }
+  } catch (e) {}
+
+  if (!views.length) {
+    views = ['inbox', 'next-actions'];
   }
-  state.speaking = false;
+
+  for (const view of views) {
+    addPanel(view);
+  }
 }
 
-const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-let recognition = null;
+function createPanel(view) {
+  const panel = document.createElement('div');
+  panel.className = 'panel';
+  panel.dataset.view = view;
 
-function setupRecognition() {
-  if (!SpeechRecognition) {
-    setStatus('Speech not supported', 'error');
-    elements.micButton.disabled = true;
-    updateTranscript('Speech recognition is not available on this device.');
-    return;
+  const title = formatViewTitle(view);
+
+  panel.innerHTML = `
+    <div class="panel-header">
+      <h2>${title}</h2>
+      <button class="panel-close" onclick="removePanel('${view}')">&times;</button>
+    </div>
+    <div class="panel-content">
+      <div class="empty">Loading...</div>
+    </div>
+  `;
+
+  return panel;
+}
+
+function formatViewTitle(view) {
+  if (view.startsWith('project:')) {
+    return view.slice(8);
+  }
+  return view.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+}
+
+function promptProjectPanel() {
+  const name = prompt('Project name:');
+  if (name) {
+    addPanel('project:' + name);
+  }
+}
+
+// Panel rendering
+function renderPanel(view, data) {
+  const panel = panels.get(view);
+  if (!panel) return;
+
+  const content = panel.querySelector('.panel-content');
+
+  if (view === 'inbox') {
+    content.innerHTML = renderInbox(data);
+  } else if (view === 'next-actions') {
+    content.innerHTML = renderNextActions(data);
+  } else if (view === 'projects') {
+    content.innerHTML = renderProjects(data);
+  } else if (view.startsWith('project:')) {
+    content.innerHTML = renderProject(data);
+  } else if (view === 'calendar') {
+    content.innerHTML = renderCalendar(data);
+  } else if (view === 'today') {
+    content.innerHTML = renderToday(data);
+  } else if (view === 'recent') {
+    content.innerHTML = renderRecent(data);
+  } else {
+    content.innerHTML = `<div class="empty">Unknown view: ${view}</div>`;
+  }
+}
+
+function renderInbox(data) {
+  if (!data?.items?.length) {
+    return '<div class="empty">Inbox empty</div>';
+  }
+  const items = data.items.map(item => renderActionItem(item, true)).join('');
+  return `<ul>${items}</ul>`;
+}
+
+function renderNextActions(data) {
+  if (!data?.contexts) {
+    return '<div class="empty">No actions</div>';
   }
 
-  recognition = new SpeechRecognition();
-  recognition.lang = navigator.language || 'en-US';
-  recognition.interimResults = true;
-  recognition.continuous = false;
+  let html = '';
+  for (const [ctx, actions] of Object.entries(data.contexts)) {
+    if (actions.length === 0) continue;
+    html += `<div class="section-header">${ctx}</div>`;
+    html += '<ul>' + actions.map(a => renderActionItem(a)).join('') + '</ul>';
+  }
 
-  recognition.onstart = () => {
-    state.listening = true;
-    state.pendingTranscript = '';
-    setStatus('Listening...', 'listening');
-    elements.micButton.textContent = 'Stop Listening';
-  };
+  return html || '<div class="empty">No actions</div>';
+}
 
-  recognition.onresult = (event) => {
-    let interim = '';
-    for (let i = event.resultIndex; i < event.results.length; i += 1) {
-      const result = event.results[i];
-      if (result.isFinal) {
-        state.pendingTranscript += result[0].transcript;
+function renderProjects(data) {
+  if (!data?.projects?.length) {
+    return '<div class="empty">No projects</div>';
+  }
+
+  const items = data.projects.map(p => `
+    <li>
+      <div class="item clickable" onclick="addPanel('project:${esc(p.title)}')">
+        <span class="item-title">${esc(p.title)}</span>
+        <span class="item-meta">${p.actionCount || 0} actions</span>
+      </div>
+    </li>
+  `).join('');
+
+  return `<ul>${items}</ul>`;
+}
+
+function renderProject(data) {
+  if (!data?.project) {
+    return '<div class="empty">Project not found</div>';
+  }
+
+  let html = '';
+
+  // Actions
+  if (data.actions?.length) {
+    html += '<div class="section-header">Actions</div>';
+    html += '<ul>' + data.actions.map(a => renderActionItem(a)).join('') + '</ul>';
+  }
+
+  // Media
+  if (data.media?.length) {
+    html += '<div class="section-header">Media</div>';
+    html += '<div class="media-grid">';
+    for (const m of data.media) {
+      const meta = m.metadata ? JSON.parse(m.metadata) : {};
+      const isImage = meta.mimeType?.startsWith('image/');
+      if (isImage) {
+        html += `
+          <div class="media-item" onclick="openLightbox('/media/${esc(meta.fileName)}', '${esc(m.title)}')">
+            <img src="/media/${esc(meta.fileName)}" alt="${esc(m.title)}">
+            <span class="media-title">${esc(m.title)}</span>
+          </div>
+        `;
       } else {
-        interim += result[0].transcript;
+        html += `
+          <div class="media-item file">
+            <span class="media-icon">📄</span>
+            <span class="media-title">${esc(m.title)}</span>
+          </div>
+        `;
       }
     }
-    updateTranscript(interim || state.pendingTranscript);
-  };
+    html += '</div>';
+  }
 
-  recognition.onerror = (event) => {
-    console.warn('Speech recognition error', event.error);
-    state.listening = false;
-    elements.micButton.textContent = 'Start Listening';
-    setStatus('Mic error', 'error');
-  };
+  // Notes
+  if (data.notes?.length) {
+    html += '<div class="section-header">Notes</div>';
+    html += '<ul>' + data.notes.map(n => `
+      <li>
+        <div class="item">
+          <span class="item-title">${esc(n.title)}</span>
+        </div>
+      </li>
+    `).join('') + '</ul>';
+  }
 
-  recognition.onend = () => {
-    const text = state.pendingTranscript.trim();
-    state.listening = false;
-    elements.micButton.textContent = 'Start Listening';
-
-    if (text) {
-      sendText(text, 'voice');
-    } else {
-      setStatus('Idle', 'idle');
-    }
-  };
+  return html || '<div class="empty">Empty project</div>';
 }
 
-function toggleListening() {
-  if (!recognition) return;
-  if (state.listening) {
-    recognition.stop();
+function renderCalendar(data) {
+  let html = '';
+
+  if (data.events?.length) {
+    html += '<div class="section-header">Events</div><ul>';
+    for (const e of data.events) {
+      const d = new Date(e.start_time);
+      const dateStr = d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+      const timeStr = e.all_day ? 'all day' : d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+      html += `<li><div class="item"><span class="item-title">${esc(e.title)}</span><span class="item-meta">${dateStr} ${timeStr}</span></div></li>`;
+    }
+    html += '</ul>';
+  }
+
+  if (data.deadlines?.length) {
+    html += '<div class="section-header">Deadlines</div><ul>';
+    for (const d of data.deadlines) {
+      const date = new Date(d.start_time);
+      const dateStr = date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+      html += `<li><div class="item"><span class="item-title">${esc(d.title)}</span><span class="item-meta">${dateStr}</span></div></li>`;
+    }
+    html += '</ul>';
+  }
+
+  return html || '<div class="empty">Nothing scheduled</div>';
+}
+
+function renderToday(data) {
+  let html = '';
+
+  if (data.events?.length) {
+    html += '<div class="section-header">Events</div><ul>';
+    for (const e of data.events) {
+      const d = new Date(e.start_time);
+      const timeStr = e.all_day ? 'All day' : d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+      html += `<li><div class="item"><span class="item-title">${esc(e.title)}</span><span class="item-meta">${timeStr}</span></div></li>`;
+    }
+    html += '</ul>';
+  }
+
+  if (data.deadlines?.length) {
+    html += '<div class="section-header">Due Today</div><ul>';
+    for (const d of data.deadlines) {
+      html += `<li><div class="item"><span class="item-title">${esc(d.title)}</span></div></li>`;
+    }
+    html += '</ul>';
+  }
+
+  if (data.overdue?.length) {
+    html += '<div class="section-header">Overdue</div><ul>';
+    for (const o of data.overdue) {
+      html += `<li><div class="item"><span class="item-title">${esc(o.title)}</span><span class="item-meta item-due">${o.due_date}</span></div></li>`;
+    }
+    html += '</ul>';
+  }
+
+  return html || '<div class="empty">Nothing for today</div>';
+}
+
+function renderRecent(data) {
+  if (!data?.pages?.length) {
+    return '<div class="empty">No recent pages</div>';
+  }
+
+  const items = data.pages.map(p => `
+    <li>
+      <div class="item">
+        <span class="item-title">${esc(p.title)}</span>
+        <span class="item-meta">${p.type}</span>
+      </div>
+    </li>
+  `).join('');
+
+  return `<ul>${items}</ul>`;
+}
+
+// Action item with inline editing
+function renderActionItem(task, isInbox = false) {
+  const project = task.project ? ` +${task.project}` : '';
+  const due = task.due_date ? ` due:${task.due_date.split('T')[0]}` : '';
+  const context = task.context ? ` ${task.context}` : '';
+  const fullText = `${task.title}${context}${project}${due}`;
+
+  return `
+    <li class="item action-item" data-id="${task.id}" data-full="${esc(fullText)}" data-context="${task.context || ''}">
+      <div class="action-display" onclick="startEdit(this.parentElement)">
+        <span class="item-title">${esc(task.title)}</span>
+        <span class="item-meta">
+          ${task.project ? `<span class="item-project">+${esc(task.project)}</span>` : ''}
+          ${task.due_date ? `<span class="item-due">${formatDue(task.due_date)}</span>` : ''}
+        </span>
+      </div>
+      <div class="action-edit hidden">
+        <input type="text" class="inline-input" value="${esc(fullText)}"
+               onkeydown="handleEditKey(event, this)"
+               onblur="handleEditBlur(event, this)">
+        <div class="inline-actions">
+          <button class="btn-inline save" onclick="saveEdit(this.closest('.action-item'))">Save</button>
+          <button class="btn-inline" onclick="cancelEdit(this.closest('.action-item'))">Cancel</button>
+          ${isInbox ? `<button class="btn-inline process" onclick="processItem(this.closest('.action-item'))">→ Action</button>` : ''}
+          <button class="btn-inline done" onclick="markDone(this.closest('.action-item').dataset.id)">Done</button>
+        </div>
+        <div class="autocomplete-menu hidden"></div>
+      </div>
+    </li>
+  `;
+}
+
+function formatDue(dateStr) {
+  if (!dateStr) return '';
+  if (dateStr.includes('T')) {
+    const [date, time] = dateStr.split('T');
+    const [h, m] = time.split(':').map(Number);
+    const ampm = h >= 12 ? 'pm' : 'am';
+    const hour = h % 12 || 12;
+    return `${date} ${hour}:${m.toString().padStart(2, '0')}${ampm}`;
+  }
+  return dateStr;
+}
+
+// Inline editing
+function startEdit(item) {
+  document.querySelectorAll('.action-item.editing').forEach(el => {
+    if (el !== item) cancelEdit(el);
+  });
+
+  item.classList.add('editing');
+  item.querySelector('.action-display').classList.add('hidden');
+  item.querySelector('.action-edit').classList.remove('hidden');
+
+  const input = item.querySelector('.inline-input');
+  input.focus();
+  input.setSelectionRange(input.value.length, input.value.length);
+}
+
+function cancelEdit(item) {
+  if (!item) return;
+
+  item.classList.remove('editing');
+  item.querySelector('.action-display').classList.remove('hidden');
+  item.querySelector('.action-edit').classList.add('hidden');
+
+  const input = item.querySelector('.inline-input');
+  input.value = item.dataset.full;
+  hideAutocomplete(item);
+}
+
+function handleEditBlur(event, input) {
+  setTimeout(() => {
+    const item = input.closest('.action-item');
+    if (!item) return;
+
+    const editArea = item.querySelector('.action-edit');
+    if (!editArea.contains(document.activeElement)) {
+      cancelEdit(item);
+    }
+  }, 150);
+}
+
+function handleEditKey(event, input) {
+  const item = input.closest('.action-item');
+  const menu = item.querySelector('.autocomplete-menu');
+
+  if (event.key === 'Escape') {
+    event.preventDefault();
+    cancelEdit(item);
     return;
   }
 
-  try {
-    recognition.start();
-  } catch (err) {
-    console.warn('Failed to start recognition', err);
+  if (event.key === 'Enter') {
+    event.preventDefault();
+    const selected = menu.querySelector('.autocomplete-item.selected');
+    if (selected && !menu.classList.contains('hidden')) {
+      applyAutocomplete(input, selected.dataset.value);
+      hideAutocomplete(item);
+    } else {
+      saveEdit(item);
+    }
+    return;
+  }
+
+  if (event.key === 'Tab') {
+    event.preventDefault();
+
+    if (!menu.classList.contains('hidden')) {
+      const selected = menu.querySelector('.autocomplete-item.selected');
+      if (selected) {
+        applyAutocomplete(input, selected.dataset.value);
+        hideAutocomplete(item);
+        return;
+      }
+    }
+
+    // Trigger autocomplete
+    const cursorPos = input.selectionStart;
+    const text = input.value;
+    const beforeCursor = text.slice(0, cursorPos);
+
+    const contextMatch = beforeCursor.match(/@(\w*)$/);
+    const projectMatch = beforeCursor.match(/\+([^\s]*)$/);
+
+    if (contextMatch) {
+      const partial = contextMatch[1].toLowerCase();
+      const matches = autocompleteData.contexts.filter(c =>
+        c.toLowerCase().startsWith('@' + partial) || c.toLowerCase().startsWith(partial)
+      );
+      showAutocomplete(item, matches, '@');
+    } else if (projectMatch) {
+      const partial = projectMatch[1].toLowerCase();
+      const matches = autocompleteData.projects.filter(p =>
+        p.toLowerCase().startsWith(partial) ||
+        p.toLowerCase().replace(/\s+/g, '-').startsWith(partial)
+      );
+      showAutocomplete(item, matches.map(p => '+' + p.toLowerCase().replace(/\s+/g, '-')), '+');
+    }
+    return;
+  }
+
+  if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+    if (!menu.classList.contains('hidden')) {
+      event.preventDefault();
+      navigateAutocomplete(menu, event.key === 'ArrowDown' ? 1 : -1);
+    }
   }
 }
 
-function bindEvents() {
-  elements.micButton.addEventListener('click', toggleListening);
-  elements.stopButton.addEventListener('click', () => {
-    stopSpeaking();
-    setStatus('Idle', 'idle');
+function showAutocomplete(item, matches, prefix) {
+  const menu = item.querySelector('.autocomplete-menu');
+
+  if (matches.length === 0) {
+    hideAutocomplete(item);
+    return;
+  }
+
+  menu.innerHTML = matches.slice(0, 8).map((m, i) => `
+    <div class="autocomplete-item ${i === 0 ? 'selected' : ''}" data-value="${esc(m)}"
+         onclick="applyAutocompleteClick(this)">${esc(m)}</div>
+  `).join('');
+
+  menu.classList.remove('hidden');
+}
+
+function hideAutocomplete(item) {
+  const menu = item.querySelector('.autocomplete-menu');
+  if (menu) menu.classList.add('hidden');
+}
+
+function navigateAutocomplete(menu, direction) {
+  const items = menu.querySelectorAll('.autocomplete-item');
+  const current = menu.querySelector('.autocomplete-item.selected');
+  let currentIndex = Array.from(items).indexOf(current);
+
+  currentIndex += direction;
+  if (currentIndex < 0) currentIndex = items.length - 1;
+  if (currentIndex >= items.length) currentIndex = 0;
+
+  items.forEach((item, i) => {
+    item.classList.toggle('selected', i === currentIndex);
+  });
+}
+
+function applyAutocompleteClick(el) {
+  const item = el.closest('.action-item');
+  const input = item.querySelector('.inline-input');
+  applyAutocomplete(input, el.dataset.value);
+  hideAutocomplete(item);
+  input.focus();
+}
+
+function applyAutocomplete(input, value) {
+  const cursorPos = input.selectionStart;
+  const text = input.value;
+  const beforeCursor = text.slice(0, cursorPos);
+  const afterCursor = text.slice(cursorPos);
+
+  let newBefore;
+  if (value.startsWith('@')) {
+    newBefore = beforeCursor.replace(/@\w*$/, value);
+  } else if (value.startsWith('+')) {
+    newBefore = beforeCursor.replace(/\+[^\s]*$/, value);
+  } else {
+    newBefore = beforeCursor + value;
+  }
+
+  input.value = newBefore + afterCursor;
+  input.setSelectionRange(newBefore.length, newBefore.length);
+}
+
+async function saveEdit(item) {
+  const input = item.querySelector('.inline-input');
+  const text = input.value.trim();
+  const id = item.dataset.id;
+
+  let title = text;
+  let context = null;
+  let project = null;
+  let due_date = null;
+
+  const contextMatch = text.match(/@(\w+)/);
+  if (contextMatch) {
+    context = '@' + contextMatch[1];
+    title = title.replace(/@\w+/, '').trim();
+  }
+
+  const projectMatch = text.match(/\+([^\s]+)/);
+  if (projectMatch) {
+    project = projectMatch[1];
+    title = title.replace(/\+[^\s]+/, '').trim();
+  }
+
+  const dueMatch = text.match(/due:(\S+)/i);
+  if (dueMatch) {
+    due_date = parseDueDate(dueMatch[1]);
+    title = title.replace(/due:\S+/i, '').trim();
+  }
+
+  title = title.replace(/\s+/g, ' ').trim();
+
+  try {
+    const res = await fetch(`/api/action/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title, context, project, due_date }),
+    });
+
+    if (!res.ok) throw new Error('Failed to save');
+    cancelEdit(item);
+  } catch (e) {
+    console.error('Failed to save:', e);
+    alert('Failed to save action');
+  }
+}
+
+function parseDueDate(str) {
+  const today = new Date();
+  const s = str.toLowerCase();
+
+  if (s === 'today') {
+    return today.toISOString().split('T')[0];
+  }
+  if (s === 'tomorrow') {
+    const d = new Date(today);
+    d.setDate(d.getDate() + 1);
+    return d.toISOString().split('T')[0];
+  }
+
+  const days = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+  const dayIndex = days.indexOf(s);
+  if (dayIndex !== -1) {
+    const d = new Date(today);
+    const diff = (dayIndex - d.getDay() + 7) % 7 || 7;
+    d.setDate(d.getDate() + diff);
+    return d.toISOString().split('T')[0];
+  }
+
+  if (/^\d{4}-\d{2}-\d{2}$/.test(str)) {
+    return str;
+  }
+
+  const mdMatch = str.match(/^(\d{1,2})\/(\d{1,2})$/);
+  if (mdMatch) {
+    const m = parseInt(mdMatch[1], 10) - 1;
+    const d = parseInt(mdMatch[2], 10);
+    let year = today.getFullYear();
+    const parsed = new Date(year, m, d);
+    if (parsed < today) year++;
+    return `${year}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+  }
+
+  return str;
+}
+
+async function markDone(id) {
+  try {
+    const res = await fetch(`/api/action/${id}/done`, { method: 'POST' });
+    if (!res.ok) throw new Error('Failed');
+
+    const item = document.querySelector(`[data-id="${id}"]`);
+    if (item) {
+      item.style.opacity = '0.5';
+      item.style.pointerEvents = 'none';
+      setTimeout(() => item.remove(), 300);
+    }
+  } catch (e) {
+    console.error('Failed to mark done:', e);
+  }
+}
+
+async function processItem(item) {
+  const id = item.dataset.id;
+  const input = item.querySelector('.inline-input');
+
+  let text = input.value.replace(/@inbox\s*/gi, '').trim();
+  input.value = text;
+
+  try {
+    await fetch(`/api/action/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ context: null }),
+    });
+  } catch (e) {
+    console.error('Failed to process:', e);
+  }
+}
+
+// Drag and drop
+function setupDragDrop() {
+  const overlay = document.getElementById('drop-overlay');
+
+  document.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    overlay.classList.remove('hidden');
   });
 
-  elements.textForm.addEventListener('submit', (event) => {
-    event.preventDefault();
-    const value = elements.textInput.value;
-    elements.textInput.value = '';
-    sendText(value, 'text');
+  document.addEventListener('dragleave', (e) => {
+    if (e.relatedTarget === null) {
+      overlay.classList.add('hidden');
+    }
   });
 
-  elements.tokenButton.addEventListener('click', () => {
-    const current = getApiToken();
-    const token = prompt('API token (leave empty to clear):', current);
-    if (token !== null) {
-      setApiToken(token.trim());
+  document.addEventListener('drop', async (e) => {
+    e.preventDefault();
+    overlay.classList.add('hidden');
+
+    const files = e.dataTransfer.files;
+    if (files.length === 0) return;
+
+    const file = files[0];
+    const name = prompt('Name for this media (can include +project #tags):', file.name.replace(/\.[^.]+$/, ''));
+    if (!name) return;
+
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('name', name);
+
+    try {
+      const res = await fetch('/api/media/upload', { method: 'POST', body: formData });
+      if (!res.ok) throw new Error('Upload failed');
+      showToast('Media imported');
+    } catch (e) {
+      console.error('Upload failed:', e);
+      showToast('Upload failed', true);
     }
   });
 }
 
-function init() {
-  initTokenFromUrl();
-  setupRecognition();
-  bindEvents();
-  setStatus('Idle', 'idle');
+// Lightbox
+function openLightbox(src, title) {
+  document.getElementById('lightbox-img').src = src;
+  document.getElementById('lightbox-title').textContent = title;
+  document.getElementById('lightbox').classList.remove('hidden');
 }
 
-document.addEventListener('DOMContentLoaded', init);
+function closeLightbox(event) {
+  if (event.target.tagName !== 'IMG') {
+    document.getElementById('lightbox').classList.add('hidden');
+  }
+}
+
+// Toast
+function showToast(message, isError = false) {
+  const toast = document.createElement('div');
+  toast.className = 'toast' + (isError ? ' error' : '');
+  toast.textContent = message;
+  toast.style.cssText = `
+    position: fixed;
+    bottom: 80px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--bg-panel);
+    border: 1px solid ${isError ? 'var(--danger)' : 'var(--success)'};
+    color: var(--text-bright);
+    padding: 10px 20px;
+    border-radius: 6px;
+    z-index: 1001;
+  `;
+  document.body.appendChild(toast);
+  setTimeout(() => toast.remove(), 3000);
+}
+
+// Utility
+function esc(str) {
+  if (!str) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
