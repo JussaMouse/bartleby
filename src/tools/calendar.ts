@@ -33,13 +33,31 @@ export const showCalendar: Tool = {
 
     const lines: string[] = [];
 
+    const formatReminder = (event: any): string | null => {
+      if (event.reminder_minutes && event.reminder_minutes > 0) {
+        const start = new Date(event.start_time);
+        const reminderTime = new Date(start.getTime() - event.reminder_minutes * 60 * 1000);
+        return reminderTime.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+      }
+      if (event.source_type === 'garden') {
+        const tasks = context.services.scheduler.getByRelatedRecord(event.source_id, 'system');
+        if (tasks.length > 0) {
+          const nextRun = new Date(tasks[0].nextRun);
+          return nextRun.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+        }
+      }
+      return null;
+    };
+
     if (events.length > 0) {
       lines.push('**📅 Upcoming Events**');
       for (const event of events) {
         const date = new Date(event.start_time);
         const dateStr = date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
         const timeStr = event.all_day ? 'all day' : date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
-        lines.push(`  ${dateStr} ${timeStr} - ${event.title}`);
+        const reminderStr = formatReminder(event);
+        const reminderNote = reminderStr ? ` (🔔 ${reminderStr})` : '';
+        lines.push(`  ${dateStr} ${timeStr} - ${event.title}${reminderNote}`);
       }
     }
 
@@ -100,12 +118,30 @@ export const showToday: Tool = {
 
     const lines: string[] = ["**Today's Schedule**", ''];
 
+    const formatReminder = (event: any): string | null => {
+      if (event.reminder_minutes && event.reminder_minutes > 0) {
+        const start = new Date(event.start_time);
+        const reminderTime = new Date(start.getTime() - event.reminder_minutes * 60 * 1000);
+        return reminderTime.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+      }
+      if (event.source_type === 'garden') {
+        const tasks = context.services.scheduler.getByRelatedRecord(event.source_id, 'system');
+        if (tasks.length > 0) {
+          const nextRun = new Date(tasks[0].nextRun);
+          return nextRun.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+        }
+      }
+      return null;
+    };
+
     if (events.length > 0) {
       lines.push('**📅 Events**');
       for (const event of events) {
         const date = new Date(event.start_time);
         const timeStr = event.all_day ? 'All day' : date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
-        lines.push(`  ${timeStr} - ${event.title}`);
+        const reminderStr = formatReminder(event);
+        const reminderNote = reminderStr ? ` (🔔 ${reminderStr})` : '';
+        lines.push(`  ${timeStr} - ${event.title}${reminderNote}`);
       }
     }
 
