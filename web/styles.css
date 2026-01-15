@@ -568,11 +568,21 @@ footer button:hover {
   word-break: break-word;
 }
 
+.repl-input-wrapper {
+  position: relative;
+}
+
 .repl-input {
   display: flex;
   gap: 6px;
   padding-top: 8px;
   border-top: 1px solid var(--border);
+}
+
+.repl-input-wrapper .autocomplete-menu {
+  bottom: 100%;
+  top: auto;
+  margin-bottom: 4px;
 }
 
 .repl-input input {

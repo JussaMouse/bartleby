@@ -385,10 +385,13 @@ function renderRepl() {
   
   html += '</div>';
   html += `
-    <form class="repl-input" onsubmit="sendReplMessage(event)">
-      <input type="text" id="repl-input" placeholder="Type a command..." autocomplete="off">
-      <button type="submit">Send</button>
-    </form>
+    <div class="repl-input-wrapper">
+      <form class="repl-input" onsubmit="sendReplMessage(event)">
+        <input type="text" id="repl-input" placeholder="Type a command..." autocomplete="off" onkeydown="handleReplKeydown(event)">
+        <button type="submit">Send</button>
+      </form>
+      <div id="repl-autocomplete" class="autocomplete-menu hidden"></div>
+    </div>
   `;
   
   return html;
@@ -438,6 +441,135 @@ function refreshReplPanel() {
     const input = document.getElementById('repl-input');
     if (input) input.focus();
   }
+}
+
+// REPL autocomplete
+let replAutocompleteItems = [];
+let replAutocompleteIndex = -1;
+
+function handleReplKeydown(event) {
+  const input = document.getElementById('repl-input');
+  const menu = document.getElementById('repl-autocomplete');
+  if (!input || !menu) return;
+
+  // Tab - trigger or apply autocomplete
+  if (event.key === 'Tab') {
+    event.preventDefault();
+    
+    if (!menu.classList.contains('hidden')) {
+      // Apply selected item
+      if (replAutocompleteIndex >= 0 && replAutocompleteItems[replAutocompleteIndex]) {
+        applyReplAutocomplete(replAutocompleteItems[replAutocompleteIndex]);
+      }
+      hideReplAutocomplete();
+      return;
+    }
+    
+    // Trigger autocomplete
+    const cursorPos = input.selectionStart;
+    const text = input.value;
+    const beforeCursor = text.slice(0, cursorPos);
+    
+    const contextMatch = beforeCursor.match(/@(\w*)$/);
+    const projectMatch = beforeCursor.match(/\+([^\s]*)$/);
+    
+    if (contextMatch) {
+      const partial = contextMatch[1].toLowerCase();
+      const matches = autocompleteData.contexts.filter(c =>
+        c.toLowerCase().startsWith('@' + partial) || c.toLowerCase().startsWith(partial)
+      );
+      showReplAutocomplete(matches);
+    } else if (projectMatch) {
+      const partial = projectMatch[1].toLowerCase();
+      const matches = autocompleteData.projects.filter(p =>
+        p.toLowerCase().startsWith(partial) ||
+        p.toLowerCase().replace(/\s+/g, '-').startsWith(partial)
+      );
+      showReplAutocomplete(matches.map(p => '+' + p.toLowerCase().replace(/\s+/g, '-')));
+    }
+    return;
+  }
+  
+  // Arrow keys for menu navigation
+  if (!menu.classList.contains('hidden')) {
+    if (event.key === 'ArrowDown') {
+      event.preventDefault();
+      replAutocompleteIndex = Math.min(replAutocompleteIndex + 1, replAutocompleteItems.length - 1);
+      updateReplAutocompleteSelection();
+    } else if (event.key === 'ArrowUp') {
+      event.preventDefault();
+      replAutocompleteIndex = Math.max(replAutocompleteIndex - 1, 0);
+      updateReplAutocompleteSelection();
+    } else if (event.key === 'Enter') {
+      if (replAutocompleteIndex >= 0) {
+        event.preventDefault();
+        applyReplAutocomplete(replAutocompleteItems[replAutocompleteIndex]);
+        hideReplAutocomplete();
+      }
+    } else if (event.key === 'Escape') {
+      hideReplAutocomplete();
+    }
+  }
+}
+
+function showReplAutocomplete(items) {
+  const menu = document.getElementById('repl-autocomplete');
+  if (!menu || !items.length) return;
+  
+  replAutocompleteItems = items;
+  replAutocompleteIndex = 0;
+  
+  menu.innerHTML = items.map((item, i) => 
+    `<div class="autocomplete-item${i === 0 ? ' selected' : ''}" onclick="clickReplAutocomplete('${esc(item)}')">${esc(item)}</div>`
+  ).join('');
+  menu.classList.remove('hidden');
+}
+
+function hideReplAutocomplete() {
+  const menu = document.getElementById('repl-autocomplete');
+  if (menu) {
+    menu.classList.add('hidden');
+    menu.innerHTML = '';
+  }
+  replAutocompleteItems = [];
+  replAutocompleteIndex = -1;
+}
+
+function updateReplAutocompleteSelection() {
+  const menu = document.getElementById('repl-autocomplete');
+  if (!menu) return;
+  
+  const items = menu.querySelectorAll('.autocomplete-item');
+  items.forEach((el, i) => {
+    el.classList.toggle('selected', i === replAutocompleteIndex);
+  });
+}
+
+function clickReplAutocomplete(value) {
+  applyReplAutocomplete(value);
+  hideReplAutocomplete();
+  document.getElementById('repl-input')?.focus();
+}
+
+function applyReplAutocomplete(value) {
+  const input = document.getElementById('repl-input');
+  if (!input) return;
+  
+  const cursorPos = input.selectionStart;
+  const text = input.value;
+  const beforeCursor = text.slice(0, cursorPos);
+  const afterCursor = text.slice(cursorPos);
+  
+  // Find what we're replacing
+  let newBefore = beforeCursor;
+  if (value.startsWith('@')) {
+    newBefore = beforeCursor.replace(/@\w*$/, value);
+  } else if (value.startsWith('+')) {
+    newBefore = beforeCursor.replace(/\+[^\s]*$/, value);
+  }
+  
+  input.value = newBefore + afterCursor;
+  input.selectionStart = input.selectionEnd = newBefore.length;
 }
 
 // Action item with inline editing
