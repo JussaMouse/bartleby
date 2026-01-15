@@ -21,7 +21,7 @@ A local-first personal assistant. Runs on your machine with local LLMs.
 - **The Garden** — Your wiki. Actions, projects, notes, contacts, calendar. Plain markdown files.
 - **The Shed** — Your reference library. Ingest PDFs, ask questions.
 
-Type commands in the CLI or speak them in the Dashboard. Same system, same data.
+Type commands in the CLI or speak them in the mobile app. One agent with many ways to interact.
 
 ---
 
@@ -114,6 +114,7 @@ Any project or tags? (e.g., +project #tag1 #tag2, or ENTER to skip)
 
 ```
 > import ~/photos/beach.jpg vacation photo +thailand #travel
+(or drag into the dashboard)
 ```
 
 ### 6) Add an event in one line
@@ -147,11 +148,13 @@ Two layers:
 **Page types:**
 | Type | What it's for |
 |------|---------------|
-| `entry` | Wiki/encyclopedia pages — permanent structured knowledge |
-| `note` | Scratch text, meeting notes, working documents |
+| `action` | A single next step you can do |
+| `project` | An outcome requiring multiple actions |
+| `item` | Inbox capture, not yet processed |
+| `entry` | Wiki page — permanent structured knowledge |
+| `note` | Scratch text, meeting notes, journal entries |
 | `contact` | People, with email/phone/birthday |
-| `daily` | Journal entries, one per day |
-| `list` | Curated collections (reading list, gift ideas) |
+| `list` | Dynamic smart lists (Next Actions, Projects) |
 | `media` | Images and files imported into the garden |
 
 **Entry vs Note:** An *entry* is a permanent wiki page ("house rules", "packing checklist"). A *note* is scratch/working text, often attached to a project.
@@ -160,13 +163,12 @@ Pages are dynamic — projects automatically display linked actions, notes, medi
 
 **Commands:**
 ```
-new entry <title>       Create a wiki page (+project #tags inline)
-new note <title>        Create a note (prompts for content, then tags)
-import <path> [name]    Import image/file (+project #tags inline)
-add contact <name>      Add a person
+new entry <title>       Create a wiki page
+new note <title>        Create a note
+import <path> [name]    Import image/file
 open <title>            View any page
 show notes              List all notes
-show contacts           List all contacts
+show projects           List all projects
 ```
 
 **Files are the source of truth.** Edit them in any text editor — Bartleby watches for changes and syncs automatically.
