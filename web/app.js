@@ -607,12 +607,12 @@ function applyReplAutocomplete(value) {
   let newBefore = beforeCursor;
   
   if (replAutocompleteType === '@') {
-    newBefore = beforeCursor.replace(/@\w*$/, value);
+    newBefore = beforeCursor.replace(/@\w*$/, value + ' ');
   } else if (replAutocompleteType === '+') {
-    newBefore = beforeCursor.replace(/\+[^\s]*$/, value);
+    newBefore = beforeCursor.replace(/\+[^\s]*$/, value + ' ');
   } else {
-    // Full replacement - replace entire input
-    newBefore = value;
+    // Full replacement - replace entire input, add space for commands
+    newBefore = value + ' ';
   }
   
   input.value = newBefore + (replAutocompleteType === 'full' ? '' : afterCursor);
