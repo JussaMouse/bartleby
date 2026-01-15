@@ -4,6 +4,7 @@ let ws = null;
 let reconnectTimer = null;
 const panels = new Map(); // view -> panel element
 let editingId = null; // Currently editing page ID
+const PANEL_STORAGE_KEY = 'bartleby.dashboard.panels';
 
 // Autocomplete data (fetched once, refreshed on updates)
 let autocompleteData = { contexts: [], projects: [] };
@@ -78,6 +79,7 @@ function addPanel(view) {
   const panel = createPanel(view);
   document.getElementById('panels').appendChild(panel);
   panels.set(view, panel);
+  savePanelsToStorage();
   
   // Subscribe to updates
   if (ws && ws.readyState === WebSocket.OPEN) {
@@ -90,10 +92,33 @@ function removePanel(view) {
   if (panel) {
     panel.remove();
     panels.delete(view);
+    savePanelsToStorage();
     
     if (ws && ws.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify({ type: 'unsubscribe', view }));
     }
+  }
+}
+
+function savePanelsToStorage() {
+  const views = Array.from(panels.keys());
+  try {
+    localStorage.setItem(PANEL_STORAGE_KEY, JSON.stringify(views));
+  } catch (e) {
+    console.warn('Failed to save panel layout:', e);
+  }
+}
+
+function loadPanelsFromStorage() {
+  try {
+    const raw = localStorage.getItem(PANEL_STORAGE_KEY);
+    if (!raw) return [];
+    const views = JSON.parse(raw);
+    if (!Array.isArray(views)) return [];
+    return views.filter(v => typeof v === 'string');
+  } catch (e) {
+    console.warn('Failed to load panel layout:', e);
+    return [];
   }
 }
 
@@ -1059,7 +1084,12 @@ document.addEventListener('DOMContentLoaded', () => {
   connect();
   initDragDrop();
   
-  // Add default panels
-  addPanel('inbox');
-  addPanel('next-actions');
+  // Restore panels or add defaults
+  const savedPanels = loadPanelsFromStorage();
+  if (savedPanels.length > 0) {
+    savedPanels.forEach(view => addPanel(view));
+  } else {
+    addPanel('inbox');
+    addPanel('next-actions');
+  }
 });
