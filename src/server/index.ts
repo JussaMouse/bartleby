@@ -168,6 +168,7 @@ export class DashboardServer {
     this.app.get('/api/autocomplete', (req, res) => {
       const tasks = this.garden.getTasks({ status: 'active' });
       const projects = this.garden.getByType('project').filter(p => p.status === 'active');
+      const recentPages = this.garden.getRecent(100);
       
       // Collect unique contexts
       const contexts = new Set<string>();
@@ -177,9 +178,29 @@ export class DashboardServer {
       // Add common defaults
       ['@inbox', '@phone', '@computer', '@errands', '@home', '@office', '@waiting', '@focus'].forEach(c => contexts.add(c));
       
+      // Common commands
+      const commands = [
+        'capture', 'show inbox', 'show next', 'show projects', 'show calendar',
+        'show overdue', 'show waiting', 'show someday', 'done', 'edit',
+        'new action', 'new project', 'new note', 'new entry', 'new event',
+        'delete', 'delete project', 'open', 'today', 'calendar', 'help',
+        'import', 'process inbox'
+      ];
+      
+      // Collect unique page titles
+      const pageTitles = new Set<string>();
+      for (const p of recentPages) {
+        pageTitles.add(p.title);
+      }
+      for (const t of tasks) {
+        pageTitles.add(t.title);
+      }
+      
       res.json({
         contexts: Array.from(contexts).sort(),
         projects: projects.map(p => p.title),
+        pages: Array.from(pageTitles).sort(),
+        commands,
       });
     });
 

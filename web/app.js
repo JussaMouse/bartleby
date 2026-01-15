@@ -483,7 +483,7 @@ function handleReplKeydown(event) {
         c.toLowerCase().startsWith('@' + partial) || c.toLowerCase().startsWith(partial)
       );
       console.log('REPL context matches:', matches);
-      showReplAutocomplete(matches);
+      showReplAutocomplete(matches, '@');
     } else if (projectMatch) {
       const partial = projectMatch[1].toLowerCase();
       const matches = autocompleteData.projects.filter(p =>
@@ -491,7 +491,41 @@ function handleReplKeydown(event) {
         p.toLowerCase().replace(/\s+/g, '-').startsWith(partial)
       );
       console.log('REPL project matches:', matches);
-      showReplAutocomplete(matches.map(p => '+' + p.toLowerCase().replace(/\s+/g, '-')));
+      showReplAutocomplete(matches.map(p => '+' + p.toLowerCase().replace(/\s+/g, '-')), '+');
+    } else {
+      // Command or page name completion
+      const partial = beforeCursor.toLowerCase().trim();
+      console.log('REPL general partial:', partial);
+      
+      let matches = [];
+      
+      // Match commands first
+      if (autocompleteData.commands) {
+        const cmdMatches = autocompleteData.commands.filter(c => 
+          c.toLowerCase().startsWith(partial)
+        );
+        matches.push(...cmdMatches);
+      }
+      
+      // Then page names (for commands like "open", "show", "done", "edit")
+      const pageCommands = ['open ', 'show ', 'done ', 'edit ', 'delete '];
+      const hasPageCommand = pageCommands.some(cmd => partial.startsWith(cmd));
+      
+      if (hasPageCommand && autocompleteData.pages) {
+        const afterCommand = partial.split(' ').slice(1).join(' ');
+        const pageMatches = autocompleteData.pages.filter(p =>
+          p.toLowerCase().startsWith(afterCommand)
+        ).slice(0, 10);
+        
+        // Reconstruct with the command prefix
+        const cmdPart = partial.split(' ')[0] + ' ';
+        matches = pageMatches.map(p => cmdPart + p);
+      }
+      
+      console.log('REPL general matches:', matches);
+      if (matches.length) {
+        showReplAutocomplete(matches.slice(0, 15), 'full');
+      }
     }
     return;
   }
@@ -518,12 +552,15 @@ function handleReplKeydown(event) {
   }
 }
 
-function showReplAutocomplete(items) {
+let replAutocompleteType = 'full'; // 'full', '@', '+'
+
+function showReplAutocomplete(items, type = 'full') {
   const menu = document.getElementById('repl-autocomplete');
   if (!menu || !items.length) return;
   
   replAutocompleteItems = items;
   replAutocompleteIndex = 0;
+  replAutocompleteType = type;
   
   menu.innerHTML = items.map((item, i) => 
     `<div class="autocomplete-item${i === 0 ? ' selected' : ''}" onclick="clickReplAutocomplete('${esc(item)}')">${esc(item)}</div>`
@@ -566,15 +603,19 @@ function applyReplAutocomplete(value) {
   const beforeCursor = text.slice(0, cursorPos);
   const afterCursor = text.slice(cursorPos);
   
-  // Find what we're replacing
+  // Find what we're replacing based on type
   let newBefore = beforeCursor;
-  if (value.startsWith('@')) {
+  
+  if (replAutocompleteType === '@') {
     newBefore = beforeCursor.replace(/@\w*$/, value);
-  } else if (value.startsWith('+')) {
+  } else if (replAutocompleteType === '+') {
     newBefore = beforeCursor.replace(/\+[^\s]*$/, value);
+  } else {
+    // Full replacement - replace entire input
+    newBefore = value;
   }
   
-  input.value = newBefore + afterCursor;
+  input.value = newBefore + (replAutocompleteType === 'full' ? '' : afterCursor);
   input.selectionStart = input.selectionEnd = newBefore.length;
 }
 
