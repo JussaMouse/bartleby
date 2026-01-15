@@ -400,6 +400,9 @@ function applyAutocomplete(input, value) {
 }
 
 async function saveInlineEdit(item) {
+  if (item.dataset.saving === 'true') return;
+  item.dataset.saving = 'true';
+
   const input = item.querySelector('.inline-input');
   const text = input.value.trim();
   const id = item.dataset.id;
@@ -448,6 +451,8 @@ async function saveInlineEdit(item) {
   } catch (e) {
     console.error('Failed to save:', e);
     alert('Failed to save action');
+  } finally {
+    item.dataset.saving = 'false';
   }
 }
 
@@ -489,6 +494,27 @@ function parseDueDate(str) {
     const parsed = new Date(year, m, d);
     if (parsed < today) year++;
     return `${year}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+  }
+
+  // Time-only formats: 11am, 9:30pm
+  const timeMatch = str.match(/^(\d{1,2})(?::(\d{2}))?\s*(am|pm)$/i);
+  if (timeMatch) {
+    let hour = parseInt(timeMatch[1], 10);
+    const minute = timeMatch[2] ? parseInt(timeMatch[2], 10) : 0;
+    const ampm = timeMatch[3].toLowerCase();
+
+    if (ampm === 'pm' && hour < 12) hour += 12;
+    if (ampm === 'am' && hour === 12) hour = 0;
+
+    const d = new Date(today);
+    d.setHours(hour, minute, 0, 0);
+
+    // If time already passed today, set for tomorrow
+    if (d < today) d.setDate(d.getDate() + 1);
+
+    const dateOnly = d.toISOString().split('T')[0];
+    const timeOnly = d.toTimeString().slice(0, 5);
+    return `${dateOnly}T${timeOnly}`;
   }
   
   return str; // Return as-is if can't parse
