@@ -450,11 +450,13 @@ let replAutocompleteIndex = -1;
 function handleReplKeydown(event) {
   const input = document.getElementById('repl-input');
   const menu = document.getElementById('repl-autocomplete');
+  console.log('REPL keydown:', event.key, 'input:', input, 'menu:', menu);
   if (!input || !menu) return;
 
   // Tab - trigger or apply autocomplete
   if (event.key === 'Tab') {
     event.preventDefault();
+    console.log('Tab pressed in REPL, autocomplete data:', autocompleteData);
     
     if (!menu.classList.contains('hidden')) {
       // Apply selected item
@@ -469,15 +471,18 @@ function handleReplKeydown(event) {
     const cursorPos = input.selectionStart;
     const text = input.value;
     const beforeCursor = text.slice(0, cursorPos);
+    console.log('REPL before cursor:', beforeCursor);
     
     const contextMatch = beforeCursor.match(/@(\w*)$/);
     const projectMatch = beforeCursor.match(/\+([^\s]*)$/);
+    console.log('REPL context match:', contextMatch, 'project match:', projectMatch);
     
     if (contextMatch) {
       const partial = contextMatch[1].toLowerCase();
       const matches = autocompleteData.contexts.filter(c =>
         c.toLowerCase().startsWith('@' + partial) || c.toLowerCase().startsWith(partial)
       );
+      console.log('REPL context matches:', matches);
       showReplAutocomplete(matches);
     } else if (projectMatch) {
       const partial = projectMatch[1].toLowerCase();
@@ -485,6 +490,7 @@ function handleReplKeydown(event) {
         p.toLowerCase().startsWith(partial) ||
         p.toLowerCase().replace(/\s+/g, '-').startsWith(partial)
       );
+      console.log('REPL project matches:', matches);
       showReplAutocomplete(matches.map(p => '+' + p.toLowerCase().replace(/\s+/g, '-')));
     }
     return;
