@@ -525,3 +525,84 @@ footer button:hover {
 ::-webkit-scrollbar-thumb:hover {
   background: var(--text-muted);
 }
+
+/* REPL Panel */
+.repl-messages {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 180px;
+  max-height: 400px;
+  margin-bottom: 10px;
+}
+
+.repl-msg {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.repl-user {
+  color: var(--text-muted);
+}
+
+.repl-user .repl-label {
+  color: var(--accent);
+  margin-right: 6px;
+}
+
+.repl-assistant {
+  color: var(--text);
+}
+
+.repl-assistant .repl-label {
+  color: var(--success);
+  margin-right: 6px;
+  font-weight: 500;
+}
+
+.repl-text {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.repl-input {
+  display: flex;
+  gap: 6px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+
+.repl-input input {
+  flex: 1;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 8px 10px;
+  border-radius: 4px;
+  font-family: var(--font-mono);
+  font-size: 13px;
+}
+
+.repl-input input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.repl-input button {
+  background: var(--accent);
+  color: var(--bg);
+  border: none;
+  padding: 8px 14px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: 500;
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.repl-input button:hover {
+  opacity: 0.9;
+}

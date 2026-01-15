@@ -4,6 +4,7 @@ const PANEL_STORAGE_KEY = 'bartleby.panels';
 const panels = new Map();
 let ws = null;
 let autocompleteData = { contexts: [], projects: [] };
+let replMessages = [];
 
 // Initialize
 document.addEventListener('DOMContentLoaded', () => {
@@ -48,6 +49,7 @@ async function fetchAutocomplete() {
     const res = await fetch('/api/autocomplete');
     if (res.ok) {
       autocompleteData = await res.json();
+      console.log('Autocomplete data loaded:', autocompleteData);
     }
   } catch (e) {
     console.warn('Failed to fetch autocomplete data:', e);
@@ -62,6 +64,12 @@ function addPanel(view) {
   document.getElementById('panels').appendChild(panel);
   panels.set(view, panel);
   savePanels();
+
+  // REPL is local-only, render immediately
+  if (view === 'repl') {
+    renderPanel('repl', null);
+    return;
+  }
 
   if (ws && ws.readyState === WebSocket.OPEN) {
     ws.send(JSON.stringify({ type: 'subscribe', view }));
@@ -145,7 +153,10 @@ function renderPanel(view, data) {
 
   const content = panel.querySelector('.panel-content');
 
-  if (view === 'inbox') {
+  if (view === 'repl') {
+    // REPL doesn't use server data, render from local messages
+    content.innerHTML = renderRepl();
+  } else if (view === 'inbox') {
     content.innerHTML = renderInbox(data);
   } else if (view === 'next-actions') {
     content.innerHTML = renderNextActions(data);
@@ -358,6 +369,77 @@ function renderRecent(data) {
   return `<ul>${items}</ul>`;
 }
 
+function renderRepl() {
+  let html = '<div class="repl-messages">';
+  
+  if (replMessages.length === 0) {
+    html += '<div class="empty">Type a command below</div>';
+  } else {
+    for (const msg of replMessages) {
+      html += `<div class="repl-msg repl-${msg.role}">`;
+      html += `<span class="repl-label">${msg.role === 'user' ? '>' : 'Bartleby:'}</span>`;
+      html += `<span class="repl-text">${esc(msg.text)}</span>`;
+      html += '</div>';
+    }
+  }
+  
+  html += '</div>';
+  html += `
+    <form class="repl-input" onsubmit="sendReplMessage(event)">
+      <input type="text" id="repl-input" placeholder="Type a command..." autocomplete="off">
+      <button type="submit">Send</button>
+    </form>
+  `;
+  
+  return html;
+}
+
+async function sendReplMessage(event) {
+  event.preventDefault();
+  const input = document.getElementById('repl-input');
+  const text = input.value.trim();
+  if (!text) return;
+  
+  // Add user message
+  replMessages.push({ role: 'user', text });
+  input.value = '';
+  refreshReplPanel();
+  
+  // Send to server
+  try {
+    const res = await fetch('/api/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text }),
+    });
+    
+    if (res.ok) {
+      const data = await res.json();
+      replMessages.push({ role: 'assistant', text: data.reply || '(no response)' });
+    } else {
+      replMessages.push({ role: 'assistant', text: '(error)' });
+    }
+  } catch (e) {
+    replMessages.push({ role: 'assistant', text: '(connection error)' });
+  }
+  
+  refreshReplPanel();
+}
+
+function refreshReplPanel() {
+  const panel = panels.get('repl');
+  if (panel) {
+    const content = panel.querySelector('.panel-content');
+    content.innerHTML = renderRepl();
+    // Scroll to bottom
+    const messages = content.querySelector('.repl-messages');
+    if (messages) messages.scrollTop = messages.scrollHeight;
+    // Re-focus input
+    const input = document.getElementById('repl-input');
+    if (input) input.focus();
+  }
+}
+
 // Action item with inline editing
 function renderActionItem(task, isInbox = false) {
   const project = task.project ? ` +${task.project}` : '';
@@ -465,6 +547,7 @@ function handleEditKey(event, input) {
 
   if (event.key === 'Tab') {
     event.preventDefault();
+    console.log('Tab pressed, autocomplete data:', autocompleteData);
 
     if (!menu.classList.contains('hidden')) {
       const selected = menu.querySelector('.autocomplete-item.selected');
@@ -479,22 +562,27 @@ function handleEditKey(event, input) {
     const cursorPos = input.selectionStart;
     const text = input.value;
     const beforeCursor = text.slice(0, cursorPos);
+    console.log('Before cursor:', beforeCursor);
 
     const contextMatch = beforeCursor.match(/@(\w*)$/);
     const projectMatch = beforeCursor.match(/\+([^\s]*)$/);
+    console.log('Context match:', contextMatch, 'Project match:', projectMatch);
 
     if (contextMatch) {
       const partial = contextMatch[1].toLowerCase();
       const matches = autocompleteData.contexts.filter(c =>
         c.toLowerCase().startsWith('@' + partial) || c.toLowerCase().startsWith(partial)
       );
+      console.log('Context matches:', matches);
       showAutocomplete(item, matches, '@');
     } else if (projectMatch) {
       const partial = projectMatch[1].toLowerCase();
+      console.log('Project partial:', partial, 'Projects:', autocompleteData.projects);
       const matches = autocompleteData.projects.filter(p =>
         p.toLowerCase().startsWith(partial) ||
         p.toLowerCase().replace(/\s+/g, '-').startsWith(partial)
       );
+      console.log('Project matches:', matches);
       showAutocomplete(item, matches.map(p => '+' + p.toLowerCase().replace(/\s+/g, '-')), '+');
     }
     return;
