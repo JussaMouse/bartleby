@@ -252,6 +252,17 @@ export class SchedulerService {
     return rows.map(r => this.rowToTask(r));
   }
 
+  getByRelatedRecord(relatedRecord: string, createdBy?: 'user' | 'system'): ScheduledTask[] {
+    let sql = 'SELECT * FROM tasks WHERE related_record = ?';
+    const params: unknown[] = [relatedRecord];
+    if (createdBy) {
+      sql += ' AND created_by = ?';
+      params.push(createdBy);
+    }
+    const rows = this.db.prepare(sql).all(...params) as any[];
+    return rows.map(r => this.rowToTask(r));
+  }
+
   /**
    * Get reminders that were scheduled to fire while Bartleby was offline.
    * These are "missed" reminders that need user attention.

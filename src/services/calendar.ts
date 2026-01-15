@@ -405,13 +405,39 @@ export class CalendarService {
       seenGarden.add(task.id);
       const existing = this.getBySource('garden', task.id);
       
+      const hasTime = task.due_date.includes('T');
+      const entryType: EntryType = hasTime ? 'event' : 'deadline';
+      const dueDate = new Date(task.due_date);
+
       if (!existing) {
         // Missing - create
-        this.registerTemporal('garden', task.id, new Date(task.due_date), 'deadline', task.title);
+        this.registerTemporal(
+          'garden',
+          task.id,
+          dueDate,
+          entryType,
+          task.title,
+          hasTime ? { endTime: new Date(dueDate.getTime() + 30 * 60 * 1000) } : undefined
+        );
         debug('Reconcile: added missing garden entry', { id: task.id });
-      } else if (existing.start_time !== new Date(task.due_date).toISOString()) {
-        // Stale - update
-        this.updateTemporal('garden', task.id, { datetime: new Date(task.due_date) });
+      } else if (
+        existing.start_time !== dueDate.toISOString() ||
+        existing.entry_type !== entryType
+      ) {
+        // Stale - update (recreate if type changed)
+        if (existing.entry_type !== entryType) {
+          this.removeTemporal('garden', task.id);
+          this.registerTemporal(
+            'garden',
+            task.id,
+            dueDate,
+            entryType,
+            task.title,
+            hasTime ? { endTime: new Date(dueDate.getTime() + 30 * 60 * 1000) } : undefined
+          );
+        } else {
+          this.updateTemporal('garden', task.id, { datetime: dueDate });
+        }
         debug('Reconcile: updated stale garden entry', { id: task.id });
       }
     }

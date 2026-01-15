@@ -9,6 +9,7 @@ import { sanitizeFilename } from '../utils/markdown.js';
 import { parseGardenPage, toGardenPage, extractTitle } from '../utils/garden-parser.js';
 import { info, warn, error, debug } from '../utils/logger.js';
 import type { CalendarService } from './calendar.js';
+import type { SchedulerService } from './scheduler.js';
 
 // === Types ===
 
@@ -99,6 +100,7 @@ export class GardenService {
   private watcher?: FSWatcher;
   private syncing = false;
   private calendar?: CalendarService;
+  private scheduler?: SchedulerService;
 
   constructor(private config: Config) {
     const dbPath = getDbPath(config, 'garden.sqlite3');
@@ -116,6 +118,10 @@ export class GardenService {
    */
   setCalendar(calendar: CalendarService): void {
     this.calendar = calendar;
+  }
+
+  setScheduler(scheduler: SchedulerService): void {
+    this.scheduler = scheduler;
   }
 
   async initialize(): Promise<void> {
@@ -677,24 +683,82 @@ export class GardenService {
     const hadDueDate = previous && !!previous.due_date && previous.status === 'active';
 
     if (hasDueDate) {
-      // Has due date - register or update in calendar
       const dueDate = new Date(record.due_date!);
-      this.calendar.registerTemporal(
-        'garden',
-        record.id,
-        dueDate,
-        'deadline',
-        record.title,
-        {
-          metadata: {
-            context: record.context,
-            project: record.project,
-          },
+      const hasTime = record.due_date!.includes('T');
+
+      if (hasTime) {
+        // Timed action: show as event in calendar
+        const endTime = new Date(dueDate.getTime() + 30 * 60 * 1000); // 30 min default
+        this.calendar.registerTemporal(
+          'garden',
+          record.id,
+          dueDate,
+          'event',
+          record.title,
+          {
+            endTime,
+            metadata: {
+              context: record.context,
+              project: record.project,
+              type: 'action',
+            },
+          }
+        );
+
+        // Schedule a single reminder at start time (system-generated)
+        if (this.scheduler) {
+          const existing = this.scheduler.getByRelatedRecord(record.id, 'system');
+          for (const task of existing) {
+            if (task.type === 'reminder') this.scheduler.cancel(task.id);
+          }
+
+          if (dueDate > new Date()) {
+            this.scheduler.create({
+              type: 'reminder',
+              scheduleType: 'once',
+              scheduleValue: dueDate.toISOString(),
+              actionType: 'notify',
+              actionPayload: `Action due: ${record.title}`,
+              nextRun: dueDate.toISOString(),
+              createdBy: 'system',
+              relatedRecord: record.id,
+            });
+          }
         }
-      );
+      } else {
+        // Date-only: register as deadline
+        this.calendar.registerTemporal(
+          'garden',
+          record.id,
+          dueDate,
+          'deadline',
+          record.title,
+          {
+            metadata: {
+              context: record.context,
+              project: record.project,
+            },
+          }
+        );
+
+        // Clear any system reminders from previous timed due dates
+        if (this.scheduler) {
+          const existing = this.scheduler.getByRelatedRecord(record.id, 'system');
+          for (const task of existing) {
+            if (task.type === 'reminder') this.scheduler.cancel(task.id);
+          }
+        }
+      }
     } else if (hadDueDate && !hasDueDate) {
       // Due date was removed or task completed - remove from calendar
       this.calendar.removeTemporal('garden', record.id);
+
+      if (this.scheduler) {
+        const existing = this.scheduler.getByRelatedRecord(record.id, 'system');
+        for (const task of existing) {
+          if (task.type === 'reminder') this.scheduler.cancel(task.id);
+        }
+      }
     }
   }
 

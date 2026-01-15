@@ -73,6 +73,7 @@ export async function initServices(config: Config): Promise<ServiceContainer> {
   // Wire up calendar to services that need temporal index
   garden.setCalendar(calendar);
   scheduler.setCalendar(calendar);
+  garden.setScheduler(scheduler);
 
   // Reconcile calendar temporal index with source services
   const gardenTasks = garden.getTasksWithDueDates().map(t => ({
