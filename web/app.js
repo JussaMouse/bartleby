@@ -409,7 +409,9 @@ function renderRepl() {
     for (const msg of replMessages) {
       html += `<div class="repl-msg repl-${msg.role}">`;
       html += `<span class="repl-label">${msg.role === 'user' ? '>' : 'Bartleby:'}</span>`;
-      html += `<span class="repl-text">${esc(msg.text)}</span>`;
+      // User input stays plain, assistant output gets markdown rendering
+      const content = msg.role === 'user' ? esc(msg.text) : renderMarkdown(msg.text);
+      html += `<span class="repl-text">${content}</span>`;
       html += '</div>';
     }
   }
@@ -1304,4 +1306,61 @@ function esc(str) {
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;');
+}
+
+// Lightweight markdown renderer for REPL output
+function renderMarkdown(text) {
+  if (!text) return '';
+  
+  // First escape HTML
+  let html = esc(text);
+  
+  // Bold: **text** or __text__
+  html = html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+  html = html.replace(/__([^_]+)__/g, '<strong>$1</strong>');
+  
+  // Italic: *text* or _text_ (but not inside words)
+  html = html.replace(/(?<!\w)\*([^*]+)\*(?!\w)/g, '<em>$1</em>');
+  html = html.replace(/(?<!\w)_([^_]+)_(?!\w)/g, '<em>$1</em>');
+  
+  // Inline code: `code`
+  html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
+  
+  // Process line by line for lists and structure
+  const lines = html.split('\n');
+  let result = [];
+  let inList = false;
+  
+  for (let i = 0; i < lines.length; i++) {
+    let line = lines[i];
+    
+    // List items: - item or * item or • item (with optional indentation)
+    const listMatch = line.match(/^(\s*)([-*•])\s+(.+)$/);
+    if (listMatch) {
+      if (!inList) {
+        result.push('<ul class="md-list">');
+        inList = true;
+      }
+      const indent = listMatch[1].length > 0 ? ' class="indent"' : '';
+      result.push(`<li${indent}>${listMatch[3]}</li>`);
+    } else {
+      if (inList) {
+        result.push('</ul>');
+        inList = false;
+      }
+      
+      // Empty line = paragraph break
+      if (line.trim() === '') {
+        result.push('<br>');
+      } else {
+        result.push(`<div class="md-line">${line}</div>`);
+      }
+    }
+  }
+  
+  if (inList) {
+    result.push('</ul>');
+  }
+  
+  return result.join('');
 }
