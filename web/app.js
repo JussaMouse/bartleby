@@ -215,15 +215,51 @@ function renderProjects(data) {
     return '<div class="empty">No projects</div>';
   }
 
-  const items = data.map(p => `
-    <li>
-      <div class="item clickable" onclick="addPanel('project:${esc(p.title)}')">
-        <span class="item-title">${esc(p.title)}</span>
+  const items = data.map(p => renderEditableItem(p, 'project')).join('');
+  return `<ul>${items}</ul>`;
+}
+
+// Generic editable item renderer for non-action types
+function renderEditableItem(item, itemType) {
+  const id = item.id;
+  const title = item.title;
+  
+  // Build display info based on type
+  let metaHtml = '';
+  if (itemType === 'event') {
+    const d = new Date(item.start_time);
+    const dateStr = d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+    const timeStr = item.all_day ? 'all day' : d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+    metaHtml = `<span class="item-meta">${dateStr} ${timeStr}</span>`;
+  } else if (itemType === 'project') {
+    // Projects can be clicked to open their panel
+    metaHtml = `<span class="item-meta clickable-hint">click to expand</span>`;
+  } else if (item.type) {
+    metaHtml = `<span class="item-meta">${item.type}</span>`;
+  }
+
+  const clickAction = itemType === 'project' 
+    ? `onclick="addPanel('project:${esc(title)}')"`
+    : `onclick="startGenericEdit(this.parentElement)"`;
+
+  return `
+    <li class="item generic-item" data-id="${id}" data-type="${itemType}" data-title="${esc(title)}">
+      <div class="item-display" ${clickAction}>
+        <span class="item-title">${esc(title)}</span>
+        ${metaHtml}
+      </div>
+      <div class="item-edit hidden">
+        <input type="text" class="inline-input" value="${esc(title)}"
+               onkeydown="handleGenericEditKey(event, this)"
+               onblur="handleGenericEditBlur(event, this)">
+        <div class="inline-actions">
+          <button class="btn-inline save" onclick="saveGenericEdit(this.closest('.generic-item'))">Save</button>
+          <button class="btn-inline" onclick="cancelGenericEdit(this.closest('.generic-item'))">Cancel</button>
+          <button class="btn-inline remove" onclick="removeItem(this.closest('.generic-item'))">Remove</button>
+        </div>
       </div>
     </li>
-  `).join('');
-
-  return `<ul>${items}</ul>`;
+  `;
 }
 
 function renderProject(data) {
@@ -293,22 +329,13 @@ function renderCalendar(data) {
 
   if (events.length) {
     html += '<div class="section-header">Events</div><ul>';
-    for (const e of events) {
-      const d = new Date(e.start_time);
-      const dateStr = d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
-      const timeStr = e.all_day ? 'all day' : d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
-      html += `<li><div class="item"><span class="item-title">${esc(e.title)}</span><span class="item-meta">${dateStr} ${timeStr}</span></div></li>`;
-    }
+    html += events.map(e => renderEditableItem(e, 'event')).join('');
     html += '</ul>';
   }
 
   if (deadlines.length) {
     html += '<div class="section-header">Deadlines</div><ul>';
-    for (const d of deadlines) {
-      const date = new Date(d.start_time);
-      const dateStr = date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
-      html += `<li><div class="item"><span class="item-title">${esc(d.title)}</span><span class="item-meta">${dateStr}</span></div></li>`;
-    }
+    html += deadlines.map(d => renderEditableItem(d, 'deadline')).join('');
     html += '</ul>';
   }
 
@@ -324,27 +351,19 @@ function renderToday(data) {
 
   if (events.length) {
     html += '<div class="section-header">Events</div><ul>';
-    for (const e of events) {
-      const d = new Date(e.start_time);
-      const timeStr = e.all_day ? 'All day' : d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
-      html += `<li><div class="item"><span class="item-title">${esc(e.title)}</span><span class="item-meta">${timeStr}</span></div></li>`;
-    }
+    html += events.map(e => renderEditableItem(e, 'event')).join('');
     html += '</ul>';
   }
 
   if (deadlines.length) {
     html += '<div class="section-header">Due Today</div><ul>';
-    for (const d of deadlines) {
-      html += `<li><div class="item"><span class="item-title">${esc(d.title)}</span></div></li>`;
-    }
+    html += deadlines.map(d => renderEditableItem(d, 'deadline')).join('');
     html += '</ul>';
   }
 
   if (data.overdue?.length) {
     html += '<div class="section-header">Overdue</div><ul>';
-    for (const o of data.overdue) {
-      html += `<li><div class="item"><span class="item-title">${esc(o.title)}</span><span class="item-meta item-due">${o.due_date}</span></div></li>`;
-    }
+    html += data.overdue.map(o => renderActionItem(o, false)).join('');
     html += '</ul>';
   }
 
@@ -357,14 +376,14 @@ function renderRecent(data) {
     return '<div class="empty">No recent pages</div>';
   }
 
-  const items = data.map(p => `
-    <li>
-      <div class="item">
-        <span class="item-title">${esc(p.title)}</span>
-        <span class="item-meta">${p.type}</span>
-      </div>
-    </li>
-  `).join('');
+  const items = data.map(p => {
+    // Actions use the action item renderer
+    if (p.type === 'action') {
+      return renderActionItem(p, p.context === '@inbox');
+    }
+    // Others use generic editable item
+    return renderEditableItem(p, p.type);
+  }).join('');
 
   return `<ul>${items}</ul>`;
 }
@@ -1059,6 +1078,134 @@ async function convertItem(item, targetType) {
   } catch (e) {
     console.error('Failed to convert:', e);
     showToast('Conversion failed', true);
+  }
+}
+
+// Generic item editing (for projects, events, notes, etc.)
+function startGenericEdit(item) {
+  // Close any other open edits
+  document.querySelectorAll('.generic-item.editing').forEach(el => {
+    if (el !== item) cancelGenericEdit(el);
+  });
+
+  item.classList.add('editing');
+  item.querySelector('.item-display').classList.add('hidden');
+  item.querySelector('.item-edit').classList.remove('hidden');
+
+  const input = item.querySelector('.inline-input');
+  input.focus();
+  input.setSelectionRange(input.value.length, input.value.length);
+}
+
+function cancelGenericEdit(item) {
+  if (!item) return;
+
+  item.classList.remove('editing');
+  item.querySelector('.item-display').classList.remove('hidden');
+  item.querySelector('.item-edit').classList.add('hidden');
+
+  const input = item.querySelector('.inline-input');
+  input.value = item.dataset.title;
+}
+
+function handleGenericEditBlur(event, input) {
+  setTimeout(() => {
+    const item = input.closest('.generic-item');
+    if (!item) return;
+
+    const editArea = item.querySelector('.item-edit');
+    if (!editArea.contains(document.activeElement)) {
+      cancelGenericEdit(item);
+    }
+  }, 150);
+}
+
+function handleGenericEditKey(event, input) {
+  if (event.key === 'Escape') {
+    event.preventDefault();
+    cancelGenericEdit(input.closest('.generic-item'));
+    return;
+  }
+
+  if (event.key === 'Enter') {
+    event.preventDefault();
+    saveGenericEdit(input.closest('.generic-item'));
+    return;
+  }
+}
+
+async function saveGenericEdit(item) {
+  const input = item.querySelector('.inline-input');
+  const newTitle = input.value.trim();
+  const id = item.dataset.id;
+  const itemType = item.dataset.type;
+
+  if (!newTitle) {
+    showToast('Title cannot be empty', true);
+    return;
+  }
+
+  try {
+    // Use chat API to rename
+    const command = `edit ${item.dataset.title}`;
+    // For now, just update via the page API
+    const res = await fetch(`/api/page/${id}`, {
+      method: 'GET',
+    });
+    
+    if (res.ok) {
+      const data = await res.json();
+      // Update title in content
+      let content = data.content || '';
+      content = content.replace(/^#\s+.+$/m, `# ${newTitle}`);
+      
+      await fetch(`/api/page/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content }),
+      });
+      
+      item.dataset.title = newTitle;
+      item.querySelector('.item-title').textContent = newTitle;
+      cancelGenericEdit(item);
+      showToast('Saved');
+    }
+  } catch (e) {
+    console.error('Failed to save:', e);
+    showToast('Save failed', true);
+  }
+}
+
+async function removeItem(item) {
+  const id = item.dataset.id;
+  const itemType = item.dataset.type;
+  const title = item.dataset.title;
+
+  if (!confirm(`Remove "${title}"?`)) return;
+
+  try {
+    // Use chat API to delete
+    const command = itemType === 'event' 
+      ? `delete event ${title}` 
+      : `delete ${title}`;
+    
+    const res = await fetch('/api/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: command }),
+    });
+
+    if (res.ok) {
+      item.style.opacity = '0.5';
+      item.style.pointerEvents = 'none';
+      setTimeout(() => item.remove(), 300);
+      showToast('Removed');
+    } else {
+      throw new Error('Failed to remove');
+    }
+  } catch (e) {
+    console.error('Failed to remove:', e);
+    showToast('Remove failed', true);
   }
 }
 

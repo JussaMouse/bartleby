@@ -216,26 +216,35 @@ main#panels {
 }
 
 /* Inline editing */
-.action-item {
+.action-item, .generic-item {
   position: relative;
 }
 
-.action-item .action-display {
+.action-item .action-display,
+.generic-item .item-display {
   cursor: pointer;
 }
 
-.action-item .action-edit {
+.action-item .action-edit,
+.generic-item .item-edit {
   display: flex;
   flex-direction: column;
   gap: 8px;
 }
 
-.action-item .action-edit.hidden {
+.action-item .action-edit.hidden,
+.generic-item .item-edit.hidden {
   display: none;
 }
 
-.action-item.editing .action-display.hidden {
+.action-item.editing .action-display.hidden,
+.generic-item.editing .item-display.hidden {
   display: none;
+}
+
+.clickable-hint {
+  font-size: 10px;
+  opacity: 0.5;
 }
 
 .inline-input {
@@ -294,6 +303,16 @@ main#panels {
 
 .btn-inline.done:hover {
   background: var(--success);
+  color: var(--bg);
+}
+
+.btn-inline.remove {
+  color: var(--danger);
+  border-color: var(--danger);
+}
+
+.btn-inline.remove:hover {
+  background: var(--danger);
   color: var(--bg);
 }
 

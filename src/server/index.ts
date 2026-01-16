@@ -251,13 +251,36 @@ export class DashboardServer {
       
       if (title !== undefined) updates.title = title;
       if (context !== undefined) updates.context = context || null;
-      if (project !== undefined) updates.project = project || null;
       if (due_date !== undefined) updates.due_date = due_date || null;
+      
+      // Auto-create project if it doesn't exist
+      let projectCreated = false;
+      if (project !== undefined) {
+        if (project) {
+          const existingProjects = this.garden.getByType('project');
+          const projectSlug = project.toLowerCase();
+          const projectExists = existingProjects.some(p => 
+            p.title.toLowerCase() === projectSlug || 
+            p.title.toLowerCase().replace(/\s+/g, '-') === projectSlug
+          );
+          
+          if (!projectExists) {
+            this.garden.create({
+              type: 'project',
+              title: project.charAt(0).toUpperCase() + project.slice(1),
+              status: 'active',
+            });
+            projectCreated = true;
+            debug('Auto-created project via dashboard', { project });
+          }
+        }
+        updates.project = project || null;
+      }
       
       const updated = this.garden.update(record.id, updates);
       if (updated) {
         debug('Updated action via dashboard', { id: record.id, updates });
-        res.json({ success: true, record: updated });
+        res.json({ success: true, record: updated, projectCreated });
       } else {
         res.status(500).json({ error: 'Failed to update' });
       }
