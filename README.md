@@ -723,10 +723,48 @@ Same as above but use URL: `http://<tailscale-ip>:3333/api/chat?voice=true`
 
 The `?voice=true` parameter strips markdown from responses for cleaner TTS.
 
+**OCR Shortcut** (extract text from photos/screenshots):
+
+1. Open Shortcuts app → tap **+**
+2. Add action: **Select Photos** (or receive from Share Sheet)
+3. Add action: **Get Contents of URL**
+   - URL: `http://<tailscale-ip>:3333/api/ocr`
+   - Method: **POST**
+   - Headers:
+     - `Authorization`: `Bearer YOUR_TOKEN`
+   - Request Body: **Form**
+     - Add field `file` with value: select **Photos** variable
+4. Add action: **Get Dictionary Value**
+   - Key: `text`
+5. Add action: **Quick Look** (to see the text) or **Copy to Clipboard**
+6. Name shortcut "Bartleby OCR"
+
+For Share Sheet integration: Set shortcut to receive images from Share Sheet, then you can share any screenshot directly to Bartleby for OCR.
+
+**Read Today Shortcut** (hear your schedule):
+
+1. Open Shortcuts app → tap **+**
+2. Add action: **Get Contents of URL**
+   - URL: `http://<tailscale-ip>:3333/api/today?voice=true`
+   - Method: **GET**
+   - Headers:
+     - `Authorization`: `Bearer YOUR_TOKEN`
+3. Add action: **Get Dictionary Value**
+   - Key: `summary`
+4. Add action: **Speak Text** → select **Dictionary Value**
+5. Name shortcut "Bartleby Today"
+
+Say "Hey Siri, Bartleby Today" to hear your schedule and tasks.
+
+**Read Inbox Shortcut** (hear pending items):
+
+Same as above but use URL: `http://<tailscale-ip>:3333/api/inbox?voice=true`
+
 **Tips:**
 - Add shortcuts to Home Screen for one-tap access
 - Use Shortcuts widget for quick capture
 - "Hey Siri, Capture" works if you name the shortcut just "Capture"
+- Share Sheet shortcuts let you OCR screenshots from any app
 
 ### API Token
 

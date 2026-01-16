@@ -57,13 +57,41 @@ export class DashboardServer {
     this.app.use('/media', express.static(mediaDir));
 
     // API endpoints for initial data
+    // Support ?voice=true for TTS-friendly summaries
     this.app.get('/api/inbox', (req, res) => {
       const items = this.garden.getTasks({ status: 'active', context: '@inbox' });
+      
+      if (req.query.voice === 'true') {
+        if (items.length === 0) {
+          res.json({ summary: 'Your inbox is empty.' });
+        } else {
+          const summary = `You have ${items.length} item${items.length === 1 ? '' : 's'} in your inbox. ` +
+            items.slice(0, 5).map((item, i) => `${i + 1}: ${item.title}`).join('. ') +
+            (items.length > 5 ? `. And ${items.length - 5} more.` : '');
+          res.json({ summary, count: items.length });
+        }
+        return;
+      }
+      
       res.json(items);
     });
 
     this.app.get('/api/next-actions', (req, res) => {
       const tasks = this.garden.getTasks({ status: 'active' });
+      
+      if (req.query.voice === 'true') {
+        const nonInbox = tasks.filter(t => t.context !== '@inbox');
+        if (nonInbox.length === 0) {
+          res.json({ summary: 'You have no next actions.' });
+        } else {
+          const summary = `You have ${nonInbox.length} next action${nonInbox.length === 1 ? '' : 's'}. ` +
+            nonInbox.slice(0, 5).map((item, i) => `${i + 1}: ${item.title}`).join('. ') +
+            (nonInbox.length > 5 ? `. And ${nonInbox.length - 5} more.` : '');
+          res.json({ summary, count: nonInbox.length });
+        }
+        return;
+      }
+      
       res.json(tasks);
     });
 
@@ -93,6 +121,37 @@ export class DashboardServer {
     this.app.get('/api/today', (req, res) => {
       const events = this.calendar.getForDay(new Date());
       const overdue = this.garden.getOverdueTasks();
+      
+      if (req.query.voice === 'true') {
+        const parts: string[] = [];
+        
+        if (events.length === 0) {
+          parts.push('No events scheduled for today.');
+        } else {
+          parts.push(`You have ${events.length} event${events.length === 1 ? '' : 's'} today.`);
+          for (const event of events.slice(0, 5)) {
+            const time = new Date(event.start_time).toLocaleTimeString('en-US', { 
+              hour: 'numeric', 
+              minute: '2-digit' 
+            });
+            parts.push(`${time}: ${event.title}`);
+          }
+          if (events.length > 5) {
+            parts.push(`And ${events.length - 5} more events.`);
+          }
+        }
+        
+        if (overdue.length > 0) {
+          parts.push(`You have ${overdue.length} overdue task${overdue.length === 1 ? '' : 's'}.`);
+          for (const task of overdue.slice(0, 3)) {
+            parts.push(task.title);
+          }
+        }
+        
+        res.json({ summary: parts.join(' '), eventCount: events.length, overdueCount: overdue.length });
+        return;
+      }
+      
       res.json({ events, overdue });
     });
 
