@@ -544,6 +544,14 @@ export class DashboardServer {
       const tempPathWithExt = file.path + originalExt;
       fs.renameSync(file.path, tempPathWithExt);
 
+      // Debug: log file info to verify different files
+      const stats = fs.statSync(tempPathWithExt);
+      info('OCR/note upload received', {
+        originalName: file.originalname,
+        tempPath: tempPathWithExt,
+        size: stats.size,
+      });
+
       if (!this.services.ocr.isOCRableImage(tempPathWithExt)) {
         fs.unlinkSync(tempPathWithExt);
         res.status(400).json({ error: 'Not a supported image format' });

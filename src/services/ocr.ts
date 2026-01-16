@@ -83,7 +83,14 @@ export class OCRService {
       };
       const mimeType = mimeTypes[ext] || 'image/png';
 
-      debug('OCR processing image', { path: imagePath, size: imageBuffer.length, mimeType });
+      // Log enough to verify we're getting different images
+      const imageHash = imageBuffer.slice(0, 100).toString('base64').slice(0, 20);
+      info('OCR processing image', { 
+        path: imagePath, 
+        size: imageBuffer.length, 
+        mimeType,
+        imageHash, // First 20 chars of base64 of first 100 bytes
+      });
 
       const response = await this.client!.chat.completions.create({
         model: this.config.ocr.model || 'olmocr',
