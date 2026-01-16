@@ -471,8 +471,10 @@ export class DashboardServer {
     });
 
     // OCR endpoint - extract text from uploaded image
-    this.app.post('/api/ocr', upload.single('file'), async (req, res) => {
-      const file = req.file;
+    // Use upload.any() to accept any field name (iOS Shortcuts compatibility)
+    this.app.post('/api/ocr', upload.any(), async (req, res) => {
+      const files = req.files as Express.Multer.File[] | undefined;
+      const file = files?.[0];
       if (!file) {
         res.status(400).json({ error: 'No file uploaded' });
         return;
@@ -514,8 +516,10 @@ export class DashboardServer {
     });
 
     // OCR to Note endpoint - extract text and save as note
-    this.app.post('/api/ocr/note', upload.single('file'), async (req, res) => {
-      const file = req.file;
+    // Use upload.any() to accept any field name (iOS Shortcuts compatibility)
+    this.app.post('/api/ocr/note', upload.any(), async (req, res) => {
+      const files = req.files as Express.Multer.File[] | undefined;
+      const file = files?.[0];
       if (!file) {
         res.status(400).json({ error: 'No file uploaded' });
         return;
