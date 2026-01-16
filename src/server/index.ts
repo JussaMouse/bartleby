@@ -499,7 +499,7 @@ export class DashboardServer {
       try {
         const text = await this.services.ocr.extractText(tempPathWithExt);
         fs.unlinkSync(tempPathWithExt);
-        
+
         if (!text) {
           res.status(422).json({ error: 'Could not extract text from image' });
           return;
@@ -509,6 +509,80 @@ export class DashboardServer {
       } catch (err) {
         try { fs.unlinkSync(tempPathWithExt); } catch {}
         error('OCR failed', { error: String(err) });
+        res.status(500).json({ error: 'OCR failed' });
+      }
+    });
+
+    // OCR to Note endpoint - extract text and save as note
+    this.app.post('/api/ocr/note', upload.single('file'), async (req, res) => {
+      const file = req.file;
+      if (!file) {
+        res.status(400).json({ error: 'No file uploaded' });
+        return;
+      }
+
+      if (!this.services.ocr.isAvailable()) {
+        res.status(503).json({ error: 'OCR service not configured' });
+        return;
+      }
+
+      const originalExt = path.extname(file.originalname);
+      const tempPathWithExt = file.path + originalExt;
+      fs.renameSync(file.path, tempPathWithExt);
+
+      if (!this.services.ocr.isOCRableImage(tempPathWithExt)) {
+        fs.unlinkSync(tempPathWithExt);
+        res.status(400).json({ error: 'Not a supported image format' });
+        return;
+      }
+
+      try {
+        const text = await this.services.ocr.extractText(tempPathWithExt);
+        fs.unlinkSync(tempPathWithExt);
+
+        if (!text) {
+          res.status(422).json({ error: 'Could not extract text from image' });
+          return;
+        }
+
+        // Create note with timestamped title
+        const now = new Date();
+        const timestamp = now.toLocaleString('en-US', {
+          month: 'short',
+          day: 'numeric',
+          hour: 'numeric',
+          minute: '2-digit',
+        });
+        const title = `OCR ${timestamp}`;
+
+        const note = this.garden.create({
+          type: 'note',
+          title,
+          content: text,
+          status: 'active',
+          metadata: {
+            source: 'ocr',
+            originalFile: file.originalname,
+          },
+        });
+
+        // Get dashboard URL
+        const host = process.env.DASHBOARD_HOST || 'localhost';
+        const port = process.env.DASHBOARD_PORT || '3333';
+        const dashboardUrl = `http://${host}:${port}`;
+
+        debug('OCR saved to note', { id: note.id, title: note.title });
+
+        res.json({ 
+          success: true, 
+          noteId: note.id,
+          title: note.title,
+          url: `${dashboardUrl}/#note:${encodeURIComponent(note.title)}`,
+          preview: text.slice(0, 200) + (text.length > 200 ? '...' : ''),
+        });
+      } catch (err) {
+        try { fs.unlinkSync(tempPathWithExt); } catch {}
+        error('OCR to note failed', { error: String(err) });
         res.status(500).json({ error: 'OCR failed' });
       }
     });
