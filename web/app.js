@@ -238,7 +238,7 @@ function renderEditableItem(item, itemType) {
   } else if (itemType === 'project') {
     metaHtml = `<span class="item-meta clickable-hint">click to expand</span>`;
   } else if (itemType === 'note') {
-    metaHtml = `<span class="item-meta clickable-hint">click to view</span>`;
+    metaHtml = `<span class="item-meta clickable-hint">click to edit</span>`;
   } else if (item.type) {
     metaHtml = `<span class="item-meta">${item.type}</span>`;
   }
@@ -246,11 +246,15 @@ function renderEditableItem(item, itemType) {
   let clickAction;
   if (itemType === 'project') {
     clickAction = `onclick="addPanel('project:${esc(title)}')"`;
-  } else if (itemType === 'note') {
-    clickAction = `onclick="addPanel('note:${id}')"`;
   } else {
+    // Notes and other items use inline editing
     clickAction = `onclick="startGenericEdit(this.parentElement)"`;
   }
+
+  // Add View button for notes
+  const viewButton = itemType === 'note' 
+    ? `<button class="btn-inline view" onclick="addPanel('note:${id}')">View</button>`
+    : '';
 
   return `
     <li class="item generic-item" data-id="${id}" data-type="${itemType}" data-title="${esc(title)}">
@@ -263,6 +267,7 @@ function renderEditableItem(item, itemType) {
                onkeydown="handleGenericEditKey(event, this)"
                onblur="handleGenericEditBlur(event, this)">
         <div class="inline-actions">
+          ${viewButton}
           <button class="btn-inline save" onclick="saveGenericEdit(this.closest('.generic-item'))">Save</button>
           <button class="btn-inline" onclick="cancelGenericEdit(this.closest('.generic-item'))">Cancel</button>
           <button class="btn-inline remove" onclick="removeItem(this.closest('.generic-item'))">Remove</button>
