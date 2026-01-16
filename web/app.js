@@ -234,15 +234,21 @@ function renderEditableItem(item, itemType) {
     const timeStr = item.all_day ? 'all day' : d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
     metaHtml = `<span class="item-meta">${dateStr} ${timeStr}</span>`;
   } else if (itemType === 'project') {
-    // Projects can be clicked to open their panel
     metaHtml = `<span class="item-meta clickable-hint">click to expand</span>`;
+  } else if (itemType === 'note') {
+    metaHtml = `<span class="item-meta clickable-hint">click to view</span>`;
   } else if (item.type) {
     metaHtml = `<span class="item-meta">${item.type}</span>`;
   }
 
-  const clickAction = itemType === 'project' 
-    ? `onclick="addPanel('project:${esc(title)}')"`
-    : `onclick="startGenericEdit(this.parentElement)"`;
+  let clickAction;
+  if (itemType === 'project') {
+    clickAction = `onclick="addPanel('project:${esc(title)}')"`;
+  } else if (itemType === 'note') {
+    clickAction = `onclick="openNote('${id}')"`;
+  } else {
+    clickAction = `onclick="startGenericEdit(this.parentElement)"`;
+  }
 
   return `
     <li class="item generic-item" data-id="${id}" data-type="${itemType}" data-title="${esc(title)}">
@@ -1248,20 +1254,21 @@ function setupDragDrop() {
     const file = files[0];
     const isImage = file.type.startsWith('image/');
     
-    // For images, offer OCR option
+    // For images, offer OCR options
     if (isImage) {
       const choice = prompt(
         'What would you like to do?\n\n' +
-        '1. OCR - Extract text from image\n' +
-        '2. Import - Save to garden\n\n' +
-        'Enter 1 or 2 (or name for import with +project #tags):',
-        '1'
+        '1. OCR - Extract text (show in REPL)\n' +
+        '2. OCR to Note - Save as new note\n' +
+        '3. Import - Save image to garden\n\n' +
+        'Enter 1, 2, or 3 (or name for import):',
+        '2'
       );
       
       if (!choice) return;
       
       if (choice === '1' || choice.toLowerCase() === 'ocr') {
-        // OCR mode
+        // OCR mode - show in REPL
         const formData = new FormData();
         formData.append('file', file);
         
@@ -1275,14 +1282,12 @@ function setupDragDrop() {
           }
           const data = await res.json();
           
-          // Show extracted text in REPL
           if (data.text) {
             replMessages.push({ 
               role: 'assistant', 
               text: `**OCR Result from ${file.name}:**\n\n${data.text}` 
             });
             
-            // Make sure REPL panel exists
             if (!panels.has('repl')) {
               addPanel('repl');
             }
@@ -1296,8 +1301,35 @@ function setupDragDrop() {
         return;
       }
       
-      // Import mode - use choice as name if not "2"
-      const name = (choice === '2') 
+      if (choice === '2' || choice.toLowerCase() === 'note') {
+        // OCR to Note mode
+        const formData = new FormData();
+        formData.append('file', file);
+        
+        showToast('Extracting text...');
+        
+        try {
+          const res = await fetch('/api/ocr/note', { method: 'POST', body: formData });
+          if (!res.ok) {
+            const data = await res.json();
+            throw new Error(data.error || 'OCR failed');
+          }
+          const data = await res.json();
+          
+          if (data.noteId) {
+            showToast(`Saved: ${data.title}`);
+            // Open the note
+            openNote(data.noteId);
+          }
+        } catch (e) {
+          console.error('OCR to note failed:', e);
+          showToast(e.message || 'OCR failed', true);
+        }
+        return;
+      }
+      
+      // Import mode - use choice as name if not "3"
+      const name = (choice === '3') 
         ? prompt('Name for this media (can include +project #tags):', file.name.replace(/\.[^.]+$/, ''))
         : choice;
       
@@ -1334,6 +1366,33 @@ function setupDragDrop() {
       }
     }
   });
+}
+
+// Open note content in REPL
+async function openNote(noteId) {
+  try {
+    const res = await fetch(`/api/page/${noteId}`);
+    if (!res.ok) throw new Error('Failed to load note');
+    const note = await res.json();
+    
+    // Display in REPL
+    let text = `**📝 ${note.title}**\n\n`;
+    if (note.content) {
+      text += note.content;
+    } else {
+      text += '_(empty note)_';
+    }
+    
+    replMessages.push({ role: 'assistant', text });
+    
+    if (!panels.has('repl')) {
+      addPanel('repl');
+    }
+    refreshReplPanel();
+  } catch (e) {
+    console.error('Failed to open note:', e);
+    showToast('Failed to load note', true);
+  }
 }
 
 // Lightbox

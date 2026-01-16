@@ -107,15 +107,25 @@ export class DashboardServer {
         res.status(404).json({ error: 'Project not found' });
         return;
       }
-      
+
       const projectSlug = project.title.toLowerCase().replace(/\s+/g, '-');
       const actions = this.garden.getTasks({ status: 'active' })
-        .filter(a => 
-          a.project?.toLowerCase() === projectSlug || 
+        .filter(a =>
+          a.project?.toLowerCase() === projectSlug ||
           a.project?.toLowerCase() === project.title.toLowerCase()
         );
-      
+
       res.json({ project, actions });
+    });
+
+    // Get any page by ID
+    this.app.get('/api/page/:id', (req, res) => {
+      const page = this.garden.get(req.params.id);
+      if (!page) {
+        res.status(404).json({ error: 'Page not found' });
+        return;
+      }
+      res.json(page);
     });
 
     this.app.get('/api/today', (req, res) => {
