@@ -8,6 +8,7 @@ import { shedTools } from './shed.js';
 import { schedulerTools } from './scheduler.js';
 import { weatherTools } from './weather.js';
 import { systemTools } from './system.js';
+import { ocrTools } from './ocr.js';
 
 // Aggregate all tools
 export const allTools: Tool[] = [
@@ -19,6 +20,7 @@ export const allTools: Tool[] = [
   ...schedulerTools,
   ...weatherTools,
   ...systemTools,
+  ...ocrTools,
 ];
 
 export function getToolByName(name: string): Tool | undefined {

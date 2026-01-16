@@ -1378,11 +1378,28 @@ export const importMedia: Tool = {
       context.services.garden.update(media.id, { tags });
     }
 
-    const metadata = media.metadata as { fileName?: string; filePath?: string } | undefined;
+    const metadata = media.metadata as { fileName?: string; filePath?: string; mimeType?: string } | undefined;
     let response = `📎 **Media imported: ${media.title}**`;
     if (project) response += `\n  +${project}`;
     if (tags.length > 0) response += `\n  ${tags.map(t => '#' + t).join(' ')}`;
     response += `\n  📁 ${metadata?.fileName || 'saved'}`;
+
+    // Run OCR on images if available
+    if (context.services.ocr.isAvailable() && context.services.ocr.isOCRableImage(resolvedPath)) {
+      const ocrText = await context.services.ocr.extractText(resolvedPath);
+      if (ocrText) {
+        // Store OCR text in content and metadata
+        const currentContent = media.content || '';
+        const updatedContent = currentContent 
+          ? `${currentContent}\n\n---\n**OCR Text:**\n${ocrText}`
+          : `**OCR Text:**\n${ocrText}`;
+        context.services.garden.update(media.id, { 
+          content: updatedContent,
+          metadata: { ...metadata, ocrText: ocrText.slice(0, 500) }, // Store preview in metadata
+        });
+        response += `\n  🔍 OCR: ${ocrText.length} characters extracted`;
+      }
+    }
 
     return response;
   },

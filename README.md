@@ -768,6 +768,37 @@ EMBEDDINGS_MODEL=nomic-ai/nomic-embed-text-v1.5
 EMBEDDINGS_URL=http://127.0.0.1:8081/v1
 ```
 
+### OCR (Optional)
+
+Extract text from images using a vision-language model like olmOCR:
+
+```env
+OCR_URL=http://127.0.0.1:8085/v1
+OCR_MODEL=olmocr
+OCR_MAX_TOKENS=4096
+```
+
+**Recommended model:** `olmOCR-2-7B-1025-MLX-8bit` — optimized for text extraction, runs on Apple Silicon.
+
+**Usage:**
+
+```
+> ocr ~/Desktop/receipt.png
+**Text from receipt.png:**
+
+COSTCO WHOLESALE
+1234 WAREHOUSE BLVD
+...
+TOTAL: $127.43
+
+> import ~/Desktop/screenshot.png meeting notes
+📎 Media imported: meeting notes
+  📁 screenshot.png
+  🔍 OCR: 847 characters extracted
+```
+
+When OCR is enabled, imported images automatically have their text extracted and stored.
+
 ### Calendar
 
 ```env

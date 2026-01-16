@@ -11,6 +11,7 @@ import { ShedService } from './shed.js';
 import { SchedulerService } from './scheduler.js';
 import { WeatherService } from './weather.js';
 import { SignalService } from './signal.js';
+import { OCRService } from './ocr.js';
 import { info } from '../utils/logger.js';
 
 export interface ServiceContainer {
@@ -37,6 +38,7 @@ export interface ServiceContainer {
   // Optional integrations
   weather: WeatherService;
   signal: SignalService;
+  ocr: OCRService;
 }
 
 export async function initServices(config: Config): Promise<ServiceContainer> {
@@ -48,6 +50,7 @@ export async function initServices(config: Config): Promise<ServiceContainer> {
   const vectors = new VectorService(config);
   const signal = new SignalService(config);
   const weather = new WeatherService(config);
+  const ocr = new OCRService(config);
   
   // Initialize infrastructure first
   await llm.initialize();
@@ -55,6 +58,7 @@ export async function initServices(config: Config): Promise<ServiceContainer> {
   await vectors.initialize();
   await signal.initialize();
   await weather.initialize();
+  await ocr.initialize();
 
   // Create data services (depend on infrastructure)
   const garden = new GardenService(config);
@@ -110,6 +114,7 @@ export async function initServices(config: Config): Promise<ServiceContainer> {
     scheduler,
     weather,
     signal,
+    ocr,
   };
 }
 
@@ -139,3 +144,4 @@ export { ShedService, ShedSource, ShedChunk } from './shed.js';
 export { SchedulerService, ScheduledTask } from './scheduler.js';
 export { WeatherService, WeatherData } from './weather.js';
 export { SignalService } from './signal.js';
+export { OCRService } from './ocr.js';

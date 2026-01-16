@@ -33,6 +33,13 @@ const ConfigSchema = z.object({
     dimensions: z.number().positive(),
   }),
 
+  ocr: z.object({
+    enabled: z.boolean(),
+    url: z.string().url().optional(),
+    model: z.string().optional(),
+    maxTokens: z.number().positive(),
+  }),
+
   paths: z.object({
     garden: z.string(),
     shed: z.string(),
@@ -120,6 +127,12 @@ export function loadConfig(): Config {
       url: process.env.EMBEDDINGS_URL || 'http://localhost:11434/v1',
       model: process.env.EMBEDDINGS_MODEL || 'nomic-embed-text',
       dimensions: parseInt(process.env.EMBEDDINGS_DIMENSIONS || '4096'),
+    },
+    ocr: {
+      enabled: !!process.env.OCR_URL,
+      url: process.env.OCR_URL || undefined,
+      model: process.env.OCR_MODEL || 'olmocr',
+      maxTokens: parseInt(process.env.OCR_MAX_TOKENS || '4096'),
     },
     paths: {
       garden: process.env.GARDEN_PATH || './garden',
