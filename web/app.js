@@ -170,6 +170,8 @@ function renderPanel(view, data) {
     content.innerHTML = renderToday(data);
   } else if (view === 'recent') {
     content.innerHTML = renderRecent(data);
+  } else if (view === 'notes') {
+    content.innerHTML = renderNotes(data);
   } else {
     content.innerHTML = `<div class="empty">Unknown view: ${view}</div>`;
   }
@@ -385,6 +387,16 @@ function renderRecent(data) {
     return renderEditableItem(p, p.type);
   }).join('');
 
+  return `<ul>${items}</ul>`;
+}
+
+function renderNotes(data) {
+  // data is array of notes
+  if (!data?.length) {
+    return '<div class="empty">No notes</div>';
+  }
+
+  const items = data.map(n => renderEditableItem(n, 'note')).join('');
   return `<ul>${items}</ul>`;
 }
 

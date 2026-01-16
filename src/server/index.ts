@@ -537,6 +537,8 @@ export class DashboardServer {
       };
     } else if (view === 'recent') {
       data = this.garden.getRecent(10);
+    } else if (view === 'notes') {
+      data = this.garden.getByType('note').filter(n => n.status === 'active');
     }
 
     if (data) {
