@@ -5,6 +5,7 @@
 import { GardenService } from './garden.js';
 import { CalendarService } from './calendar.js';
 import { ContextService } from './context.js';
+import { WeatherService } from './weather.js';
 import { Config } from '../config.js';
 import { debug } from '../utils/logger.js';
 
@@ -30,7 +31,8 @@ export class PresenceService {
     private config: Config,
     private context: ContextService,
     private garden: GardenService,
-    private calendar: CalendarService
+    private calendar: CalendarService,
+    private weather?: WeatherService
   ) {
     // Load presence config from main config or use defaults
     this.presenceConfig = {
@@ -186,11 +188,72 @@ export class PresenceService {
   private getMorningReview(): string | null {
     const lines = ['☀️ **Morning Review**\n'];
 
+    // Weather forecast (today + next 2 days)
+    if (this.weather?.isAvailable()) {
+      try {
+        // Use sync wrapper - getMorningReviewAsync is the async version
+        lines.push('🌤️ Weather loading...');
+      } catch (err) {
+        debug('Presence: morning weather failed', { error: String(err) });
+      }
+    }
+
     try {
       const todayEvents = this.calendar.getForDay(new Date());
       if (todayEvents.length > 0) {
         lines.push(`📅 ${todayEvents.length} event(s) today`);
         // Show first event
+        const first = todayEvents[0];
+        const time = new Date(first.start_time).toLocaleTimeString('en-US', { 
+          hour: 'numeric', 
+          minute: '2-digit' 
+        });
+        lines.push(`   First: ${first.title} at ${time}`);
+      }
+    } catch (err) {
+      debug('Presence: morning calendar failed', { error: String(err) });
+    }
+
+    try {
+      const tasks = this.garden.getTasks({ status: 'active' });
+      lines.push(`📋 ${tasks.length} active action(s)`);
+
+      const inbox = tasks.filter(t => t.context === '@inbox');
+      if (inbox.length > 3) {
+        lines.push(`📥 ${inbox.length} items in inbox - time to process?`);
+      }
+    } catch (err) {
+      debug('Presence: morning tasks failed', { error: String(err) });
+    }
+
+    return lines.length > 1 ? lines.join('\n') : null;
+  }
+
+  /**
+   * Async version of getMorningReview that includes weather forecast.
+   * Used by scheduler for Signal notifications.
+   */
+  async getMorningReviewAsync(): Promise<string | null> {
+    const lines = ['☀️ **Morning Review**\n'];
+
+    // Weather forecast (today + next 2 days)
+    if (this.weather?.isAvailable()) {
+      try {
+        const forecast = await this.weather.getForecast(3);
+        if (forecast && forecast.length > 0) {
+          lines.push('🌤️ **Weather**');
+          lines.push(this.weather.formatForecast(forecast));
+          lines.push('');
+        }
+      } catch (err) {
+        debug('Presence: morning weather failed', { error: String(err) });
+      }
+    }
+
+    try {
+      const todayEvents = this.calendar.getForDay(new Date());
+      if (todayEvents.length > 0) {
+        lines.push(`📅 ${todayEvents.length} event(s) today`);
         const first = todayEvents[0];
         const time = new Date(first.start_time).toLocaleTimeString('en-US', { 
           hour: 'numeric', 

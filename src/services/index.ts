@@ -93,8 +93,11 @@ export async function initServices(config: Config): Promise<ServiceContainer> {
   }));
   await calendar.reconcile(gardenTasks, schedulerTasks);
 
-  // Create Presence service (depends on context, garden, calendar)
-  const presence = new PresenceService(config, context, garden, calendar);
+  // Create Presence service (depends on context, garden, calendar, weather)
+  const presence = new PresenceService(config, context, garden, calendar, weather);
+
+  // Wire up scheduler to presence for scheduled moments
+  scheduler.setPresence(presence);
 
   // Start scheduler background loop
   scheduler.start();
@@ -142,6 +145,6 @@ export { EmbeddingService } from './embeddings.js';
 export { VectorService, VectorMetadata } from './vectors.js';
 export { ShedService, ShedSource, ShedChunk } from './shed.js';
 export { SchedulerService, ScheduledTask } from './scheduler.js';
-export { WeatherService, WeatherData } from './weather.js';
+export { WeatherService, WeatherData, ForecastDay } from './weather.js';
 export { SignalService } from './signal.js';
 export { OCRService } from './ocr.js';

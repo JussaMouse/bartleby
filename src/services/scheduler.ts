@@ -6,6 +6,7 @@ import { Config, getDbPath, ensureDir } from '../config.js';
 import { info, warn, debug, error } from '../utils/logger.js';
 import { SignalService } from './signal.js';
 import type { CalendarService } from './calendar.js';
+import type { PresenceService } from './presence.js';
 
 export interface ScheduledTask {
   id: string;
@@ -47,6 +48,8 @@ export class SchedulerService {
   private intervalId?: NodeJS.Timeout;
   private running = false;
   private calendar?: CalendarService;
+  private presence?: PresenceService;
+  private lastMorningSent?: string; // Track which day we last sent morning update
 
   constructor(
     private config: Config,
@@ -65,6 +68,13 @@ export class SchedulerService {
    */
   setCalendar(calendar: CalendarService): void {
     this.calendar = calendar;
+  }
+
+  /**
+   * Set the presence service for scheduled presence moments.
+   */
+  setPresence(presence: PresenceService): void {
+    this.presence = presence;
   }
 
   async initialize(): Promise<void> {
@@ -99,13 +109,17 @@ export class SchedulerService {
   }
 
   private async tick(): Promise<void> {
-    const now = new Date().toISOString();
+    const now = new Date();
+    const nowIso = now.toISOString();
+
+    // Check for scheduled presence moments (morning update)
+    await this.checkPresenceMoments(now);
 
     const dueTasks = this.db.prepare(`
       SELECT * FROM tasks
       WHERE enabled = 1 AND next_run <= ?
       ORDER BY next_run
-    `).all(now) as any[];
+    `).all(nowIso) as any[];
 
     for (const row of dueTasks) {
       const task = this.rowToTask(row);
@@ -114,6 +128,34 @@ export class SchedulerService {
         this.updateAfterRun(task);
       } catch (err) {
         error('Scheduled task failed', { taskId: task.id, error: String(err) });
+      }
+    }
+  }
+
+  /**
+   * Check if it's time to send scheduled presence moments (morning review).
+   */
+  private async checkPresenceMoments(now: Date): Promise<void> {
+    if (!this.presence || !this.config.presence.scheduled) return;
+    if (!this.signal.isEnabled()) return;
+
+    const today = now.toISOString().split('T')[0];
+    const currentHour = now.getHours();
+    const morningHour = this.presence.getMorningHour();
+
+    // Send morning update if:
+    // - Current hour matches morning hour
+    // - We haven't sent today yet
+    if (currentHour === morningHour && this.lastMorningSent !== today) {
+      try {
+        const message = await this.presence.getMorningReviewAsync();
+        if (message) {
+          await this.signal.send(message);
+          this.lastMorningSent = today;
+          info('Sent morning presence message');
+        }
+      } catch (err) {
+        error('Failed to send morning presence', { error: String(err) });
       }
     }
   }
