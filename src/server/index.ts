@@ -718,6 +718,12 @@ export class DashboardServer {
         
         data = { project, actions, media, notes };
       }
+    } else if (view.startsWith('note:')) {
+      const noteId = view.slice(5);
+      const note = this.garden.get(noteId);
+      if (note) {
+        data = { note };
+      }
     } else if (view === 'calendar') {
       data = this.calendar.getUpcoming(15);
     } else if (view === 'today') {

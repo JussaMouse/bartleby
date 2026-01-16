@@ -469,6 +469,42 @@ footer button:hover {
   white-space: nowrap;
 }
 
+/* Note view */
+.note-content {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--text-primary);
+  white-space: pre-wrap;
+  word-break: break-word;
+  padding: 8px 0;
+}
+
+.note-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 12px 0;
+  border-top: 1px solid var(--border);
+  margin-top: 12px;
+}
+
+.note-meta .meta-item {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.note-meta .meta-item.muted {
+  color: var(--text-muted);
+  opacity: 0.7;
+}
+
+.note-actions {
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+  margin-top: 12px;
+}
+
 /* Drop overlay */
 .drop-overlay {
   position: fixed;

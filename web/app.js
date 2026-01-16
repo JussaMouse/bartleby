@@ -164,6 +164,8 @@ function renderPanel(view, data) {
     content.innerHTML = renderProjects(data);
   } else if (view.startsWith('project:')) {
     content.innerHTML = renderProject(data);
+  } else if (view.startsWith('note:')) {
+    content.innerHTML = renderNote(data);
   } else if (view === 'calendar') {
     content.innerHTML = renderCalendar(data);
   } else if (view === 'today') {
@@ -245,7 +247,7 @@ function renderEditableItem(item, itemType) {
   if (itemType === 'project') {
     clickAction = `onclick="addPanel('project:${esc(title)}')"`;
   } else if (itemType === 'note') {
-    clickAction = `onclick="openNote('${id}')"`;
+    clickAction = `onclick="addPanel('note:${id}')"`;
   } else {
     clickAction = `onclick="startGenericEdit(this.parentElement)"`;
   }
@@ -322,6 +324,75 @@ function renderProject(data) {
   }
 
   return html || '<div class="empty">Empty project</div>';
+}
+
+function renderNote(data) {
+  if (!data?.note) {
+    return '<div class="empty">Note not found</div>';
+  }
+  
+  const note = data.note;
+  let html = '';
+  
+  // Note content with markdown rendering
+  if (note.content) {
+    html += `<div class="note-content">${renderMarkdown(note.content)}</div>`;
+  } else {
+    html += '<div class="empty">Empty note</div>';
+  }
+  
+  // Metadata
+  html += '<div class="note-meta">';
+  if (note.project) {
+    html += `<span class="meta-item">+${esc(note.project)}</span>`;
+  }
+  if (note.tags?.length) {
+    html += note.tags.map(t => `<span class="meta-item">#${esc(t)}</span>`).join('');
+  }
+  if (note.updated_at) {
+    const updated = new Date(note.updated_at).toLocaleDateString('en-US', {
+      month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit'
+    });
+    html += `<span class="meta-item muted">Updated ${updated}</span>`;
+  }
+  html += '</div>';
+  
+  // Edit button
+  html += `
+    <div class="note-actions">
+      <button class="btn-inline" onclick="editNoteInRepl('${note.id}')">Edit in REPL</button>
+    </div>
+  `;
+  
+  return html;
+}
+
+function editNoteInRepl(noteId) {
+  // Add edit command to REPL
+  replMessages.push({ 
+    role: 'user', 
+    text: `edit ${noteId}` 
+  });
+  
+  if (!panels.has('repl')) {
+    addPanel('repl');
+  }
+  
+  // Trigger the edit command
+  fetch('/api/chat', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text: `edit ${noteId}` }),
+  })
+    .then(res => res.json())
+    .then(data => {
+      replMessages.push({ role: 'assistant', text: data.reply || '(no response)' });
+      refreshReplPanel();
+    })
+    .catch(() => {
+      replMessages.push({ role: 'assistant', text: '(error)' });
+      refreshReplPanel();
+    });
 }
 
 function renderCalendar(data) {
@@ -1318,8 +1389,8 @@ function setupDragDrop() {
           
           if (data.noteId) {
             showToast(`Saved: ${data.title}`);
-            // Open the note
-            openNote(data.noteId);
+            // Open the note in a panel
+            addPanel(`note:${data.noteId}`);
           }
         } catch (e) {
           console.error('OCR to note failed:', e);
@@ -1366,33 +1437,6 @@ function setupDragDrop() {
       }
     }
   });
-}
-
-// Open note content in REPL
-async function openNote(noteId) {
-  try {
-    const res = await fetch(`/api/page/${noteId}`);
-    if (!res.ok) throw new Error('Failed to load note');
-    const note = await res.json();
-    
-    // Display in REPL
-    let text = `**📝 ${note.title}**\n\n`;
-    if (note.content) {
-      text += note.content;
-    } else {
-      text += '_(empty note)_';
-    }
-    
-    replMessages.push({ role: 'assistant', text });
-    
-    if (!panels.has('repl')) {
-      addPanel('repl');
-    }
-    refreshReplPanel();
-  } catch (e) {
-    console.error('Failed to open note:', e);
-    showToast('Failed to load note', true);
-  }
 }
 
 // Lightbox
