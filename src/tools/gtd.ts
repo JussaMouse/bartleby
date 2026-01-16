@@ -1018,13 +1018,60 @@ export const createNote: Tool = {
     const { title } = args as { title: string };
 
     if (!title) {
-      return 'Please provide a note title. Example: new note meeting with Scott';
+      // Set pending state so next input becomes the title
+      await context.services.context.setFact('system', 'pending_note_title', true);
+      return 'What would you like to call this note?';
     }
 
     // Create note with just the title
     const note = context.services.garden.create({
       type: 'note',
       title,
+      status: 'active',
+      content: '',
+    });
+
+    // Set pending note in session for follow-up content
+    await context.services.context.setFact('system', 'pending_note_id', note.id);
+
+    return `📝 **Note: ${note.title}**
+
+What would you like to add to this note?
+(Type your content, or "done" to finish)`;
+  },
+};
+
+// Handler for when we're waiting for a note title
+export const provideNoteTitle: Tool = {
+  name: 'provideNoteTitle',
+  description: 'Provide a title for a new note',
+
+  routing: {
+    patterns: [],
+    keywords: { verbs: [], nouns: [] },
+    examples: [],
+    priority: 100,  // High priority - check before other handlers
+  },
+
+  shouldHandle: async (input: string, context) => {
+    const fact = context.services.context.getFact('system', 'pending_note_title');
+    return !!fact?.value;
+  },
+
+  execute: async (args, context) => {
+    const input = ((args as any).__raw_input || '').trim();
+    
+    // Clear the pending state
+    await context.services.context.setFact('system', 'pending_note_title', null);
+    
+    if (!input) {
+      return 'Note cancelled.';
+    }
+
+    // Create the note with the provided title
+    const note = context.services.garden.create({
+      type: 'note',
+      title: input,
       status: 'active',
       content: '',
     });
@@ -1863,9 +1910,10 @@ export const deletePage: Tool = {
 };
 
 export const gtdTools: Tool[] = [
-  appendToNote,  // Must be first - highest priority contextual check
-  tagNote,       // Second - for note tagging step
-  handleEditPage, // Third - for page edit step
+  provideNoteTitle, // First - waiting for note title
+  appendToNote,     // Second - pending note content
+  tagNote,          // Third - for note tagging step
+  handleEditPage,   // Fourth - for page edit step
   viewNextActions,
   processInbox,
   addTask,
