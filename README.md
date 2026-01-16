@@ -533,10 +533,11 @@ The dashboard shows live-updating panels:
 | **Inbox** | Uncategorized captures |
 | **Next Actions** | Actions grouped by context |
 | **Projects** | Active projects (click to open) |
+| **Notes** | All notes (click to edit, View to open) |
 | **Calendar** | Upcoming events + deadlines |
 | **Today** | Today's events + overdue items |
 | **Recent** | Last 10 modified pages |
-| **Project: X** | Specific project with its actions |
+| **REPL** | Command line in the browser |
 
 Click the `+` buttons in the footer to add panels. Layout persists across reloads.
 
@@ -557,15 +558,18 @@ pack bags                    →  pack bags @home +thailand-trip due:friday
 - **Done:** Mark action complete (disappears instantly)
 - **→ Action:** (Inbox only) Convert to a real action and start editing
 
-### Editing Other Pages
+### Editing Notes
 
-Click notes, entries, or projects to open the full editor modal:
+Notes use the same inline editing as actions:
 
-- Edit the raw markdown (including backmatter)
-- **Save:** `Cmd+S` or click Save
-- **Cancel:** `Escape` or click Cancel
+- **Click** any note → edit title inline, add `+project` or `#tags`
+- **View** → opens note content in its own panel
+- **Save** / **Cancel** / **Remove** buttons
 
-Changes are written to the `.md` file. The file watcher syncs everything — both CLI and dashboard see updates instantly.
+Note panels show:
+- Full content with markdown rendering
+- Metadata (project, tags, last updated)
+- Edit in REPL button for content changes
 
 ### Project Pages
 
@@ -575,16 +579,24 @@ Click a project name to open its dedicated panel showing:
 - **Media** — images and files (click for full-size lightbox)
 - **Notes** — notes linked to this project
 
-### Importing Media
+### Importing Media & OCR
 
 **Drag and drop** images or files onto the dashboard:
 
 1. Drag any file onto the dashboard
-2. Blue overlay appears: "Drop to import media"
-3. Enter a name (can include `+project` and `#tags`)
-4. File is copied to `garden/media/` and linked to the project
+2. Blue overlay appears: "Drop to import or OCR"
+3. For images, choose:
+   - **1. OCR** — Extract text, show in REPL
+   - **2. OCR to Note** — Extract text, save as timestamped note (opens automatically)
+   - **3. Import** — Save image to garden (can add `+project` `#tags`)
+4. Non-images go straight to import
 
 Images appear as thumbnails on project pages. Click to view full-size.
+
+**CLI OCR:**
+```
+> ocr ~/Desktop/screenshot.png
+```
 
 ### Voice Commands
 
@@ -723,23 +735,28 @@ Same as above but use URL: `http://<tailscale-ip>:3333/api/chat?voice=true`
 
 The `?voice=true` parameter strips markdown from responses for cleaner TTS.
 
-**OCR Shortcut** (extract text from photos/screenshots):
+**OCR to Note Shortcut** (recommended — saves as note):
 
 1. Open Shortcuts app → tap **+**
-2. Add action: **Select Photos** (or receive from Share Sheet)
+2. Add action: **Select Photos**
 3. Add action: **Get Contents of URL**
-   - URL: `http://<tailscale-ip>:3333/api/ocr`
+   - URL: `http://<tailscale-ip>:3333/api/ocr/note`
    - Method: **POST**
-   - Headers:
-     - `Authorization`: `Bearer YOUR_TOKEN`
    - Request Body: **Form**
      - Add field `file` with value: select **Photos** variable
-4. Add action: **Get Dictionary Value**
-   - Key: `text`
-5. Add action: **Quick Look** (to see the text) or **Copy to Clipboard**
-6. Name shortcut "Bartleby OCR"
+4. Add action: **Get Dictionary from Input** (parse JSON response)
+5. Add action: **Get Dictionary Value** → Key: `url`
+6. Add action: **Open URLs** → Dictionary Value
+7. Name shortcut "OCR"
 
-For Share Sheet integration: Set shortcut to receive images from Share Sheet, then you can share any screenshot directly to Bartleby for OCR.
+Pick a photo → text is extracted → saved as "OCR Jan 15, 3:45 PM" → opens in browser.
+
+**OCR Only Shortcut** (just extract text, no save):
+
+Same as above but:
+- URL: `http://<tailscale-ip>:3333/api/ocr`
+- Get Dictionary Value key: `text`
+- Use **Copy to Clipboard** instead of Open URLs
 
 **Read Today Shortcut** (hear your schedule):
 
