@@ -200,6 +200,7 @@ export class DashboardServer {
     this.app.get('/api/autocomplete', (req, res) => {
       const tasks = this.garden.getTasks({ status: 'active' });
       const projects = this.garden.getByType('project').filter(p => p.status === 'active');
+      const contacts = this.garden.getByType('contact').filter(c => c.status === 'active');
       const recentPages = this.garden.getRecent(100);
       
       // Collect unique contexts
@@ -231,6 +232,7 @@ export class DashboardServer {
       res.json({
         contexts: Array.from(contexts).sort(),
         projects: projects.map(p => p.title),
+        contacts: contacts.map(c => c.title),
         pages: Array.from(pageTitles).sort(),
         commands,
       });

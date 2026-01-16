@@ -475,7 +475,8 @@ function handleReplKeydown(event) {
     
     const contextMatch = beforeCursor.match(/@(\w*)$/);
     const projectMatch = beforeCursor.match(/\+([^\s]*)$/);
-    console.log('REPL context match:', contextMatch, 'project match:', projectMatch);
+    const withMatch = beforeCursor.match(/\bwith\s+(\w*)$/i);
+    console.log('REPL context match:', contextMatch, 'project match:', projectMatch, 'with match:', withMatch);
     
     if (contextMatch) {
       const partial = contextMatch[1].toLowerCase();
@@ -492,6 +493,14 @@ function handleReplKeydown(event) {
       );
       console.log('REPL project matches:', matches);
       showReplAutocomplete(matches.map(p => '+' + p.toLowerCase().replace(/\s+/g, '-')), '+');
+    } else if (withMatch) {
+      const partial = withMatch[1].toLowerCase();
+      const contacts = autocompleteData.contacts || [];
+      const matches = contacts.filter(c =>
+        c.toLowerCase().startsWith(partial)
+      );
+      console.log('REPL contact matches:', matches);
+      showReplAutocomplete(matches, 'with');
     } else {
       // Command or page name completion
       const partial = beforeCursor.toLowerCase().trim();
@@ -610,6 +619,8 @@ function applyReplAutocomplete(value) {
     newBefore = beforeCursor.replace(/@\w*$/, value + ' ');
   } else if (replAutocompleteType === '+') {
     newBefore = beforeCursor.replace(/\+[^\s]*$/, value + ' ');
+  } else if (replAutocompleteType === 'with') {
+    newBefore = beforeCursor.replace(/(\bwith\s+)\w*$/i, '$1' + value + ' ');
   } else {
     // Full replacement - replace entire input, add space for commands
     newBefore = value + ' ';
@@ -642,7 +653,16 @@ function renderActionItem(task, isInbox = false) {
         <div class="inline-actions">
           <button class="btn-inline save" onclick="saveEdit(this.closest('.action-item'))">Save</button>
           <button class="btn-inline" onclick="cancelEdit(this.closest('.action-item'))">Cancel</button>
-          ${isInbox ? `<button class="btn-inline process" onclick="processItem(this.closest('.action-item'))">→ Action</button>` : ''}
+          ${isInbox ? `
+            <select class="btn-inline convert-select" onchange="convertItem(this.closest('.action-item'), this.value)">
+              <option value="">Convert to...</option>
+              <option value="action">→ Action</option>
+              <option value="event">→ Event</option>
+              <option value="project">→ Project</option>
+              <option value="note">→ Note</option>
+              <option value="entry">→ Entry</option>
+            </select>
+          ` : ''}
           <button class="btn-inline done" onclick="markDone(this.closest('.action-item').dataset.id)">Done</button>
         </div>
         <div class="autocomplete-menu hidden"></div>
@@ -745,7 +765,8 @@ function handleEditKey(event, input) {
 
     const contextMatch = beforeCursor.match(/@(\w*)$/);
     const projectMatch = beforeCursor.match(/\+([^\s]*)$/);
-    console.log('Context match:', contextMatch, 'Project match:', projectMatch);
+    const withMatch = beforeCursor.match(/\bwith\s+(\w*)$/i);
+    console.log('Context match:', contextMatch, 'Project match:', projectMatch, 'With match:', withMatch);
 
     if (contextMatch) {
       const partial = contextMatch[1].toLowerCase();
@@ -763,6 +784,15 @@ function handleEditKey(event, input) {
       );
       console.log('Project matches:', matches);
       showAutocomplete(item, matches.map(p => '+' + p.toLowerCase().replace(/\s+/g, '-')), '+');
+    } else if (withMatch) {
+      const partial = withMatch[1].toLowerCase();
+      console.log('With partial:', partial, 'Contacts:', autocompleteData.contacts);
+      const contacts = autocompleteData.contacts || [];
+      const matches = contacts.filter(c =>
+        c.toLowerCase().startsWith(partial)
+      );
+      console.log('Contact matches:', matches);
+      showAutocomplete(item, matches, 'with');
     }
     return;
   }
@@ -829,6 +859,9 @@ function applyAutocomplete(input, value) {
     newBefore = beforeCursor.replace(/@\w*$/, value);
   } else if (value.startsWith('+')) {
     newBefore = beforeCursor.replace(/\+[^\s]*$/, value);
+  } else if (beforeCursor.match(/\bwith\s+\w*$/i)) {
+    // Contact name completion - replace just the partial name after 'with '
+    newBefore = beforeCursor.replace(/(\bwith\s+)\w*$/i, '$1' + value);
   } else {
     newBefore = beforeCursor + value;
   }
@@ -952,6 +985,80 @@ async function processItem(item) {
     });
   } catch (e) {
     console.error('Failed to process:', e);
+  }
+}
+
+async function convertItem(item, targetType) {
+  if (!targetType) return;
+  
+  const id = item.dataset.id;
+  const input = item.querySelector('.inline-input');
+  const select = item.querySelector('.convert-select');
+  
+  // Clean up the text - remove @inbox
+  let text = input.value.replace(/@inbox\s*/gi, '').trim();
+  
+  // Reset select
+  if (select) select.value = '';
+  
+  if (targetType === 'action') {
+    // Simple conversion - just remove @inbox context
+    try {
+      await fetch(`/api/action/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ context: null }),
+      });
+      showToast('Converted to action');
+    } catch (e) {
+      console.error('Failed to convert:', e);
+      showToast('Conversion failed', true);
+    }
+    return;
+  }
+  
+  // For other types, use chat API to create new item and delete old
+  let command = '';
+  switch (targetType) {
+    case 'event':
+      command = `new event ${text}`;
+      break;
+    case 'project':
+      command = `new project ${text}`;
+      break;
+    case 'note':
+      command = `new note ${text}`;
+      break;
+    case 'entry':
+      command = `new entry ${text}`;
+      break;
+    default:
+      return;
+  }
+  
+  try {
+    // Create the new item via chat
+    const res = await fetch('/api/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: command }),
+    });
+    
+    if (!res.ok) throw new Error('Failed to create');
+    
+    // Delete the old inbox item
+    await fetch(`/api/action/${id}/done`, { method: 'POST' });
+    
+    // Visual feedback
+    item.style.opacity = '0.5';
+    item.style.pointerEvents = 'none';
+    setTimeout(() => item.remove(), 300);
+    
+    const data = await res.json();
+    showToast(data.reply?.split('\n')[0] || `Converted to ${targetType}`);
+  } catch (e) {
+    console.error('Failed to convert:', e);
+    showToast('Conversion failed', true);
   }
 }
 
