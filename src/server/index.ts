@@ -410,6 +410,49 @@ export class DashboardServer {
         res.status(500).json({ error: 'Upload failed' });
       }
     });
+
+    // OCR endpoint - extract text from uploaded image
+    this.app.post('/api/ocr', upload.single('file'), async (req, res) => {
+      const file = req.file;
+      if (!file) {
+        res.status(400).json({ error: 'No file uploaded' });
+        return;
+      }
+
+      // Check if OCR is available
+      if (!this.services.ocr.isAvailable()) {
+        res.status(503).json({ error: 'OCR service not configured' });
+        return;
+      }
+
+      // Get original extension from filename
+      const originalExt = path.extname(file.originalname);
+      const tempPathWithExt = file.path + originalExt;
+      fs.renameSync(file.path, tempPathWithExt);
+
+      // Check if it's an image
+      if (!this.services.ocr.isOCRableImage(tempPathWithExt)) {
+        fs.unlinkSync(tempPathWithExt);
+        res.status(400).json({ error: 'Not a supported image format' });
+        return;
+      }
+
+      try {
+        const text = await this.services.ocr.extractText(tempPathWithExt);
+        fs.unlinkSync(tempPathWithExt);
+        
+        if (!text) {
+          res.status(422).json({ error: 'Could not extract text from image' });
+          return;
+        }
+
+        res.json({ success: true, text });
+      } catch (err) {
+        try { fs.unlinkSync(tempPathWithExt); } catch {}
+        error('OCR failed', { error: String(err) });
+        res.status(500).json({ error: 'OCR failed' });
+      }
+    });
   }
 
   private isAuthorized(req: express.Request): boolean {

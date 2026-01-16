@@ -147,12 +147,18 @@ export class WeatherService {
 
   /**
    * Format forecast as a compact string for messages.
+   * Shows both F and C for clarity.
    */
   formatForecast(forecast: ForecastDay[]): string {
-    const unit = this.config.weather.units === 'C' ? '°C' : '°F';
+    const isMetric = this.config.weather.units === 'C';
     const lines = forecast.map((day, i) => {
       const label = i === 0 ? 'Today' : day.dayName;
-      return `${label}: ${day.high}/${day.low}${unit} ${day.description}`;
+      // Convert and show both units
+      const highC = isMetric ? day.high : Math.round((day.high - 32) * 5/9);
+      const lowC = isMetric ? day.low : Math.round((day.low - 32) * 5/9);
+      const highF = isMetric ? Math.round(day.high * 9/5 + 32) : day.high;
+      const lowF = isMetric ? Math.round(day.low * 9/5 + 32) : day.low;
+      return `${label}: ${highF}/${lowF}°F (${highC}/${lowC}°C) ${day.description}`;
     });
     return lines.join('\n');
   }

@@ -1246,20 +1246,92 @@ function setupDragDrop() {
     if (files.length === 0) return;
 
     const file = files[0];
-    const name = prompt('Name for this media (can include +project #tags):', file.name.replace(/\.[^.]+$/, ''));
-    if (!name) return;
+    const isImage = file.type.startsWith('image/');
+    
+    // For images, offer OCR option
+    if (isImage) {
+      const choice = prompt(
+        'What would you like to do?\n\n' +
+        '1. OCR - Extract text from image\n' +
+        '2. Import - Save to garden\n\n' +
+        'Enter 1 or 2 (or name for import with +project #tags):',
+        '1'
+      );
+      
+      if (!choice) return;
+      
+      if (choice === '1' || choice.toLowerCase() === 'ocr') {
+        // OCR mode
+        const formData = new FormData();
+        formData.append('file', file);
+        
+        showToast('Extracting text...');
+        
+        try {
+          const res = await fetch('/api/ocr', { method: 'POST', body: formData });
+          if (!res.ok) {
+            const data = await res.json();
+            throw new Error(data.error || 'OCR failed');
+          }
+          const data = await res.json();
+          
+          // Show extracted text in REPL
+          if (data.text) {
+            replMessages.push({ 
+              role: 'assistant', 
+              text: `**OCR Result from ${file.name}:**\n\n${data.text}` 
+            });
+            
+            // Make sure REPL panel exists
+            if (!panels.has('repl')) {
+              addPanel('repl');
+            }
+            refreshReplPanel();
+            showToast('Text extracted!');
+          }
+        } catch (e) {
+          console.error('OCR failed:', e);
+          showToast(e.message || 'OCR failed', true);
+        }
+        return;
+      }
+      
+      // Import mode - use choice as name if not "2"
+      const name = (choice === '2') 
+        ? prompt('Name for this media (can include +project #tags):', file.name.replace(/\.[^.]+$/, ''))
+        : choice;
+      
+      if (!name) return;
+      
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('name', name);
 
-    const formData = new FormData();
-    formData.append('file', file);
-    formData.append('name', name);
+      try {
+        const res = await fetch('/api/media/upload', { method: 'POST', body: formData });
+        if (!res.ok) throw new Error('Upload failed');
+        showToast('Media imported');
+      } catch (e) {
+        console.error('Upload failed:', e);
+        showToast('Upload failed', true);
+      }
+    } else {
+      // Non-image: standard import
+      const name = prompt('Name for this media (can include +project #tags):', file.name.replace(/\.[^.]+$/, ''));
+      if (!name) return;
 
-    try {
-      const res = await fetch('/api/media/upload', { method: 'POST', body: formData });
-      if (!res.ok) throw new Error('Upload failed');
-      showToast('Media imported');
-    } catch (e) {
-      console.error('Upload failed:', e);
-      showToast('Upload failed', true);
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('name', name);
+
+      try {
+        const res = await fetch('/api/media/upload', { method: 'POST', body: formData });
+        if (!res.ok) throw new Error('Upload failed');
+        showToast('Media imported');
+      } catch (e) {
+        console.error('Upload failed:', e);
+        showToast('Upload failed', true);
+      }
     }
   });
 }
