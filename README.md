@@ -299,7 +299,7 @@ Tags categorize across types. Use them for:
 
 ### Contacts
 
-Link actions and events to people using `with <name>`:
+Link actions and events to people using the `with` operator (see [Linking Operators](#linking-operators)):
 
 ```
 > new contact Sarah Chen, email sarah@example.com, phone 555-1234
@@ -307,10 +307,7 @@ Link actions and events to people using `with <name>`:
 > new event coffee with sarah friday 10am
 ```
 
-**How it works:**
-- Contact names are fuzzy-matched ("sarah" finds "Sarah Chen")
-- If no contact exists, one is created automatically
-- Actions and events store contact IDs for proper linking
+Contact names are fuzzy-matched — "sarah" finds "Sarah Chen". Unknown names create contacts automatically.
 
 **Query by contact:**
 ```
@@ -330,10 +327,10 @@ A project is any outcome requiring more than one action. The key discipline: eve
 
 > new action gather W2 forms +2025-taxes
 > new action find last year's return +2025-taxes
-> new action call accountant +2025-taxes @phone
+> new action call accountant +2025-taxes @phone with jamie
 ```
 
-The `+project-name` links actions to their project. View a project to see all associated actions and more:
+The `+project` operator links actions to projects (see [Linking Operators](#linking-operators)). View a project to see all associated actions and more:
 
 ```
 > open 2025 taxes
@@ -381,23 +378,36 @@ Capture → Clarify → Organize → Review → Do
 > done 1
 ```
 
+### Linking Operators
+
+Three operators connect actions and events to context, projects, and people:
+
+| Operator | Meaning | Example |
+|----------|---------|---------|
+| `@context` | Where/how you'll do it | `@phone`, `@home`, `@computer` |
+| `+project` | What it's part of | `+taxes`, `+trip-japan` |
+| `with name` | Who's involved | `with sarah`, `with Dr. Lee` |
+
+These can appear anywhere in a command:
+```
+> new action call accountant @phone +2025-taxes with sarah
+> new event lunch with mike friday noon +team-building
+```
+
+**Auto-creation:** Using an unknown `@context`, `+project`, or `with name` creates it automatically:
+```
+> new action research flights +thailand-trip with jamie
+✓ Created project: "thailand-trip"
+✓ Created contact: "jamie"
+✓ Added: "research flights"
+```
+
 ### Tips
 
-**Commands combine naturally.** Context, project, due date, and tags can appear anywhere:
-```
-> new action call accountant @phone +2025-taxes due:friday #urgent
-```
-
-**Tab completion.** Hit `TAB` to autocomplete commands, page names, `@contexts`, and `+projects`:
+**Tab completion.** Hit `TAB` to autocomplete commands, page names, `@contexts`, `+projects`, and `with` contacts:
 ```
 edit scr[TAB] @ho[TAB] +20[TAB]  →  edit screenshot tax form @home +2025-taxes
-```
-
-**Auto-creation.** Using `@newcontext` or `+newproject` creates them if they don't exist:
-```
-> new action research flights +thailand-trip
-✓ Created project: "thailand-trip"
-✓ Added: "research flights" (thailand-trip)
+new action call with sar[TAB]   →  new action call with sarah chen
 ```
 
 **Batch completion.** Complete multiple items at once after viewing any list:
