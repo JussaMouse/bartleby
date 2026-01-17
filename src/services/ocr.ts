@@ -7,7 +7,7 @@ import path from 'path';
 import { Config } from '../config.js';
 import { info, warn, debug, error } from '../utils/logger.js';
 
-const OCR_PROMPT = `Extract all text from this image. Output only the text content, preserving the general structure (paragraphs, lists, tables). Do not add any commentary or description.`;
+const OCR_PROMPT = `Extract all visible text from this image. Return ONLY the extracted text. Do not add headings, labels, or commentary.`;
 
 export class OCRService {
   private config: Config;
@@ -92,7 +92,8 @@ export class OCRService {
         imageHash, // First 20 chars of base64 of first 100 bytes
       });
 
-      const response = await this.client!.chat.completions.create({
+      // Use raw fetch instead of OpenAI SDK to ensure completely stateless requests
+      const requestBody = {
         model: this.config.ocr.model || 'olmocr',
         max_tokens: this.config.ocr.maxTokens,
         messages: [
@@ -112,9 +113,26 @@ export class OCRService {
             ],
           },
         ],
+      };
+
+      debug('OCR request', { 
+        model: requestBody.model,
+        messageCount: requestBody.messages.length,
+        contentParts: requestBody.messages[0].content.length,
       });
 
-      const text = response.choices[0]?.message?.content?.trim() || null;
+      const fetchResponse = await fetch(`${this.config.ocr.url}/chat/completions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(requestBody),
+      });
+
+      if (!fetchResponse.ok) {
+        throw new Error(`OCR request failed: ${fetchResponse.status}`);
+      }
+
+      const response = await fetchResponse.json() as any;
+      const text = response.choices?.[0]?.message?.content?.trim() || null;
       
       if (text) {
         // Log first 100 chars to verify different responses
