@@ -117,7 +117,11 @@ export class OCRService {
       const text = response.choices[0]?.message?.content?.trim() || null;
       
       if (text) {
-        debug('OCR extracted text', { chars: text.length });
+        // Log first 100 chars to verify different responses
+        info('OCR extracted text', { 
+          chars: text.length,
+          preview: text.slice(0, 100).replace(/\n/g, ' '),
+        });
       }
 
       return text;
