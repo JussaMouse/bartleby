@@ -436,6 +436,25 @@ export class DashboardServer {
       res.json({ success: true });
     });
 
+    // Delete a page
+    this.app.delete('/api/page/:id', (req, res) => {
+      const record = this.garden.get(req.params.id);
+      if (!record) {
+        res.status(404).json({ error: 'Not found' });
+        return;
+      }
+      
+      try {
+        // Delete from database
+        this.garden.delete(record.id);
+        debug('Deleted page via dashboard', { id: record.id, title: record.title });
+        res.json({ success: true });
+      } catch (e) {
+        error('Failed to delete page', { id: record.id, error: String(e) });
+        res.status(500).json({ error: 'Delete failed' });
+      }
+    });
+
     // Media upload via drag-and-drop
     const upload = multer({ dest: os.tmpdir() });
     this.app.post('/api/media/upload', upload.single('file'), (req, res) => {

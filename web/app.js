@@ -1214,18 +1214,30 @@ async function convertItem(item, targetType) {
 
 // Generic item editing (for projects, events, notes, etc.)
 function startGenericEdit(item) {
+  console.log('startGenericEdit called', item);
+  if (!item) {
+    console.error('startGenericEdit: no item provided');
+    return;
+  }
+  
   // Close any other open edits
   document.querySelectorAll('.generic-item.editing').forEach(el => {
     if (el !== item) cancelGenericEdit(el);
   });
 
   item.classList.add('editing');
-  item.querySelector('.item-display').classList.add('hidden');
-  item.querySelector('.item-edit').classList.remove('hidden');
+  const display = item.querySelector('.item-display');
+  const edit = item.querySelector('.item-edit');
+  console.log('display:', display, 'edit:', edit);
+  
+  if (display) display.classList.add('hidden');
+  if (edit) edit.classList.remove('hidden');
 
   const input = item.querySelector('.inline-input');
-  input.focus();
-  input.setSelectionRange(input.value.length, input.value.length);
+  if (input) {
+    input.focus();
+    input.setSelectionRange(input.value.length, input.value.length);
+  }
 }
 
 function cancelGenericEdit(item) {
