@@ -258,9 +258,18 @@ function renderEditableItem(item, itemType) {
   if (itemType === 'note') {
     return `
       <li class="item generic-item" data-id="${id}" data-type="${itemType}" data-title="${esc(title)}">
-        <div class="item-display" onclick="addPanel('note:${id}')">
+        <div class="item-display" onclick="startGenericEdit(this.parentElement)">
           <span class="item-title">${esc(title)}</span>
           ${metaHtml}
+        </div>
+        <div class="item-edit hidden">
+          <input type="text" class="inline-input" value="${esc(title)}"
+                 onkeydown="handleGenericEditKey(event, this)"
+                 onblur="handleGenericEditBlur(event, this)">
+          <div class="inline-actions">
+            <button class="btn-inline view" onclick="event.stopPropagation(); addPanel('note:${id}')">View</button>
+          </div>
+          <div class="autocomplete-menu hidden"></div>
         </div>
       </li>
     `;
@@ -1339,39 +1348,81 @@ function handleGenericEditKey(event, input) {
 
 async function saveGenericEdit(item) {
   const input = item.querySelector('.inline-input');
-  const newTitle = input.value.trim();
+  const rawValue = input.value.trim();
   const id = item.dataset.id;
   const itemType = item.dataset.type;
 
-  if (!newTitle) {
+  if (!rawValue) {
+    showToast('Title cannot be empty', true);
+    return;
+  }
+
+  // Parse input for title, +project, #tags
+  let title = rawValue;
+  let project = null;
+  const tags = [];
+
+  // Extract project (+project)
+  const projectMatch = rawValue.match(/\+([^\s#]+)/);
+  if (projectMatch) {
+    project = projectMatch[1];
+    title = title.replace(/\+[^\s#]+/, '').trim();
+  }
+
+  // Extract tags (#tag)
+  const tagMatches = rawValue.matchAll(/#(\w+)/g);
+  for (const match of tagMatches) {
+    tags.push(match[1]);
+    title = title.replace(match[0], '').trim();
+  }
+
+  // Clean up extra spaces
+  title = title.replace(/\s+/g, ' ').trim();
+
+  if (!title) {
     showToast('Title cannot be empty', true);
     return;
   }
 
   try {
-    // Use chat API to rename
-    const command = `edit ${item.dataset.title}`;
-    // For now, just update via the page API
-    const res = await fetch(`/api/page/${id}`, {
-      method: 'GET',
-    });
-    
-    if (res.ok) {
-      const data = await res.json();
-      // Update title in content
-      let content = data.content || '';
-      content = content.replace(/^#\s+.+$/m, `# ${newTitle}`);
-      
-      await fetch(`/api/page/${id}`, {
-        method: 'PUT',
+    if (itemType === 'note') {
+      // Use dedicated note PATCH endpoint
+      const body = { title };
+      if (project !== null) body.project = project;
+      if (tags.length > 0) body.tags = tags;
+
+      const res = await fetch(`/api/note/${id}`, {
+        method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content }),
+        body: JSON.stringify(body),
       });
+
+      if (!res.ok) throw new Error('Update failed');
       
-      item.dataset.title = newTitle;
-      item.querySelector('.item-title').textContent = newTitle;
+      item.dataset.title = title;
+      item.querySelector('.item-title').textContent = title;
       cancelGenericEdit(item);
       showToast('Saved');
+    } else {
+      // Fallback for other types - update via content
+      const res = await fetch(`/api/page/${id}`, { method: 'GET' });
+      
+      if (res.ok) {
+        const data = await res.json();
+        let content = data.content || '';
+        content = content.replace(/^#\s+.+$/m, `# ${title}`);
+        
+        await fetch(`/api/page/${id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ content }),
+        });
+        
+        item.dataset.title = title;
+        item.querySelector('.item-title').textContent = title;
+        cancelGenericEdit(item);
+        showToast('Saved');
+      }
     }
   } catch (e) {
     console.error('Failed to save:', e);
