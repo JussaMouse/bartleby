@@ -238,27 +238,38 @@ function renderEditableItem(item, itemType) {
   } else if (itemType === 'project') {
     metaHtml = `<span class="item-meta clickable-hint">click to expand</span>`;
   } else if (itemType === 'note') {
-    metaHtml = `<span class="item-meta clickable-hint">click to edit</span>`;
+    metaHtml = `<span class="item-meta clickable-hint">click to view</span>`;
   } else if (item.type) {
     metaHtml = `<span class="item-meta">${item.type}</span>`;
   }
 
-  let clickAction;
+  // Notes and projects open panels on click
   if (itemType === 'project') {
-    clickAction = `onclick="addPanel('project:${esc(title)}')"`;
-  } else {
-    // Notes and other items use inline editing
-    clickAction = `onclick="startGenericEdit(this.parentElement)"`;
+    return `
+      <li class="item generic-item" data-id="${id}" data-type="${itemType}" data-title="${esc(title)}">
+        <div class="item-display" onclick="addPanel('project:${esc(title)}')">
+          <span class="item-title">${esc(title)}</span>
+          ${metaHtml}
+        </div>
+      </li>
+    `;
+  }
+  
+  if (itemType === 'note') {
+    return `
+      <li class="item generic-item" data-id="${id}" data-type="${itemType}" data-title="${esc(title)}">
+        <div class="item-display" onclick="addPanel('note:${id}')">
+          <span class="item-title">${esc(title)}</span>
+          ${metaHtml}
+        </div>
+      </li>
+    `;
   }
 
-  // Add View button for notes
-  const viewButton = itemType === 'note' 
-    ? `<button class="btn-inline view" onclick="addPanel('note:${id}')">View</button>`
-    : '';
-
+  // Other types (events, etc.) use inline editing
   return `
     <li class="item generic-item" data-id="${id}" data-type="${itemType}" data-title="${esc(title)}">
-      <div class="item-display" ${clickAction}>
+      <div class="item-display" onclick="startGenericEdit(this.parentElement)">
         <span class="item-title">${esc(title)}</span>
         ${metaHtml}
       </div>
@@ -267,11 +278,11 @@ function renderEditableItem(item, itemType) {
                onkeydown="handleGenericEditKey(event, this)"
                onblur="handleGenericEditBlur(event, this)">
         <div class="inline-actions">
-          ${viewButton}
           <button class="btn-inline save" onclick="saveGenericEdit(this.closest('.generic-item'))">Save</button>
           <button class="btn-inline" onclick="cancelGenericEdit(this.closest('.generic-item'))">Cancel</button>
           <button class="btn-inline remove" onclick="removeItem(this.closest('.generic-item'))">Remove</button>
         </div>
+        <div class="autocomplete-menu hidden"></div>
       </div>
     </li>
   `;
@@ -362,10 +373,11 @@ function renderNote(data) {
   }
   html += '</div>';
   
-  // Edit button
+  // Action buttons at bottom of panel
   html += `
     <div class="note-actions">
-      <button class="btn-inline" onclick="editNoteInRepl('${note.id}')">Edit in REPL</button>
+      <button class="btn-inline" onclick="editNoteInRepl('${note.id}')">Edit</button>
+      <button class="btn-inline remove" onclick="removeNoteFromPanel('${note.id}')">Remove</button>
     </div>
   `;
   
@@ -398,6 +410,22 @@ function editNoteInRepl(noteId) {
       replMessages.push({ role: 'assistant', text: '(error)' });
       refreshReplPanel();
     });
+}
+
+async function removeNoteFromPanel(noteId) {
+  if (!confirm('Remove this note?')) return;
+  
+  try {
+    const res = await fetch(`/api/page/${noteId}`, { method: 'DELETE' });
+    if (!res.ok) throw new Error('Delete failed');
+    
+    // Close the note panel
+    removePanel(`note:${noteId}`);
+    showToast('Note removed');
+  } catch (e) {
+    console.error('Delete failed:', e);
+    showToast('Failed to remove note', true);
+  }
 }
 
 function renderCalendar(data) {
@@ -956,7 +984,7 @@ function navigateAutocomplete(menu, direction) {
 }
 
 function applyAutocompleteClick(el) {
-  const item = el.closest('.action-item');
+  const item = el.closest('.action-item') || el.closest('.generic-item');
   const input = item.querySelector('.inline-input');
   applyAutocomplete(input, el.dataset.value);
   hideAutocomplete(item);
@@ -974,6 +1002,8 @@ function applyAutocomplete(input, value) {
     newBefore = beforeCursor.replace(/@\w*$/, value);
   } else if (value.startsWith('+')) {
     newBefore = beforeCursor.replace(/\+[^\s]*$/, value);
+  } else if (value.startsWith('#')) {
+    newBefore = beforeCursor.replace(/#\w*$/, value);
   } else if (beforeCursor.match(/\bwith\s+\w*$/i)) {
     // Contact name completion - replace just the partial name after 'with '
     newBefore = beforeCursor.replace(/(\bwith\s+)\w*$/i, '$1' + value);
@@ -1217,16 +1247,93 @@ function handleGenericEditBlur(event, input) {
 }
 
 function handleGenericEditKey(event, input) {
+  const item = input.closest('.generic-item');
+  const menu = item.querySelector('.autocomplete-menu');
+
   if (event.key === 'Escape') {
     event.preventDefault();
-    cancelGenericEdit(input.closest('.generic-item'));
+    if (menu && !menu.classList.contains('hidden')) {
+      hideAutocomplete(item);
+    } else {
+      cancelGenericEdit(item);
+    }
     return;
   }
 
   if (event.key === 'Enter') {
     event.preventDefault();
-    saveGenericEdit(input.closest('.generic-item'));
+    if (menu) {
+      const selected = menu.querySelector('.autocomplete-item.selected');
+      if (selected && !menu.classList.contains('hidden')) {
+        applyAutocomplete(input, selected.dataset.value);
+        hideAutocomplete(item);
+        return;
+      }
+    }
+    saveGenericEdit(item);
     return;
+  }
+
+  if (event.key === 'Tab') {
+    event.preventDefault();
+
+    if (menu && !menu.classList.contains('hidden')) {
+      const selected = menu.querySelector('.autocomplete-item.selected');
+      if (selected) {
+        applyAutocomplete(input, selected.dataset.value);
+        hideAutocomplete(item);
+        return;
+      }
+    }
+
+    // Trigger autocomplete based on cursor position
+    const cursorPos = input.selectionStart;
+    const text = input.value;
+    const beforeCursor = text.slice(0, cursorPos);
+
+    const contextMatch = beforeCursor.match(/@(\w*)$/);
+    const projectMatch = beforeCursor.match(/\+([^\s]*)$/);
+    const tagMatch = beforeCursor.match(/#(\w*)$/);
+
+    if (contextMatch) {
+      const partial = contextMatch[1].toLowerCase();
+      const matches = autocompleteData.contexts.filter(c =>
+        c.toLowerCase().startsWith('@' + partial) || c.toLowerCase().startsWith(partial)
+      );
+      showAutocomplete(item, matches, '@');
+    } else if (projectMatch) {
+      const partial = projectMatch[1].toLowerCase();
+      const matches = autocompleteData.projects.filter(p =>
+        p.toLowerCase().startsWith('+' + partial) || p.toLowerCase().startsWith(partial)
+      );
+      showAutocomplete(item, matches, '+');
+    } else if (tagMatch) {
+      const partial = tagMatch[1].toLowerCase();
+      const matches = autocompleteData.tags.filter(t =>
+        t.toLowerCase().startsWith('#' + partial) || t.toLowerCase().startsWith(partial)
+      );
+      showAutocomplete(item, matches, '#');
+    }
+    return;
+  }
+
+  // Arrow keys for autocomplete navigation
+  if (menu && !menu.classList.contains('hidden')) {
+    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      event.preventDefault();
+      const items = menu.querySelectorAll('.autocomplete-item');
+      const current = menu.querySelector('.autocomplete-item.selected');
+      let idx = Array.from(items).indexOf(current);
+      
+      if (event.key === 'ArrowDown') {
+        idx = (idx + 1) % items.length;
+      } else {
+        idx = (idx - 1 + items.length) % items.length;
+      }
+      
+      items.forEach((it, i) => it.classList.toggle('selected', i === idx));
+      return;
+    }
   }
 }
 
