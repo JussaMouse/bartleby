@@ -158,6 +158,14 @@ main#panels {
   color: var(--text-bright);
 }
 
+.generic-item[data-type="note"] .item-title {
+  cursor: pointer;
+}
+
+.generic-item[data-type="note"] .item-title:hover {
+  color: var(--accent);
+}
+
 .item-meta {
   font-size: 11px;
   color: var(--text-muted);
@@ -324,6 +332,26 @@ main#panels {
 .btn-inline.view:hover {
   background: var(--accent);
   color: var(--bg);
+}
+
+.btn-inline.edit-tiny {
+  padding: 0 4px;
+  font-size: 0.75rem;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  opacity: 0;
+  transition: opacity 0.15s;
+  margin-left: auto;
+}
+
+.item-display:hover .btn-inline.edit-tiny {
+  opacity: 1;
+}
+
+.btn-inline.edit-tiny:hover {
+  color: var(--accent);
+  background: transparent;
 }
 
 .btn-inline.process {

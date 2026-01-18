@@ -238,7 +238,10 @@ function renderEditableItem(item, itemType) {
   } else if (itemType === 'project') {
     metaHtml = `<span class="item-meta clickable-hint">click to expand</span>`;
   } else if (itemType === 'note') {
-    metaHtml = `<span class="item-meta clickable-hint">click to view</span>`;
+    // Show project if present
+    if (item.project) {
+      metaHtml = `<span class="item-meta">+${esc(item.project)}</span>`;
+    }
   } else if (item.type) {
     metaHtml = `<span class="item-meta">${item.type}</span>`;
   }
@@ -256,19 +259,19 @@ function renderEditableItem(item, itemType) {
   }
   
   if (itemType === 'note') {
+    // Build display value including project for editing
+    const editValue = item.project ? `${title} +${item.project}` : title;
     return `
-      <li class="item generic-item" data-id="${id}" data-type="${itemType}" data-title="${esc(title)}">
-        <div class="item-display" onclick="startGenericEdit(this.parentElement)">
-          <span class="item-title">${esc(title)}</span>
+      <li class="item generic-item" data-id="${id}" data-type="${itemType}" data-title="${esc(title)}" data-project="${esc(item.project || '')}">
+        <div class="item-display">
+          <span class="item-title" onclick="addPanel('note:${id}')">${esc(title)}</span>
           ${metaHtml}
+          <button class="btn-inline edit-tiny" onclick="event.stopPropagation(); startGenericEdit(this.closest('.generic-item'))">✎</button>
         </div>
         <div class="item-edit hidden">
-          <input type="text" class="inline-input" value="${esc(title)}"
+          <input type="text" class="inline-input" value="${esc(editValue)}"
                  onkeydown="handleGenericEditKey(event, this)"
                  onblur="handleGenericEditBlur(event, this)">
-          <div class="inline-actions">
-            <button class="btn-inline view" onclick="event.stopPropagation(); addPanel('note:${id}')">View</button>
-          </div>
           <div class="autocomplete-menu hidden"></div>
         </div>
       </li>
@@ -339,13 +342,7 @@ function renderProject(data) {
   // Notes
   if (data.notes?.length) {
     html += '<div class="section-header">Notes</div>';
-    html += '<ul>' + data.notes.map(n => `
-      <li>
-        <div class="item">
-          <span class="item-title">${esc(n.title)}</span>
-        </div>
-      </li>
-    `).join('') + '</ul>';
+    html += '<ul>' + data.notes.map(n => renderEditableItem(n, 'note')).join('') + '</ul>';
   }
 
   return html || '<div class="empty">Empty project</div>';
