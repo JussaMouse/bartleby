@@ -1492,11 +1492,10 @@ function setupDragDrop() {
     if (isImage) {
       const choice = prompt(
         'What would you like to do?\n\n' +
-        '1. OCR - Extract text (show in REPL)\n' +
-        '2. OCR to Note - Save as new note\n' +
-        '3. Import - Save image to garden\n\n' +
-        'Enter 1, 2, or 3 (or name for import):',
-        '2'
+        '1 = OCR only (show in REPL)\n' +
+        '3 = Import image to garden\n\n' +
+        'Or enter a note title to OCR and save:',
+        ''
       );
       
       if (!choice) return;
@@ -1535,52 +1534,52 @@ function setupDragDrop() {
         return;
       }
       
-      if (choice === '2' || choice.toLowerCase() === 'note') {
-        // OCR to Note mode
+      if (choice === '3' || choice.toLowerCase() === 'import') {
+        // Import mode
+        const name = prompt('Name for this media (can include +project #tags):', file.name.replace(/\.[^.]+$/, ''));
+        if (!name) return;
+        
         const formData = new FormData();
         formData.append('file', file);
-        
-        showToast('Extracting text...');
-        
+        formData.append('name', name);
+
         try {
-          const res = await fetch('/api/ocr/note', { method: 'POST', body: formData });
-          if (!res.ok) {
-            const data = await res.json();
-            throw new Error(data.error || 'OCR failed');
-          }
-          const data = await res.json();
-          
-          if (data.noteId) {
-            showToast(`Saved: ${data.title}`);
-            // Open the note in a panel
-            addPanel(`note:${data.noteId}`);
-          }
+          const res = await fetch('/api/media/upload', { method: 'POST', body: formData });
+          if (!res.ok) throw new Error('Upload failed');
+          showToast('Media imported');
         } catch (e) {
-          console.error('OCR to note failed:', e);
-          showToast(e.message || 'OCR failed', true);
+          console.error('Upload failed:', e);
+          showToast('Upload failed', true);
         }
         return;
       }
       
-      // Import mode - use choice as name if not "3"
-      const name = (choice === '3') 
-        ? prompt('Name for this media (can include +project #tags):', file.name.replace(/\.[^.]+$/, ''))
-        : choice;
-      
-      if (!name) return;
-      
+      // Anything else = OCR to Note with custom title
+      const customTitle = choice.trim();
       const formData = new FormData();
       formData.append('file', file);
-      formData.append('name', name);
-
+      formData.append('title', customTitle);
+      
+      showToast('Extracting text...');
+      
       try {
-        const res = await fetch('/api/media/upload', { method: 'POST', body: formData });
-        if (!res.ok) throw new Error('Upload failed');
-        showToast('Media imported');
+        const res = await fetch('/api/ocr/note', { method: 'POST', body: formData });
+        if (!res.ok) {
+          const data = await res.json();
+          throw new Error(data.error || 'OCR failed');
+        }
+        const data = await res.json();
+        
+        if (data.noteId) {
+          showToast(`Saved: ${data.title}`);
+          // Open the note in a panel
+          addPanel(`note:${data.noteId}`);
+        }
       } catch (e) {
-        console.error('Upload failed:', e);
-        showToast('Upload failed', true);
+        console.error('OCR to note failed:', e);
+        showToast(e.message || 'OCR failed', true);
       }
+      return;
     } else {
       // Non-image: standard import
       const name = prompt('Name for this media (can include +project #tags):', file.name.replace(/\.[^.]+$/, ''));

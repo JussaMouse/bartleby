@@ -614,15 +614,18 @@ export class DashboardServer {
           return;
         }
 
-        // Create note with timestamped title
-        const now = new Date();
-        const timestamp = now.toLocaleString('en-US', {
-          month: 'short',
-          day: 'numeric',
-          hour: 'numeric',
-          minute: '2-digit',
-        });
-        const title = `OCR ${timestamp}`;
+        // Use custom title if provided, otherwise timestamp
+        let title = req.body?.title?.trim();
+        if (!title) {
+          const now = new Date();
+          const timestamp = now.toLocaleString('en-US', {
+            month: 'short',
+            day: 'numeric',
+            hour: 'numeric',
+            minute: '2-digit',
+          });
+          title = `OCR ${timestamp}`;
+        }
 
         const note = this.garden.create({
           type: 'note',
