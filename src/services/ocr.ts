@@ -4,10 +4,11 @@
 import OpenAI from 'openai';
 import fs from 'fs';
 import path from 'path';
+import crypto from 'crypto';
 import { Config } from '../config.js';
 import { info, warn, debug, error } from '../utils/logger.js';
 
-const OCR_PROMPT = `Extract all visible text from this image. Return ONLY the extracted text. Do not add headings, labels, or commentary.`;
+const OCR_PROMPT = `Extract all visible text from this image. Return ONLY the extracted text. No labels, no prefixes, no commentary.`;
 
 export class OCRService {
   private config: Config;
@@ -83,19 +84,20 @@ export class OCRService {
       };
       const mimeType = mimeTypes[ext] || 'image/png';
 
-      // Log enough to verify we're getting different images
-      const imageHash = imageBuffer.slice(0, 100).toString('base64').slice(0, 20);
+      // Log actual SHA-256 hash to verify different images
+      const imageHash = crypto.createHash('sha256').update(imageBuffer).digest('hex').slice(0, 16);
       info('OCR processing image', { 
         path: imagePath, 
         size: imageBuffer.length, 
         mimeType,
-        imageHash, // First 20 chars of base64 of first 100 bytes
+        imageHash,
       });
 
       // Use raw fetch instead of OpenAI SDK to ensure completely stateless requests
       const requestBody = {
         model: this.config.ocr.model || 'olmocr',
         max_tokens: this.config.ocr.maxTokens,
+        temperature: 0,
         messages: [
           {
             role: 'user',
