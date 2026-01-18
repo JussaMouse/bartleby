@@ -263,10 +263,9 @@ function renderEditableItem(item, itemType) {
     const editValue = item.project ? `${title} +${item.project}` : title;
     return `
       <li class="item generic-item" data-id="${id}" data-type="${itemType}" data-title="${esc(title)}" data-project="${esc(item.project || '')}">
-        <div class="item-display">
-          <span class="item-title" onclick="addPanel('note:${id}')">${esc(title)}</span>
+        <div class="item-display" onclick="startGenericEdit(this.parentElement)">
+          <span class="item-title">${esc(title)}</span>
           ${metaHtml}
-          <button class="btn-inline edit-tiny" onclick="event.stopPropagation(); startGenericEdit(this.closest('.generic-item'))">✎</button>
         </div>
         <div class="item-edit hidden">
           <input type="text" class="inline-input" value="${esc(editValue)}"
@@ -1400,6 +1399,9 @@ async function saveGenericEdit(item) {
       item.querySelector('.item-title').textContent = title;
       cancelGenericEdit(item);
       showToast('Saved');
+      
+      // Open the note panel
+      addPanel(`note:${id}`);
     } else {
       // Fallback for other types - update via content
       const res = await fetch(`/api/page/${id}`, { method: 'GET' });
