@@ -263,9 +263,10 @@ function renderEditableItem(item, itemType) {
     const editValue = item.project ? `${title} +${item.project}` : title;
     return `
       <li class="item generic-item" data-id="${id}" data-type="${itemType}" data-title="${esc(title)}" data-project="${esc(item.project || '')}">
-        <div class="item-display" onclick="startGenericEdit(this.parentElement)">
+        <div class="item-display" onclick="addPanel('note:${id}')">
           <span class="item-title">${esc(title)}</span>
           ${metaHtml}
+          <button class="btn-inline edit-tiny" onclick="event.stopPropagation(); startGenericEdit(this.closest('.generic-item'))">✎</button>
         </div>
         <div class="item-edit hidden">
           <input type="text" class="inline-input" value="${esc(editValue)}"
