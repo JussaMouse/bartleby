@@ -394,6 +394,13 @@ function renderNote(data) {
   html += `
     <div class="note-actions">
       <button class="btn-inline" onclick="startNoteEdit('${note.id}')">Edit</button>
+      <select class="btn-inline convert-select" onchange="convertNote('${note.id}', this.value); this.value='';">
+        <option value="">Convert to...</option>
+        <option value="action">→ Action</option>
+        <option value="event">→ Event</option>
+        <option value="project">→ Project</option>
+        <option value="entry">→ Entry</option>
+      </select>
       <button class="btn-inline remove" onclick="removeNoteFromPanel('${note.id}')">Remove</button>
     </div>
   `;
@@ -503,6 +510,57 @@ async function saveNoteContent(noteId) {
   } catch (e) {
     console.error('Save failed:', e);
     showToast('Save failed', true);
+  }
+}
+
+async function convertNote(noteId, targetType) {
+  if (!targetType) return;
+  
+  try {
+    // Get note data
+    const getRes = await fetch(`/api/page/${noteId}`);
+    if (!getRes.ok) throw new Error('Failed to get note');
+    const noteData = await getRes.json();
+    
+    const title = noteData.title;
+    const project = noteData.project ? ` +${noteData.project}` : '';
+    
+    // Create new item via chat command
+    let command;
+    switch (targetType) {
+      case 'action':
+        command = `add ${title}${project}`;
+        break;
+      case 'event':
+        command = `new event ${title}${project}`;
+        break;
+      case 'project':
+        command = `new project ${title}`;
+        break;
+      case 'entry':
+        command = `new entry ${title}${project}`;
+        break;
+      default:
+        return;
+    }
+    
+    const chatRes = await fetch('/api/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: command }),
+    });
+    
+    if (!chatRes.ok) throw new Error('Conversion failed');
+    
+    // Delete original note
+    await fetch(`/api/page/${noteId}`, { method: 'DELETE' });
+    
+    // Close note panel
+    removePanel(`note:${noteId}`);
+    showToast(`Converted to ${targetType}`);
+  } catch (e) {
+    console.error('Convert failed:', e);
+    showToast('Conversion failed', true);
   }
 }
 
