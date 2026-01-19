@@ -166,6 +166,17 @@ main#panels {
   color: var(--accent);
 }
 
+.edit-link {
+  font-size: 11px;
+  color: var(--muted);
+  cursor: pointer;
+  margin-left: auto;
+}
+
+.edit-link:hover {
+  color: var(--accent);
+}
+
 .item-meta {
   font-size: 11px;
   color: var(--text-muted);
@@ -541,6 +552,36 @@ footer button:hover {
   padding-top: 12px;
   border-top: 1px solid var(--border);
   margin-top: 12px;
+}
+
+.note-content-display.hidden,
+.note-content-edit.hidden {
+  display: none;
+}
+
+.note-textarea {
+  width: 100%;
+  min-height: 200px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.6;
+  padding: 8px;
+  background: var(--bg);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  resize: vertical;
+}
+
+.note-textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.note-edit-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
 }
 
 /* Drop overlay */

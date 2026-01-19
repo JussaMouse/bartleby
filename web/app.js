@@ -263,10 +263,10 @@ function renderEditableItem(item, itemType) {
     const editValue = item.project ? `${title} +${item.project}` : title;
     return `
       <li class="item generic-item" data-id="${id}" data-type="${itemType}" data-title="${esc(title)}" data-project="${esc(item.project || '')}">
-        <div class="item-display" onclick="addPanel('note:${id}')">
-          <span class="item-title">${esc(title)}</span>
+        <div class="item-display">
+          <span class="item-title" onclick="addPanel('note:${id}')">${esc(title)}</span>
           ${metaHtml}
-          <button class="btn-inline edit-tiny" onclick="event.stopPropagation(); startGenericEdit(this.closest('.generic-item'))">✎</button>
+          <span class="edit-link" onclick="event.stopPropagation(); startGenericEdit(this.closest('.generic-item'))">edit</span>
         </div>
         <div class="item-edit hidden">
           <input type="text" class="inline-input" value="${esc(editValue)}"
@@ -356,12 +356,23 @@ function renderNote(data) {
   const note = data.note;
   let html = '';
   
-  // Note content with markdown rendering
+  // Note content - display mode
+  html += `<div class="note-content-display" data-note-id="${note.id}">`;
   if (note.content) {
     html += `<div class="note-content">${renderMarkdown(note.content)}</div>`;
   } else {
     html += '<div class="empty">Empty note</div>';
   }
+  html += '</div>';
+  
+  // Note content - edit mode (hidden by default)
+  html += `<div class="note-content-edit hidden" data-note-id="${note.id}">`;
+  html += `<textarea class="note-textarea" rows="12">${esc(note.content || '')}</textarea>`;
+  html += `<div class="note-edit-actions">
+    <button class="btn-inline save" onclick="saveNoteContent('${note.id}')">Save</button>
+    <button class="btn-inline" onclick="cancelNoteEdit('${note.id}')">Cancel</button>
+  </div>`;
+  html += '</div>';
   
   // Metadata
   html += '<div class="note-meta">';
@@ -382,7 +393,7 @@ function renderNote(data) {
   // Action buttons at bottom of panel
   html += `
     <div class="note-actions">
-      <button class="btn-inline" onclick="editNoteInRepl('${note.id}')">Edit</button>
+      <button class="btn-inline" onclick="startNoteEdit('${note.id}')">Edit</button>
       <button class="btn-inline remove" onclick="removeNoteFromPanel('${note.id}')">Remove</button>
     </div>
   `;
@@ -431,6 +442,67 @@ async function removeNoteFromPanel(noteId) {
   } catch (e) {
     console.error('Delete failed:', e);
     showToast('Failed to remove note', true);
+  }
+}
+
+function startNoteEdit(noteId) {
+  const display = document.querySelector(`.note-content-display[data-note-id="${noteId}"]`);
+  const edit = document.querySelector(`.note-content-edit[data-note-id="${noteId}"]`);
+  
+  if (display && edit) {
+    display.classList.add('hidden');
+    edit.classList.remove('hidden');
+    const textarea = edit.querySelector('textarea');
+    if (textarea) {
+      textarea.focus();
+      textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+    }
+  }
+}
+
+function cancelNoteEdit(noteId) {
+  const display = document.querySelector(`.note-content-display[data-note-id="${noteId}"]`);
+  const edit = document.querySelector(`.note-content-edit[data-note-id="${noteId}"]`);
+  
+  if (display && edit) {
+    display.classList.remove('hidden');
+    edit.classList.add('hidden');
+  }
+}
+
+async function saveNoteContent(noteId) {
+  const edit = document.querySelector(`.note-content-edit[data-note-id="${noteId}"]`);
+  const textarea = edit?.querySelector('textarea');
+  
+  if (!textarea) return;
+  
+  const content = textarea.value;
+  
+  try {
+    // Get current note to preserve title
+    const getRes = await fetch(`/api/page/${noteId}`);
+    if (!getRes.ok) throw new Error('Failed to get note');
+    const noteData = await getRes.json();
+    
+    // Update content while preserving title line
+    let newContent = content;
+    if (!content.startsWith('# ')) {
+      newContent = `# ${noteData.title}\n\n${content}`;
+    }
+    
+    const res = await fetch(`/api/page/${noteId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ content: newContent }),
+    });
+    
+    if (!res.ok) throw new Error('Save failed');
+    
+    showToast('Saved');
+    // Panel will refresh from garden update
+  } catch (e) {
+    console.error('Save failed:', e);
+    showToast('Save failed', true);
   }
 }
 
