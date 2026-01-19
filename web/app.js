@@ -517,58 +517,21 @@ async function convertNote(noteId, targetType) {
   if (!targetType) return;
   
   try {
-    // Get note data
     console.log('Converting note:', noteId, 'to:', targetType);
-    const getRes = await fetch(`/api/page/${noteId}`);
-    if (!getRes.ok) {
-      console.error('Failed to get note:', getRes.status);
-      throw new Error('Failed to get note');
-    }
-    const noteData = await getRes.json();
-    console.log('Note data:', noteData);
     
-    // Response is { record, content } - extract from record
-    const record = noteData.record || noteData;
-    const title = record.title;
-    const project = record.project ? ` +${record.project}` : '';
-    
-    // Create new item via chat command
-    let command;
-    switch (targetType) {
-      case 'action':
-        command = `add ${title}${project}`;
-        break;
-      case 'event':
-        command = `new event ${title}${project}`;
-        break;
-      case 'project':
-        command = `new project ${title}`;
-        break;
-      case 'entry':
-        command = `new entry ${title}${project}`;
-        break;
-      default:
-        return;
-    }
-    
-    console.log('Sending command:', command);
-    const chatRes = await fetch('/api/chat', {
+    // Use direct convert endpoint (no auth needed)
+    const res = await fetch(`/api/page/${noteId}/convert`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text: command }),
+      body: JSON.stringify({ targetType }),
     });
     
-    const chatData = await chatRes.json();
-    console.log('Chat response:', chatData);
+    const data = await res.json();
+    console.log('Convert response:', data);
     
-    if (!chatRes.ok) {
-      console.error('Chat failed:', chatRes.status, chatData);
-      throw new Error('Conversion failed');
+    if (!res.ok) {
+      throw new Error(data.error || 'Conversion failed');
     }
-    
-    // Delete original note
-    const delRes = await fetch(`/api/page/${noteId}`, { method: 'DELETE' });
-    console.log('Delete response:', delRes.status);
     
     // Close note panel
     removePanel(`note:${noteId}`);

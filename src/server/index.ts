@@ -392,6 +392,30 @@ export class DashboardServer {
       }
     });
 
+    // Convert a page to a different type
+    this.app.post('/api/page/:id/convert', (req, res) => {
+      const record = this.garden.get(req.params.id);
+      if (!record) {
+        res.status(404).json({ error: 'Page not found' });
+        return;
+      }
+      
+      const { targetType } = req.body;
+      if (!targetType || !['action', 'note', 'project', 'entry', 'event'].includes(targetType)) {
+        res.status(400).json({ error: 'Invalid target type' });
+        return;
+      }
+      
+      // Update the record type
+      const updated = this.garden.update(record.id, { type: targetType as any });
+      if (updated) {
+        debug('Converted page via dashboard', { id: record.id, from: record.type, to: targetType });
+        res.json({ success: true, record: updated });
+      } else {
+        res.status(500).json({ error: 'Conversion failed' });
+      }
+    });
+
     // Mark action as done
     this.app.post('/api/action/:id/done', (req, res) => {
       const completed = this.garden.completeTask(req.params.id);
