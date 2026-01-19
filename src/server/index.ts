@@ -118,16 +118,6 @@ export class DashboardServer {
       res.json({ project, actions });
     });
 
-    // Get any page by ID
-    this.app.get('/api/page/:id', (req, res) => {
-      const page = this.garden.get(req.params.id);
-      if (!page) {
-        res.status(404).json({ error: 'Page not found' });
-        return;
-      }
-      res.json(page);
-    });
-
     this.app.get('/api/today', (req, res) => {
       const events = this.calendar.getForDay(new Date());
       const overdue = this.garden.getOverdueTasks();

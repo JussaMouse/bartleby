@@ -518,12 +518,19 @@ async function convertNote(noteId, targetType) {
   
   try {
     // Get note data
+    console.log('Converting note:', noteId, 'to:', targetType);
     const getRes = await fetch(`/api/page/${noteId}`);
-    if (!getRes.ok) throw new Error('Failed to get note');
+    if (!getRes.ok) {
+      console.error('Failed to get note:', getRes.status);
+      throw new Error('Failed to get note');
+    }
     const noteData = await getRes.json();
+    console.log('Note data:', noteData);
     
-    const title = noteData.title;
-    const project = noteData.project ? ` +${noteData.project}` : '';
+    // Response is { record, content } - extract from record
+    const record = noteData.record || noteData;
+    const title = record.title;
+    const project = record.project ? ` +${record.project}` : '';
     
     // Create new item via chat command
     let command;
@@ -544,16 +551,24 @@ async function convertNote(noteId, targetType) {
         return;
     }
     
+    console.log('Sending command:', command);
     const chatRes = await fetch('/api/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ text: command }),
     });
     
-    if (!chatRes.ok) throw new Error('Conversion failed');
+    const chatData = await chatRes.json();
+    console.log('Chat response:', chatData);
+    
+    if (!chatRes.ok) {
+      console.error('Chat failed:', chatRes.status, chatData);
+      throw new Error('Conversion failed');
+    }
     
     // Delete original note
-    await fetch(`/api/page/${noteId}`, { method: 'DELETE' });
+    const delRes = await fetch(`/api/page/${noteId}`, { method: 'DELETE' });
+    console.log('Delete response:', delRes.status);
     
     // Close note panel
     removePanel(`note:${noteId}`);
