@@ -203,7 +203,6 @@ function renderNextActions(data) {
   const byContext = {};
   for (const task of data) {
     const ctx = task.context || 'No Context';
-    if (ctx === '@inbox') continue; // Skip inbox items
     if (!byContext[ctx]) byContext[ctx] = [];
     byContext[ctx].push(task);
   }

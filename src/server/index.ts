@@ -59,7 +59,7 @@ export class DashboardServer {
     // API endpoints for initial data
     // Support ?voice=true for TTS-friendly summaries
     this.app.get('/api/inbox', (req, res) => {
-      const items = this.garden.getTasks({ status: 'active', context: '@inbox' });
+      const items = this.garden.getByType('item').filter(i => i.status === 'active');
       
       if (req.query.voice === 'true') {
         if (items.length === 0) {
@@ -80,7 +80,7 @@ export class DashboardServer {
       const tasks = this.garden.getTasks({ status: 'active' });
       
       if (req.query.voice === 'true') {
-        const nonInbox = tasks.filter(t => t.context !== '@inbox');
+        const nonInbox = tasks; // All actions are non-inbox (items are separate type)
         if (nonInbox.length === 0) {
           res.json({ summary: 'You have no next actions.' });
         } else {
@@ -268,7 +268,7 @@ export class DashboardServer {
         if (task.context) contexts.add(task.context);
       }
       // Add common defaults
-      ['@inbox', '@phone', '@computer', '@errands', '@home', '@office', '@waiting', '@focus'].forEach(c => contexts.add(c));
+      ['@phone', '@computer', '@errands', '@home', '@office', '@waiting', '@focus'].forEach(c => contexts.add(c));
       
       // Common commands
       const commands = [
@@ -937,7 +937,7 @@ export class DashboardServer {
     let data: any;
 
     if (view === 'inbox') {
-      data = this.garden.getTasks({ status: 'active', context: '@inbox' });
+      data = this.garden.getByType('item').filter(i => i.status === 'active');
     } else if (view === 'next-actions') {
       data = this.garden.getTasks({ status: 'active' });
     } else if (view === 'projects') {
