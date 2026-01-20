@@ -180,18 +180,23 @@ function renderPanel(view, data) {
 }
 
 function renderInbox(data) {
-  // data is array of tasks
+  let html = '<div class="panel-toolbar"><button class="btn-inline" onclick="createNewAction()">+ New Action</button></div>';
+  
   if (!data?.length) {
-    return '<div class="empty">Inbox empty</div>';
+    html += '<div class="empty">Inbox empty</div>';
+    return html;
   }
   const items = data.map(item => renderActionItem(item, true)).join('');
-  return `<ul>${items}</ul>`;
+  html += `<ul>${items}</ul>`;
+  return html;
 }
 
 function renderNextActions(data) {
-  // data is array of tasks - group by context
+  let html = '<div class="panel-toolbar"><button class="btn-inline" onclick="createNewAction()">+ New Action</button></div>';
+  
   if (!data?.length) {
-    return '<div class="empty">No actions</div>';
+    html += '<div class="empty">No actions</div>';
+    return html;
   }
 
   // Group by context
@@ -203,24 +208,30 @@ function renderNextActions(data) {
     byContext[ctx].push(task);
   }
 
-  let html = '';
   for (const [ctx, actions] of Object.entries(byContext)) {
     if (actions.length === 0) continue;
     html += `<div class="section-header">${ctx}</div>`;
     html += '<ul>' + actions.map(a => renderActionItem(a)).join('') + '</ul>';
   }
 
-  return html || '<div class="empty">No actions</div>';
+  if (html === '<div class="panel-toolbar"><button class="btn-inline" onclick="createNewAction()">+ New Action</button></div>') {
+    html += '<div class="empty">No actions</div>';
+  }
+  
+  return html;
 }
 
 function renderProjects(data) {
-  // data is array of projects
+  let html = '<div class="panel-toolbar"><button class="btn-inline" onclick="createNewProject()">+ New Project</button></div>';
+  
   if (!data?.length) {
-    return '<div class="empty">No projects</div>';
+    html += '<div class="empty">No projects</div>';
+    return html;
   }
 
   const items = data.map(p => renderEditableItem(p, 'project')).join('');
-  return `<ul>${items}</ul>`;
+  html += `<ul>${items}</ul>`;
+  return html;
 }
 
 // Generic editable item renderer for non-action types
@@ -543,15 +554,15 @@ async function convertNote(noteId, targetType) {
 }
 
 function renderCalendar(data) {
-  // data is array of calendar entries
+  let html = '<div class="panel-toolbar"><button class="btn-inline" onclick="createNewEvent()">+ New Event</button></div>';
+  
   if (!data?.length) {
-    return '<div class="empty">Nothing scheduled</div>';
+    html += '<div class="empty">Nothing scheduled</div>';
+    return html;
   }
 
   const events = data.filter(e => e.entry_type === 'event');
   const deadlines = data.filter(e => e.entry_type === 'deadline');
-
-  let html = '';
 
   if (events.length) {
     html += '<div class="section-header">Events</div><ul>';
@@ -565,7 +576,11 @@ function renderCalendar(data) {
     html += '</ul>';
   }
 
-  return html || '<div class="empty">Nothing scheduled</div>';
+  if (!events.length && !deadlines.length) {
+    html += '<div class="empty">Nothing scheduled</div>';
+  }
+
+  return html;
 }
 
 function renderToday(data) {
@@ -632,26 +647,73 @@ async function createNewNote() {
   if (!title?.trim()) return;
   
   try {
-    const res = await fetch('/api/chat', {
+    const res = await fetch('/api/note', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text: `new note ${title.trim()}` }),
+      body: JSON.stringify({ title: title.trim() }),
     });
-    
-    if (!res.ok) {
-      // Try without auth (direct creation)
-      const createRes = await fetch('/api/note', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title: title.trim() }),
-      });
-      if (!createRes.ok) throw new Error('Failed to create note');
-    }
-    
+    if (!res.ok) throw new Error('Failed to create note');
     showToast('Note created');
   } catch (e) {
     console.error('Create note failed:', e);
     showToast('Failed to create note', true);
+  }
+}
+
+async function createNewAction() {
+  const title = prompt('Action title:');
+  if (!title?.trim()) return;
+  
+  try {
+    const res = await fetch('/api/action', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title: title.trim() }),
+    });
+    if (!res.ok) throw new Error('Failed to create action');
+    showToast('Action created');
+  } catch (e) {
+    console.error('Create action failed:', e);
+    showToast('Failed to create action', true);
+  }
+}
+
+async function createNewProject() {
+  const title = prompt('Project title:');
+  if (!title?.trim()) return;
+  
+  try {
+    const res = await fetch('/api/project', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title: title.trim() }),
+    });
+    if (!res.ok) throw new Error('Failed to create project');
+    showToast('Project created');
+  } catch (e) {
+    console.error('Create project failed:', e);
+    showToast('Failed to create project', true);
+  }
+}
+
+async function createNewEvent() {
+  const title = prompt('Event title:');
+  if (!title?.trim()) return;
+  
+  const dateStr = prompt('Date/time (e.g. "tomorrow 3pm", "2026-01-20 14:00"):');
+  if (!dateStr?.trim()) return;
+  
+  try {
+    const res = await fetch('/api/event', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title: title.trim(), dateStr: dateStr.trim() }),
+    });
+    if (!res.ok) throw new Error('Failed to create event');
+    showToast('Event created');
+  } catch (e) {
+    console.error('Create event failed:', e);
+    showToast('Failed to create event', true);
   }
 }
 

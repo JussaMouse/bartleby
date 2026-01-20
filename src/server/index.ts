@@ -368,6 +368,116 @@ export class DashboardServer {
       res.json({ success: true, note });
     });
 
+    // Create a new action
+    this.app.post('/api/action', (req, res) => {
+      const { title, context, project, tags } = req.body;
+      
+      if (!title?.trim()) {
+        res.status(400).json({ error: 'Title required' });
+        return;
+      }
+      
+      const action = this.garden.create({
+        type: 'action',
+        title: title.trim(),
+        context: context || '@inbox',
+        project: project || undefined,
+        tags: tags || [],
+        status: 'active',
+      });
+      
+      debug('Created action via dashboard', { id: action.id, title: action.title });
+      this.broadcastAll();
+      res.json({ success: true, action });
+    });
+
+    // Create a new project
+    this.app.post('/api/project', (req, res) => {
+      const { title, tags } = req.body;
+      
+      if (!title?.trim()) {
+        res.status(400).json({ error: 'Title required' });
+        return;
+      }
+      
+      const project = this.garden.create({
+        type: 'project',
+        title: title.trim(),
+        tags: tags || [],
+        status: 'active',
+      });
+      
+      debug('Created project via dashboard', { id: project.id, title: project.title });
+      this.broadcastAll();
+      res.json({ success: true, project });
+    });
+
+    // Create a new event
+    this.app.post('/api/event', (req, res) => {
+      const { title, dateStr, allDay } = req.body;
+      
+      if (!title?.trim()) {
+        res.status(400).json({ error: 'Title required' });
+        return;
+      }
+      
+      // Parse date string - try natural language first, then ISO
+      let startTime: Date;
+      const now = new Date();
+      const input = (dateStr || '').toLowerCase().trim();
+      
+      if (!input) {
+        // Default to tomorrow 9am
+        startTime = new Date(now);
+        startTime.setDate(startTime.getDate() + 1);
+        startTime.setHours(9, 0, 0, 0);
+      } else if (input.includes('tomorrow')) {
+        startTime = new Date(now);
+        startTime.setDate(startTime.getDate() + 1);
+        const timeMatch = input.match(/(\d{1,2})(?::(\d{2}))?\s*(am|pm)?/i);
+        if (timeMatch) {
+          let hour = parseInt(timeMatch[1]);
+          const min = timeMatch[2] ? parseInt(timeMatch[2]) : 0;
+          const meridiem = timeMatch[3]?.toLowerCase();
+          if (meridiem === 'pm' && hour < 12) hour += 12;
+          if (meridiem === 'am' && hour === 12) hour = 0;
+          startTime.setHours(hour, min, 0, 0);
+        } else {
+          startTime.setHours(9, 0, 0, 0);
+        }
+      } else {
+        // Try to parse as date
+        const parsed = new Date(input);
+        if (!isNaN(parsed.getTime())) {
+          startTime = parsed;
+        } else {
+          // Fallback: tomorrow 9am
+          startTime = new Date(now);
+          startTime.setDate(startTime.getDate() + 1);
+          startTime.setHours(9, 0, 0, 0);
+        }
+      }
+      
+      // Default end time is 1 hour after start (or same day for all-day)
+      const endTime = new Date(startTime);
+      if (allDay) {
+        endTime.setHours(23, 59, 59, 999);
+      } else {
+        endTime.setHours(endTime.getHours() + 1);
+      }
+      
+      const event = this.calendar.create({
+        title: title.trim(),
+        start_time: startTime.toISOString(),
+        end_time: endTime.toISOString(),
+        all_day: allDay || false,
+      });
+      
+      debug('Created event via dashboard', { id: event.id, title: event.title, start: startTime });
+      this.broadcastAll();
+      res.json({ success: true, event });
+    });
+
     // Update note metadata (inline edit)
     this.app.patch('/api/note/:id', (req, res) => {
       const record = this.garden.get(req.params.id);
