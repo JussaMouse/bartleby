@@ -647,6 +647,11 @@ export class GardenService {
       const existingId = meta.id as string | undefined;
       const existing = existingId ? this.get(existingId) : this.getByTitle(title);
 
+      // Extract content (remove title heading and any stray backmatter)
+      let extractedContent = body.replace(/^#\s+.+\n+/, '').trim();
+      // Strip any backmatter that leaked into content
+      extractedContent = extractedContent.replace(/\n---\n[\s\S]*?---\s*$/g, '').trim();
+      
       const recordData = {
         type: (meta.type as RecordType) || 'note',
         title,
@@ -657,7 +662,7 @@ export class GardenService {
         email: meta.email as string | undefined,
         phone: meta.phone as string | undefined,
         birthday: meta.birthday as string | undefined,
-        content: body.replace(/^#\s+.+\n+/, '').trim(),
+        content: extractedContent,
         tags: meta.tags as string[] | undefined,
       };
 
