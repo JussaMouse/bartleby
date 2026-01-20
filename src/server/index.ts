@@ -368,6 +368,27 @@ export class DashboardServer {
       res.json({ success: true, note });
     });
 
+    // Create a new item (raw inbox capture)
+    this.app.post('/api/item', (req, res) => {
+      const { title, content } = req.body;
+      
+      if (!title?.trim()) {
+        res.status(400).json({ error: 'Title required' });
+        return;
+      }
+      
+      const item = this.garden.create({
+        type: 'item',
+        title: title.trim(),
+        content: content || '',
+        status: 'active',
+      });
+      
+      debug('Captured item via dashboard', { id: item.id, title: item.title });
+      this.broadcastAll();
+      res.json({ success: true, item });
+    });
+
     // Create a new action
     this.app.post('/api/action', (req, res) => {
       const { title, context, project, tags } = req.body;

@@ -180,7 +180,7 @@ function renderPanel(view, data) {
 }
 
 function renderInbox(data) {
-  let html = '<div class="panel-toolbar"><button class="btn-inline" onclick="createNewAction()">+ New Action</button></div>';
+  let html = '<div class="panel-toolbar"><button class="btn-inline" onclick="createNewItem()">+ New Item</button></div>';
   
   if (!data?.length) {
     html += '<div class="empty">Inbox empty</div>';
@@ -657,6 +657,24 @@ async function createNewNote() {
   } catch (e) {
     console.error('Create note failed:', e);
     showToast('Failed to create note', true);
+  }
+}
+
+async function createNewItem() {
+  const title = prompt('Capture to inbox:');
+  if (!title?.trim()) return;
+  
+  try {
+    const res = await fetch('/api/item', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title: title.trim() }),
+    });
+    if (!res.ok) throw new Error('Failed to create item');
+    showToast('Item captured');
+  } catch (e) {
+    console.error('Create item failed:', e);
+    showToast('Failed to capture item', true);
   }
 }
 
