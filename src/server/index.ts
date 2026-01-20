@@ -401,7 +401,7 @@ export class DashboardServer {
       const action = this.garden.create({
         type: 'action',
         title: title.trim(),
-        context: context || '@inbox',
+        context: context || '@home',
         project: project || undefined,
         tags: tags || [],
         status: 'active',
