@@ -133,6 +133,14 @@ main#panels {
   font-size: 13px;
 }
 
+.panel-toolbar {
+  display: flex;
+  gap: 8px;
+  padding-bottom: 12px;
+  margin-bottom: 12px;
+  border-bottom: 1px solid var(--border);
+}
+
 /* Lists */
 .panel-content ul {
   list-style: none;

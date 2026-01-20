@@ -345,6 +345,29 @@ export class DashboardServer {
       }
     });
 
+    // Create a new note
+    this.app.post('/api/note', (req, res) => {
+      const { title, content, project, tags } = req.body;
+      
+      if (!title?.trim()) {
+        res.status(400).json({ error: 'Title required' });
+        return;
+      }
+      
+      const note = this.garden.create({
+        type: 'note',
+        title: title.trim(),
+        content: content || '',
+        project: project || undefined,
+        tags: tags || [],
+        status: 'active',
+      });
+      
+      debug('Created note via dashboard', { id: note.id, title: note.title });
+      this.broadcastAll();
+      res.json({ success: true, note });
+    });
+
     // Update note metadata (inline edit)
     this.app.patch('/api/note/:id', (req, res) => {
       const record = this.garden.get(req.params.id);

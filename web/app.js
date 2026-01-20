@@ -615,13 +615,44 @@ function renderRecent(data) {
 }
 
 function renderNotes(data) {
-  // data is array of notes
+  let html = '<div class="panel-toolbar"><button class="btn-inline" onclick="createNewNote()">+ New Note</button></div>';
+  
   if (!data?.length) {
-    return '<div class="empty">No notes</div>';
+    html += '<div class="empty">No notes yet</div>';
+    return html;
   }
 
   const items = data.map(n => renderEditableItem(n, 'note')).join('');
-  return `<ul>${items}</ul>`;
+  html += `<ul>${items}</ul>`;
+  return html;
+}
+
+async function createNewNote() {
+  const title = prompt('Note title:');
+  if (!title?.trim()) return;
+  
+  try {
+    const res = await fetch('/api/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: `new note ${title.trim()}` }),
+    });
+    
+    if (!res.ok) {
+      // Try without auth (direct creation)
+      const createRes = await fetch('/api/note', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: title.trim() }),
+      });
+      if (!createRes.ok) throw new Error('Failed to create note');
+    }
+    
+    showToast('Note created');
+  } catch (e) {
+    console.error('Create note failed:', e);
+    showToast('Failed to create note', true);
+  }
 }
 
 function renderRepl() {
