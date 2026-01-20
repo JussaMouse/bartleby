@@ -540,6 +540,55 @@ export class DashboardServer {
       const updated = this.garden.update(record.id, updates);
       if (updated) {
         debug('Updated note via dashboard', { id: record.id, updates });
+        this.broadcastAll();
+        res.json({ success: true, record: updated, projectCreated });
+      } else {
+        res.status(500).json({ error: 'Failed to update' });
+      }
+    });
+
+    // Update action/item metadata (inline edit)
+    this.app.patch('/api/action/:id', (req, res) => {
+      const record = this.garden.get(req.params.id);
+      if (!record || (record.type !== 'action' && record.type !== 'item')) {
+        res.status(404).json({ error: 'Action not found' });
+        return;
+      }
+      
+      const { title, context, project, tags } = req.body;
+      const updates: any = {};
+      
+      if (title !== undefined) updates.title = title;
+      if (context !== undefined) updates.context = context;
+      if (tags !== undefined) updates.tags = tags;
+      
+      // Auto-create project if it doesn't exist
+      let projectCreated = false;
+      if (project !== undefined) {
+        if (project) {
+          const existingProjects = this.garden.getByType('project');
+          const projectSlug = project.toLowerCase();
+          const projectExists = existingProjects.some(p => 
+            p.title.toLowerCase() === projectSlug || 
+            p.title.toLowerCase().replace(/\s+/g, '-') === projectSlug
+          );
+          
+          if (!projectExists) {
+            this.garden.create({
+              type: 'project',
+              title: project.charAt(0).toUpperCase() + project.slice(1),
+              status: 'active',
+            });
+            projectCreated = true;
+          }
+        }
+        updates.project = project || null;
+      }
+      
+      const updated = this.garden.update(record.id, updates);
+      if (updated) {
+        debug('Updated action via dashboard', { id: record.id, updates });
+        this.broadcastAll();
         res.json({ success: true, record: updated, projectCreated });
       } else {
         res.status(500).json({ error: 'Failed to update' });

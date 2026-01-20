@@ -1584,16 +1584,24 @@ async function saveGenericEdit(item) {
     return;
   }
 
-  // Parse input for title, +project, #tags
+  // Parse input for title, @context, +project, #tags
   let title = rawValue;
+  let context = null;
   let project = null;
   const tags = [];
 
+  // Extract context (@context)
+  const contextMatch = rawValue.match(/@(\w+)/);
+  if (contextMatch) {
+    context = '@' + contextMatch[1];
+    title = title.replace(/@\w+/, '').trim();
+  }
+
   // Extract project (+project)
-  const projectMatch = rawValue.match(/\+([^\s#]+)/);
+  const projectMatch = rawValue.match(/\+([^\s#@]+)/);
   if (projectMatch) {
     project = projectMatch[1];
-    title = title.replace(/\+[^\s#]+/, '').trim();
+    title = title.replace(/\+[^\s#@]+/, '').trim();
   }
 
   // Extract tags (#tag)
@@ -1633,6 +1641,26 @@ async function saveGenericEdit(item) {
       
       // Open the note panel
       addPanel(`note:${id}`);
+    } else if (itemType === 'action' || itemType === 'item') {
+      // Use dedicated action PATCH endpoint
+      const body = { title };
+      if (context !== null) body.context = context;
+      if (project !== null) body.project = project;
+      if (tags.length > 0) body.tags = tags;
+
+      const res = await fetch(`/api/action/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+
+      if (!res.ok) throw new Error('Update failed');
+      
+      item.dataset.title = title;
+      const titleEl = item.querySelector('.item-title') || item.querySelector('.action-title');
+      if (titleEl) titleEl.textContent = title;
+      cancelGenericEdit(item);
+      showToast('Saved');
     } else {
       // Fallback for other types - update via content
       const res = await fetch(`/api/page/${id}`, { method: 'GET' });
