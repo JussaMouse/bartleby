@@ -410,6 +410,10 @@ export class DashboardServer {
       const updated = this.garden.update(record.id, { type: targetType as any });
       if (updated) {
         debug('Converted page via dashboard', { id: record.id, from: record.type, to: targetType });
+        
+        // Broadcast updates to all dashboard clients
+        this.broadcastAll();
+        
         res.json({ success: true, record: updated });
       } else {
         res.status(500).json({ error: 'Conversion failed' });
