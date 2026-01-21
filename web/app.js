@@ -683,30 +683,67 @@ async function createNewItem() {
 
 async function createNewAction() {
   try {
-    // Create action with placeholder title
-    const res = await fetch('/api/action', {
+    // Create action with placeholder title (server won't broadcast)
+    const res = await fetch('/api/action?nobroadcast=1', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ title: 'New action' }),
+      body: JSON.stringify({ title: '' }),
     });
     if (!res.ok) throw new Error('Failed to create action');
     
     const data = await res.json();
-    const actionId = data.action?.id;
+    const action = data.action;
+    if (!action) throw new Error('No action returned');
     
-    // Wait for UI to update, then find and edit the new action
-    setTimeout(() => {
-      const actionItem = document.querySelector(`.action-item[data-id="${actionId}"]`);
-      if (actionItem) {
-        startEdit(actionItem);
-        // Select all text for easy replacement
-        const input = actionItem.querySelector('.inline-input');
-        if (input) {
-          input.value = '';
-          input.focus();
-        }
+    // Find the @home section (or first section) in next-actions panel
+    const panel = document.querySelector('.panel[data-view="next-actions"] .panel-content');
+    if (!panel) {
+      console.error('Next actions panel not found');
+      return;
+    }
+    
+    // Create the action HTML and insert it
+    const actionHtml = renderActionItem(action, false);
+    
+    // Find or create the @home section
+    let homeSection = panel.querySelector('.section-header + ul');
+    const headers = panel.querySelectorAll('.section-header');
+    for (const h of headers) {
+      if (h.textContent === '@home') {
+        homeSection = h.nextElementSibling;
+        break;
       }
-    }, 100);
+    }
+    
+    if (!homeSection) {
+      // No sections yet, create one
+      const sectionHtml = `<div class="section-header">@home</div><ul></ul>`;
+      const toolbar = panel.querySelector('.panel-toolbar');
+      if (toolbar) {
+        toolbar.insertAdjacentHTML('afterend', sectionHtml);
+      } else {
+        panel.insertAdjacentHTML('afterbegin', sectionHtml);
+      }
+      homeSection = panel.querySelector('.section-header + ul');
+    }
+    
+    // Remove "No actions" message if present
+    const empty = panel.querySelector('.empty');
+    if (empty) empty.remove();
+    
+    // Insert at top of the list
+    homeSection.insertAdjacentHTML('afterbegin', actionHtml);
+    
+    // Start editing immediately
+    const actionItem = homeSection.querySelector(`.action-item[data-id="${action.id}"]`);
+    if (actionItem) {
+      startEdit(actionItem);
+      const input = actionItem.querySelector('.inline-input');
+      if (input) {
+        input.value = '';
+        input.focus();
+      }
+    }
   } catch (e) {
     console.error('Create action failed:', e);
     showToast('Failed to create action', true);

@@ -392,15 +392,14 @@ export class DashboardServer {
     // Create a new action
     this.app.post('/api/action', (req, res) => {
       const { title, context, project, tags } = req.body;
+      const noBroadcast = req.query.nobroadcast === '1';
       
-      if (!title?.trim()) {
-        res.status(400).json({ error: 'Title required' });
-        return;
-      }
+      // Allow empty title for inline editing flow
+      const actionTitle = title?.trim() || 'New action';
       
       const action = this.garden.create({
         type: 'action',
-        title: title.trim(),
+        title: actionTitle,
         context: context || '@home',
         project: project || undefined,
         tags: tags || [],
@@ -408,7 +407,9 @@ export class DashboardServer {
       });
       
       debug('Created action via dashboard', { id: action.id, title: action.title });
-      this.broadcastAll();
+      if (!noBroadcast) {
+        this.broadcastAll();
+      }
       res.json({ success: true, action });
     });
 
