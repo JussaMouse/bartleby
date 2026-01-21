@@ -619,7 +619,11 @@ function renderRecent(data) {
   const items = data.map(p => {
     // Actions use the action item renderer
     if (p.type === 'action') {
-      return renderActionItem(p, p.context === '@inbox');
+      return renderActionItem(p, false);
+    }
+    // Items use the action item renderer with inbox flag
+    if (p.type === 'item') {
+      return renderActionItem(p, true);
     }
     // Others use generic editable item
     return renderEditableItem(p, p.type);
@@ -678,17 +682,31 @@ async function createNewItem() {
 }
 
 async function createNewAction() {
-  const title = prompt('Action title:');
-  if (!title?.trim()) return;
-  
   try {
+    // Create action with placeholder title
     const res = await fetch('/api/action', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ title: title.trim() }),
+      body: JSON.stringify({ title: 'New action' }),
     });
     if (!res.ok) throw new Error('Failed to create action');
-    showToast('Action created');
+    
+    const data = await res.json();
+    const actionId = data.action?.id;
+    
+    // Wait for UI to update, then find and edit the new action
+    setTimeout(() => {
+      const actionItem = document.querySelector(`.action-item[data-id="${actionId}"]`);
+      if (actionItem) {
+        startEdit(actionItem);
+        // Select all text for easy replacement
+        const input = actionItem.querySelector('.inline-input');
+        if (input) {
+          input.value = '';
+          input.focus();
+        }
+      }
+    }, 100);
   } catch (e) {
     console.error('Create action failed:', e);
     showToast('Failed to create action', true);
