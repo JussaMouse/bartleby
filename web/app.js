@@ -152,6 +152,15 @@ function renderPanel(view, data) {
   if (!panel) return;
 
   const content = panel.querySelector('.panel-content');
+  
+  // Skip re-render if there's an active edit in this panel (would steal focus)
+  const hasActiveEdit = content.querySelector('.action-edit:not(.hidden)') || 
+                        content.querySelector('.item-edit:not(.hidden)') ||
+                        content.querySelector('.note-content-edit:not(.hidden)');
+  if (hasActiveEdit) {
+    console.log('Skipping re-render, active edit in panel:', view);
+    return;
+  }
 
   if (view === 'repl') {
     // REPL doesn't use server data, render from local messages
