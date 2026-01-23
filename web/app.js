@@ -1341,10 +1341,26 @@ async function saveEdit(item) {
     });
 
     if (!res.ok) throw new Error('Failed to save');
+    
+    // Update display immediately (don't wait for WebSocket)
+    const titleEl = item.querySelector('.action-display .item-title');
+    if (titleEl) titleEl.textContent = title;
+    
+    const projectEl = item.querySelector('.action-display .item-project');
+    if (projectEl) {
+      projectEl.textContent = project ? `+${project}` : '';
+    }
+    
+    // Update data attributes
+    const newFull = `${title}${context ? ' ' + context : ''}${project ? ' +' + project : ''}${due_date ? ' due:' + due_date : ''}`;
+    item.dataset.full = newFull;
+    item.dataset.context = context || '';
+    
     cancelEdit(item);
+    showToast('Saved');
   } catch (e) {
     console.error('Failed to save:', e);
-    alert('Failed to save action');
+    showToast('Failed to save', true);
   }
 }
 
