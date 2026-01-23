@@ -262,9 +262,20 @@ GTD organizes your work into lists:
 | **Someday/Maybe** | Things you might do later | `show someday` |
 | **Waiting For** | Actions blocked on someone else | `show waiting` |
 
+### Items vs Actions
+
+This distinction is key:
+
+| Type | What it is | Has context? | Where it lives |
+|------|------------|--------------|----------------|
+| **Item** | Raw capture, not yet processed | No | Inbox |
+| **Action** | Clarified, doable next step | Yes | Next Actions (by context) |
+
+When you `capture` something, it becomes an **item** in your inbox. When you process the inbox and clarify what the next action is, it becomes an **action** with a context.
+
 ### Contexts
 
-Contexts answer: *where or with what can I do this?*
+Contexts answer: *where or with what can I do this?* Only **actions** have contexts — items are contextless until processed.
 
 | Context | When to use |
 |---------|-------------|
@@ -283,6 +294,8 @@ When you have 10 minutes and your phone, filter to `@phone` actions. When you're
 > new action buy batteries @errands
 > new action review proposal @focus
 ```
+
+**Note:** There is no `@inbox` context. Items live in the inbox by virtue of being `type: item`, not by having a context.
 
 ### Tags
 
@@ -530,10 +543,10 @@ The dashboard shows live-updating panels:
 
 | Panel | What it shows |
 |-------|---------------|
-| **Inbox** | Uncategorized captures |
+| **Inbox** | Unprocessed items (`type: item`) |
 | **Next Actions** | Actions grouped by context |
 | **Projects** | Active projects (click to open) |
-| **Notes** | All notes (click to edit, View to open) |
+| **Notes** | All notes (click to open panel) |
 | **Calendar** | Upcoming events + deadlines |
 | **Today** | Today's events + overdue items |
 | **Recent** | Last 10 modified pages |
@@ -541,22 +554,40 @@ The dashboard shows live-updating panels:
 
 Click the `+` buttons in the footer to add panels. Layout persists across reloads.
 
+### Quick Create
+
+Each panel has a **+ New** button for quick creation:
+
+| Panel | Button | Creates |
+|-------|--------|---------|
+| Inbox | + New Item | Raw capture (no context) |
+| Actions | + New Action | Action with `@home` context (inline edit) |
+| Projects | + New Project | New project |
+| Calendar | + New Event | Event (prompts for date/time) |
+| Notes | + New Note | New note |
+
+**Inline creation:** When you click **+ New Action**, an empty action appears and you can immediately start typing. Add `@context`, `+project`, or `#tags` inline, then press Enter to save.
+
 ### Editing Actions
 
 Click any action to edit inline:
 
 ```
 pack bags                    →  pack bags @home +thailand-trip due:friday
-       ↑ click                        ↑ full text with tags appears
+       ↑ click                        ↑ full text with context/project/due appears
 ```
 
 - Line expands showing the full action text with `@context`, `+project`, and `due:date`
-- Cursor appears at end — start typing to add/change tags
+- Cursor appears at end — start typing to add/change metadata
 - **Tab completion:** Type `@h[TAB]` → `@home`, or `+20[TAB]` → `+2025-taxes`
 - **Save:** `Enter` or click Save
 - **Cancel:** `Escape` or click Cancel
 - **Done:** Mark action complete (disappears instantly)
-- **→ Action:** (Inbox only) Convert to a real action and start editing
+- **Convert:** (Inbox only) Convert item to action, project, note, or event
+
+**Changing context:** To move an action to a different context, edit it and change `@home` to `@phone` (or any context). New contexts are created automatically.
+
+**New contexts:** Type any `@newcontext` — if it doesn't exist, it will be created. The action will appear under that context after you save.
 
 ### Editing Notes
 
@@ -585,10 +616,10 @@ Click a project name to open its dedicated panel showing:
 
 1. Drag any file onto the dashboard
 2. Blue overlay appears: "Drop to import or OCR"
-3. For images, choose:
-   - **1. OCR** — Extract text, show in REPL
-   - **2. OCR to Note** — Extract text, save as timestamped note (opens automatically)
-   - **3. Import** — Save image to garden (can add `+project` `#tags`)
+3. For images, a prompt appears:
+   - **Type a title** — Extract text and save as note with that title
+   - **1** — OCR only (extract text, show in REPL, don't save)
+   - **3** — Import image to garden (can add `+project` `#tags`)
 4. Non-images go straight to import
 
 Images appear as thumbnails on project pages. Click to view full-size.
@@ -796,7 +827,20 @@ Requests must include:
 Authorization: Bearer your-secret-token
 ```
 
-**Note:** Only set `DASHBOARD_HOST=0.0.0.0` when access is protected by VPN, firewall, or API token. On an open network, keep it as `localhost` and use SSH tunnels.
+**Security notes:**
+
+- **`DASHBOARD_HOST=localhost`** (default) — Only accessible from the server itself
+- **`DASHBOARD_HOST=0.0.0.0`** — Accessible from any network interface (use only with VPN/firewall)
+- **`DASHBOARD_HOST=<tailscale-ip>`** — Bind only to Tailscale interface (recommended for remote access)
+
+For remote access via Tailscale, you can bind specifically to your Tailscale IP:
+
+```env
+DASHBOARD_HOST=100.x.x.x   # Your Tailscale IP (find with: tailscale ip -4)
+DASHBOARD_PORT=3333
+```
+
+This ensures Bartleby is only accessible via the VPN, not on local networks.
 
 ---
 
@@ -952,9 +996,19 @@ Get a free API key at [openweathermap.org](https://openweathermap.org/api).
 
 ```env
 DASHBOARD_PORT=3333       # Default port
-DASHBOARD_HOST=localhost  # Use 0.0.0.0 only with VPN/firewall
-BARTLEBY_API_TOKEN=       # Optional: require token for /api/chat
+DASHBOARD_HOST=localhost  # Options: localhost, 0.0.0.0, or specific IP
+BARTLEBY_API_TOKEN=       # Optional: require token for /api/chat and /api/capture
 ```
+
+**Host binding options:**
+
+| Value | Accessible from | When to use |
+|-------|-----------------|-------------|
+| `localhost` | Server only | Default, most secure |
+| `0.0.0.0` | All interfaces | Behind VPN/firewall only |
+| `100.x.x.x` | Tailscale only | Remote access without exposing to LAN |
+
+**Authentication:** The API token is required only for `/api/chat` and `/api/capture`. Dashboard panels and other endpoints work without auth (they're read-only or modify only your own data).
 
 ---
 
@@ -1017,6 +1071,14 @@ pnpm build
 pnpm rebuild hnswlib-node
 # or
 rm -rf node_modules && pnpm install && pnpm approve-builds && pnpm build
+```
+
+### better-sqlite3 version mismatch
+
+If you see `NODE_MODULE_VERSION` errors after updating Node.js:
+
+```bash
+pnpm rebuild better-sqlite3
 ```
 
 ### LLM not responding
