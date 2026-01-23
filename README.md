@@ -760,6 +760,34 @@ Use iOS Shortcuts for hands-free voice commands. All speech recognition and text
 
 Now say "Hey Siri, Bartleby Capture" → speak your thought → hear confirmation.
 
+**Long Note Shortcut** (voice memos — no timeout):
+
+For longer dictation that doesn't cut off after a pause:
+
+1. Open Shortcuts app → tap **+**
+2. Add action: **Dictate Text**
+   - Stop Listening: **After Pause** (default)
+3. Add action: **Set Variable**
+   - Name: `Title`
+4. Add action: **Dictate Text**
+   - Stop Listening: **On Tap** ← key setting for long content
+5. Add action: **Set Variable**
+   - Name: `Content`
+6. Add action: **Get Contents of URL**
+   - URL: `http://<tailscale-ip>:3333/api/note`
+   - Method: **POST**
+   - Headers:
+     - `Content-Type`: `application/json`
+   - Request Body: **JSON**
+     - `title`: select **Title** variable
+     - `content`: select **Content** variable
+7. Add action: **Speak Text** → "Saved" + **Title** variable
+8. Name shortcut "Long Note" or "Voice Memo"
+
+Say "Hey Siri, Long Note" → speak title → pause → speak your full note → tap Done → "Saved [title]"
+
+The "On Tap" setting keeps Siri listening until you tap Done, allowing unlimited dictation length.
+
 **General Command Shortcut** (any command):
 
 Same as above but use URL: `http://<tailscale-ip>:3333/api/chat?voice=true`
