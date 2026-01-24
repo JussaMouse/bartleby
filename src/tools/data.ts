@@ -595,8 +595,28 @@ export const taxMode: Tool = {
   },
 
   execute: async (args, context) => {
-    // Set a fact so we remember we're in tax mode
-    context.services.context.setFact('goal', 'current_task', 'tax_preparation');
+    // Set system context with tax workflow knowledge
+    const taxContext = `You are helping with crypto tax preparation using Summ data.
+
+KEY COMMANDS:
+- sql <query> - Run SQL on summ table
+- preview UPDATE/DELETE - See changes before applying
+- snapshot summ - Backup before edits
+- restore <snap> to summ - Rollback
+
+SUMM SCHEMA: Currency, Timestamp, Trade_Type, Price, Quantity, Value, From, To, Account, Transaction_Id, Comments, Notes
+
+ISSUES TO CHECK:
+1. Large "Incoming" that should be "Buy" (misclassified purchases)
+2. Unknown wallet addresses
+3. Missing prices (Price = 0)
+4. Cross-chain mismatches
+
+WORKFLOW: Overview query → Find issues → Preview fix → Snapshot → Apply → Verify
+
+Always preview changes and ask before modifying data.`;
+    
+    context.services.context.setFact('system', 'tax_mode', taxContext);
     
     // Check if summ table exists
     const tables = context.services.data.listTables();

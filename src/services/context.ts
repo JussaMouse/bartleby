@@ -199,6 +199,14 @@ export class ContextService {
 
   getProfileSummary(): string {
     const sections: string[] = [];
+    
+    // System context goes first (e.g., tax mode instructions)
+    const systemFacts = this.getFactsByCategory('system');
+    if (systemFacts.length > 0) {
+      const items = systemFacts.map(f => `${f.key}: ${f.value}`).join('\n');
+      sections.push(`## Current Context\n${items}`);
+    }
+    
     const categories = ['preference', 'habit', 'goal', 'relationship', 'schedule', 'interest', 'health'];
 
     for (const cat of categories) {
