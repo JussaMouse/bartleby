@@ -1177,13 +1177,14 @@ export const tagNote: Tool = {
     if (!note) return 'Note not found.';
     
     // Parse project and tags from input
-    const projectMatch = input.match(/\+([^\s#]+)/);
+    // Project: everything after + until # or end of string (supports spaces)
+    const projectMatch = input.match(/\+([^#]+)/);
     const tagMatches = input.match(/#(\w+)/g);
     
     const updates: { project?: string; tags?: string[] } = {};
     
     if (projectMatch) {
-      const projectName = projectMatch[1];
+      const projectName = projectMatch[1].trim();
       // Auto-create project if needed
       const projects = context.services.garden.getByType('project');
       let project = projects.find(p => p.title.toLowerCase() === projectName.toLowerCase());
