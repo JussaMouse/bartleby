@@ -102,13 +102,33 @@ Try these commands.
 
 ```
 > new entry house rules #family +home
+```
+
+**Notes** support multi-line content. Two ways to create:
+
+```
+# With title upfront:
 > new note cherry pie
+📝 Note: cherry pie
 What would you like to add to this note?
-> (paste recipe)
+> grandma's secret recipe
+> - 2 cups flour
+> - 1 cup sugar
 > done
 Any project or tags? (e.g., +project #tag1 #tag2, or ENTER to skip)
 > +thanksgiving #recipe
+✓ Saved: cherry pie
+
+# Without title (prompts for it):
+> new note
+What would you like to call this note?
+> meeting notes jan 24
+📝 Note: meeting notes jan 24
+What would you like to add to this note?
+> ...
 ```
+
+While in note mode, everything you type is appended verbatim — no routing, no AI processing. Type `done` when finished.
 
 ### 5) Import media
 
