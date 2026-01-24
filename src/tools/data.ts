@@ -474,7 +474,7 @@ export const restoreSnapshot: Tool = {
       nouns: ['snapshot', 'backup'],
     },
     examples: [
-      'restore summ_snapshot_2025-01-15 to summ',
+      'restore summ_snapshot_2025_01_15 to summ',
     ],
     priority: 85,
   },
@@ -554,9 +554,9 @@ snapshot <tablename>
 
     const list = snapshots
       .map(s => {
-        // Parse timestamp from name
-        const match = s.name.match(/_snapshot_(\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2})/);
-        const timestamp = match ? match[1].replace(/T/, ' ').replace(/-/g, ':').slice(0, 16) : '';
+        // Parse timestamp from name (format: _snapshot_YYYY_MM_DD_HH_MM_SS)
+        const match = s.name.match(/_snapshot_(\d{4}_\d{2}_\d{2}_\d{2}_\d{2}_\d{2})/);
+        const timestamp = match ? match[1].replace(/_/g, '-').slice(0, 10) + ' ' + match[1].slice(11).replace(/_/g, ':') : '';
         return `- **${s.name}** — ${s.rowCount.toLocaleString()} rows${timestamp ? ` (${timestamp})` : ''}`;
       })
       .join('\n');

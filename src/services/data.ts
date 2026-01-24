@@ -318,7 +318,7 @@ export class DataService {
       throw new Error(`Table "${tableName}" not found`);
     }
 
-    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+    const timestamp = new Date().toISOString().replace(/[:.T-]/g, '_').slice(0, 19);
     const snapshotName = `${safeTable}_snapshot_${timestamp}`;
 
     this.db.exec(`CREATE TABLE "${snapshotName}" AS SELECT * FROM "${safeTable}"`);
