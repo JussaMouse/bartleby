@@ -173,10 +173,16 @@ export class DataService {
       columns: columns.length,
     });
 
+    // Return sanitized column names (as they appear in the database)
+    const sanitizedColumns = columns.map(c => ({
+      ...c,
+      name: this.sanitizeIdentifier(c.name),
+    }));
+
     return {
       table: safeTableName,
       rowCount: records.length,
-      columns,
+      columns: sanitizedColumns,
       sourcePath: sourceDest,
     };
   }

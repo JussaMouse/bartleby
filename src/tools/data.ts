@@ -40,8 +40,8 @@ export const ingestCsv: Tool = {
 
   routing: {
     patterns: [
-      /^ingest\s+csv\s+(.+?)\s+as\s+(\w+)(?:\s+(--replace|--append))?$/i,
-      /^import\s+csv\s+(.+?)\s+as\s+(\w+)(?:\s+(--replace|--append))?$/i,
+      /^ingest\s+csv\s+(.+?)\s+as\s+(\w+)(.*)$/i,
+      /^import\s+csv\s+(.+?)\s+as\s+(\w+)(.*)$/i,
     ],
     keywords: {
       verbs: ['ingest', 'import', 'load'],
@@ -56,22 +56,25 @@ export const ingestCsv: Tool = {
 
   parseArgs: (input, match) => {
     if (match) {
+      const flags = match[3] || '';
       return {
         filepath: match[1].trim(),
         tableName: match[2].trim(),
-        replace: match[3] === '--replace',
-        append: match[3] === '--append',
+        replace: flags.includes('--replace'),
+        append: flags.includes('--append'),
+        noHeader: flags.includes('--no-header'),
       };
     }
     return {};
   },
 
   execute: async (args, context) => {
-    const { filepath, tableName, replace, append } = args as {
+    const { filepath, tableName, replace, append, noHeader } = args as {
       filepath?: string;
       tableName?: string;
       replace?: boolean;
       append?: boolean;
+      noHeader?: boolean;
     };
 
     if (!filepath || !tableName) {
@@ -80,11 +83,13 @@ export const ingestCsv: Tool = {
 **Options:**
 - \`--replace\` — Drop existing table first
 - \`--append\` — Add to existing table
+- \`--no-header\` — File has no header row (columns named col_1, col_2, etc)
 
 **Example:**
 \`\`\`
 ingest csv ~/Downloads/summ-2025.csv as transactions
 ingest csv data.tsv as trades --replace
+ingest csv raw-data.csv as raw --no-header
 \`\`\``;
     }
 
@@ -92,6 +97,7 @@ ingest csv data.tsv as trades --replace
       const result = context.services.data.importCsv(filepath, tableName, {
         replace,
         append,
+        hasHeader: !noHeader,
       });
 
       const colList = result.columns.slice(0, 10).map(c => `- ${c.name} (${c.type})`).join('\n');
