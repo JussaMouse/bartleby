@@ -38,6 +38,7 @@ export class CommandRouter {
    * Main routing method. Returns routing result with complexity info.
    * 
    * Flow:
+   * 0. Check pending context states FIRST (note editing, etc.) - bypass all routing
    * 1. Classify complexity (Router model or heuristics)
    * 2. If COMPLEX → skip to LLM (Thinking model with agentic loop)
    * 3. If SIMPLE → try pattern → keyword → semantic → LLM (Fast model)
@@ -48,7 +49,16 @@ export class CommandRouter {
       return { type: 'routed', complexity: 'SIMPLE' };
     }
 
-    // === Step 1: Classify complexity FIRST ===
+    // === Step 0: Check pending context states FIRST ===
+    // These bypass ALL routing including complexity classification
+    // (e.g., note editing mode - just append, don't analyze)
+    const contextResult = await this.matchContextual(normalized);
+    if (contextResult) {
+      debug('Layer 0 match (contextual) - bypassing complexity check', { tool: contextResult.tool });
+      return { type: 'routed', route: contextResult, complexity: 'SIMPLE' };
+    }
+
+    // === Step 1: Classify complexity ===
     const complexity = await this.services!.llm.classifyComplexity(normalized);
     debug('Complexity classification', { complexity, input: input.slice(0, 50) });
 
@@ -59,13 +69,6 @@ export class CommandRouter {
     }
 
     // === Step 3: Simple requests go through deterministic router ===
-
-    // Layer 0: Context-dependent matching (shouldHandle)
-    const contextResult = await this.matchContextual(normalized);
-    if (contextResult) {
-      debug('Layer 0 match (contextual)', { tool: contextResult.tool });
-      return { type: 'routed', route: contextResult, complexity };
-    }
 
     // Layer 1: Pattern matching (regex)
     const patternResult = this.matchPattern(normalized);
