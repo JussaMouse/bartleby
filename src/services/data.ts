@@ -254,6 +254,98 @@ export class DataService {
     };
   }
 
+  // === Safe Mutations ===
+
+  /**
+   * Preview what rows would be affected by an UPDATE or DELETE
+   * Converts "UPDATE table SET ... WHERE ..." to "SELECT * FROM table WHERE ..."
+   */
+  previewMutation(sql: string, maxRows: number = 20): QueryResult {
+    const trimmed = sql.trim();
+    
+    // Extract table and WHERE clause from UPDATE
+    const updateMatch = trimmed.match(/^UPDATE\s+["']?(\w+)["']?\s+SET\s+.+?(WHERE\s+.+)?$/is);
+    if (updateMatch) {
+      const table = updateMatch[1];
+      const whereClause = updateMatch[2] || '';
+      const previewSql = `SELECT rowid, * FROM "${table}" ${whereClause}`;
+      return this.query(previewSql, maxRows);
+    }
+
+    // Extract table and WHERE clause from DELETE
+    const deleteMatch = trimmed.match(/^DELETE\s+FROM\s+["']?(\w+)["']?\s*(WHERE\s+.+)?$/is);
+    if (deleteMatch) {
+      const table = deleteMatch[1];
+      const whereClause = deleteMatch[2] || '';
+      const previewSql = `SELECT rowid, * FROM "${table}" ${whereClause}`;
+      return this.query(previewSql, maxRows);
+    }
+
+    throw new Error('Can only preview UPDATE or DELETE statements');
+  }
+
+  /**
+   * Create a backup snapshot of a table before mutation
+   */
+  snapshot(tableName: string): string {
+    const safeTable = this.sanitizeIdentifier(tableName);
+    
+    if (!this.tableExists(safeTable)) {
+      throw new Error(`Table "${tableName}" not found`);
+    }
+
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+    const snapshotName = `${safeTable}_snapshot_${timestamp}`;
+
+    this.db.exec(`CREATE TABLE "${snapshotName}" AS SELECT * FROM "${safeTable}"`);
+    
+    const count = this.db.prepare(`SELECT COUNT(*) as cnt FROM "${snapshotName}"`).get() as { cnt: number };
+    
+    this.audit(`SNAPSHOT: ${safeTable} -> ${snapshotName} (${count.cnt} rows)`);
+    info('Table snapshot created', { source: safeTable, snapshot: snapshotName, rows: count.cnt });
+
+    return snapshotName;
+  }
+
+  /**
+   * Restore a table from a snapshot
+   */
+  restoreSnapshot(snapshotName: string, targetTable: string): number {
+    const safeSnapshot = this.sanitizeIdentifier(snapshotName);
+    const safeTarget = this.sanitizeIdentifier(targetTable);
+
+    if (!this.tableExists(safeSnapshot)) {
+      throw new Error(`Snapshot "${snapshotName}" not found`);
+    }
+
+    // Drop target and recreate from snapshot
+    this.db.exec(`DROP TABLE IF EXISTS "${safeTarget}"`);
+    this.db.exec(`CREATE TABLE "${safeTarget}" AS SELECT * FROM "${safeSnapshot}"`);
+
+    const count = this.db.prepare(`SELECT COUNT(*) as cnt FROM "${safeTarget}"`).get() as { cnt: number };
+    
+    this.audit(`RESTORE: ${safeSnapshot} -> ${safeTarget} (${count.cnt} rows)`);
+    info('Table restored from snapshot', { snapshot: safeSnapshot, target: safeTarget, rows: count.cnt });
+
+    return count.cnt;
+  }
+
+  /**
+   * List available snapshots
+   */
+  listSnapshots(): TableInfo[] {
+    const tables = this.db.prepare(`
+      SELECT name FROM sqlite_master 
+      WHERE type = 'table' AND name LIKE '%_snapshot_%'
+      ORDER BY name DESC
+    `).all() as { name: string }[];
+
+    return tables.map(t => {
+      const count = this.db.prepare(`SELECT COUNT(*) as cnt FROM "${t.name}"`).get() as { cnt: number };
+      return { name: t.name, rowCount: count.cnt };
+    });
+  }
+
   // === Schema Exploration ===
 
   listTables(): TableInfo[] {

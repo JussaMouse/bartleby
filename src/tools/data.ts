@@ -328,6 +328,242 @@ ${colList}`;
   },
 };
 
+export const previewMutation: Tool = {
+  name: 'previewMutation',
+  description: 'Preview what rows would be affected by an UPDATE or DELETE',
+
+  routing: {
+    patterns: [
+      /^preview\s+(UPDATE\s+.+|DELETE\s+.+)$/is,
+      /^dry[\s-]?run\s+(UPDATE\s+.+|DELETE\s+.+)$/is,
+    ],
+    keywords: {
+      verbs: ['preview', 'dry-run', 'check'],
+      nouns: ['update', 'delete', 'mutation'],
+    },
+    examples: [
+      'preview UPDATE summ SET type = \'Buy\' WHERE type = \'Incoming\'',
+      'preview DELETE FROM summ WHERE value = 0',
+    ],
+    priority: 90, // Higher than sqlQuery
+  },
+
+  parseArgs: (input, match) => {
+    if (match) {
+      return { sql: match[1].trim() };
+    }
+    return {};
+  },
+
+  execute: async (args, context) => {
+    const { sql } = args as { sql?: string };
+
+    if (!sql) {
+      return `**Usage:** \`preview <UPDATE or DELETE statement>\`
+
+Shows rows that would be affected WITHOUT making changes.
+
+**Examples:**
+\`\`\`
+preview UPDATE summ SET type = 'Buy' WHERE type = 'Incoming' AND value > 100
+preview DELETE FROM summ WHERE price IS NULL
+\`\`\``;
+    }
+
+    try {
+      const result = context.services.data.previewMutation(sql);
+
+      if (result.rowCount === 0) {
+        return `**0 rows would be affected**
+
+No changes needed, or WHERE clause matches nothing.`;
+      }
+
+      const table = formatTable(result.columns, result.rows);
+      const truncatedNote = result.truncated 
+        ? `\n\n*Showing first 20 of ${result.rowCount.toLocaleString()} rows*` 
+        : '';
+
+      return `**${result.rowCount.toLocaleString()} row${result.rowCount !== 1 ? 's' : ''} would be affected:**
+
+\`\`\`
+${table}
+\`\`\`${truncatedNote}
+
+**To execute:** \`sql ${sql}\`
+**To backup first:** \`snapshot <tablename>\``;
+    } catch (err: any) {
+      return `**Preview failed:** ${err.message}`;
+    }
+  },
+};
+
+export const snapshotTable: Tool = {
+  name: 'snapshotTable',
+  description: 'Create a backup snapshot of a table before making changes',
+
+  routing: {
+    patterns: [
+      /^snapshot\s+(\w+)$/i,
+      /^backup\s+(\w+)$/i,
+    ],
+    keywords: {
+      verbs: ['snapshot', 'backup', 'save'],
+      nouns: ['table', 'data'],
+    },
+    examples: ['snapshot summ', 'backup transactions'],
+    priority: 85,
+  },
+
+  parseArgs: (input, match) => {
+    if (match) {
+      return { table: match[1].trim() };
+    }
+    return {};
+  },
+
+  execute: async (args, context) => {
+    const { table } = args as { table?: string };
+
+    if (!table) {
+      return `**Usage:** \`snapshot <tablename>\`
+
+Creates a backup copy before you make changes.
+
+**Example:**
+\`\`\`
+snapshot summ
+sql UPDATE summ SET type = 'Buy' WHERE ...
+\`\`\`
+
+If something goes wrong: \`restore <snapshot_name> to summ\``;
+    }
+
+    try {
+      const snapshotName = context.services.data.snapshot(table);
+
+      return `✓ **Snapshot created:** \`${snapshotName}\`
+
+Now safe to make changes. To restore if needed:
+\`\`\`
+restore ${snapshotName} to ${table}
+\`\`\``;
+    } catch (err: any) {
+      return `**Snapshot failed:** ${err.message}`;
+    }
+  },
+};
+
+export const restoreSnapshot: Tool = {
+  name: 'restoreSnapshot',
+  description: 'Restore a table from a snapshot backup',
+
+  routing: {
+    patterns: [
+      /^restore\s+(\w+)\s+to\s+(\w+)$/i,
+      /^restore\s+(\w+)$/i,
+    ],
+    keywords: {
+      verbs: ['restore', 'revert', 'rollback'],
+      nouns: ['snapshot', 'backup'],
+    },
+    examples: [
+      'restore summ_snapshot_2025-01-15 to summ',
+    ],
+    priority: 85,
+  },
+
+  parseArgs: (input, match) => {
+    if (match) {
+      const snapshot = match[1].trim();
+      // If no target specified, try to extract from snapshot name
+      let target = match[2]?.trim();
+      if (!target) {
+        // Extract table name from snapshot: "tablename_snapshot_timestamp"
+        const parts = snapshot.split('_snapshot_');
+        target = parts[0];
+      }
+      return { snapshot, target };
+    }
+    return {};
+  },
+
+  execute: async (args, context) => {
+    const { snapshot, target } = args as { snapshot?: string; target?: string };
+
+    if (!snapshot || !target) {
+      return `**Usage:** \`restore <snapshot_name> to <tablename>\`
+
+**List snapshots:** \`snapshots\`
+
+**Example:**
+\`\`\`
+snapshots
+restore summ_snapshot_2025-01-15T10-30-00 to summ
+\`\`\``;
+    }
+
+    try {
+      const rowCount = context.services.data.restoreSnapshot(snapshot, target);
+
+      return `✓ **Restored ${rowCount.toLocaleString()} rows** from \`${snapshot}\` to \`${target}\`
+
+The snapshot is still available if you need it again.
+To delete old snapshots: \`sql DROP TABLE ${snapshot}\``;
+    } catch (err: any) {
+      return `**Restore failed:** ${err.message}`;
+    }
+  },
+};
+
+export const listSnapshots: Tool = {
+  name: 'listSnapshots',
+  description: 'List available table snapshots',
+
+  routing: {
+    patterns: [
+      /^snapshots$/i,
+      /^list snapshots$/i,
+      /^show snapshots$/i,
+    ],
+    keywords: {
+      verbs: ['show', 'list'],
+      nouns: ['snapshots', 'backups'],
+    },
+    examples: ['snapshots'],
+    priority: 85,
+  },
+
+  execute: async (args, context) => {
+    const snapshots = context.services.data.listSnapshots();
+
+    if (snapshots.length === 0) {
+      return `**No snapshots**
+
+Create one before making changes:
+\`\`\`
+snapshot <tablename>
+\`\`\``;
+    }
+
+    const list = snapshots
+      .map(s => {
+        // Parse timestamp from name
+        const match = s.name.match(/_snapshot_(\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2})/);
+        const timestamp = match ? match[1].replace(/T/, ' ').replace(/-/g, ':').slice(0, 16) : '';
+        return `- **${s.name}** — ${s.rowCount.toLocaleString()} rows${timestamp ? ` (${timestamp})` : ''}`;
+      })
+      .join('\n');
+
+    return `**Available Snapshots:**
+
+${list}
+
+**To restore:** \`restore <snapshot_name> to <tablename>\`
+**To delete:** \`sql DROP TABLE <snapshot_name>\``;
+  },
+};
+
 // Export all data tools
 export const dataTools: Tool[] = [
   ingestCsv,
@@ -335,4 +571,8 @@ export const dataTools: Tool[] = [
   exportQuery,
   listTables,
   describeTable,
+  previewMutation,
+  snapshotTable,
+  restoreSnapshot,
+  listSnapshots,
 ];
