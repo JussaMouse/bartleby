@@ -1131,7 +1131,7 @@ export const appendToNote: Tool = {
       await context.services.context.setFact('system', 'pending_note_id', null);
       await context.services.context.setFact('system', 'pending_note_tagging', note.id);
       
-      return `📝 **${note.title}**\n\nAny project or tags? (e.g., +project #tag1 #tag2, or ENTER to skip)`;
+      return `📝 **${note.title}**\n\nAny metadata? (e.g., +project @context #tag with person, or ENTER to skip)`;
     }
 
     // Append content to note
@@ -1176,16 +1176,23 @@ export const tagNote: Tool = {
     const note = context.services.garden.get(noteId);
     if (!note) return 'Note not found.';
     
-    // Parse project and tags from input
-    // Project: everything after + until # or end of string (supports spaces)
-    const projectMatch = input.match(/\+([^#]+)/);
+    // Parse operators from input:
+    // +project (everything after + until @, #, "with", or end)
+    // @context
+    // #tags
+    // with contact (everything after "with" until +, @, #, or end)
+    
+    const projectMatch = input.match(/\+([^@#]+?)(?=\s*(?:@|#|with\s|$))/i);
+    const contextMatch = input.match(/@(\w+)/);
     const tagMatches = input.match(/#(\w+)/g);
+    const withMatch = input.match(/\bwith\s+([^@#+]+?)(?=\s*(?:@|#|\+|$))/i);
     
-    const updates: { project?: string; tags?: string[] } = {};
+    const updates: { project?: string; context?: string; tags?: string[]; contacts?: string[] } = {};
+    const feedback: string[] = [];
     
+    // Handle project
     if (projectMatch) {
       const projectName = projectMatch[1].trim();
-      // Auto-create project if needed
       const projects = context.services.garden.getByType('project');
       let project = projects.find(p => p.title.toLowerCase() === projectName.toLowerCase());
       if (!project) {
@@ -1194,12 +1201,44 @@ export const tagNote: Tool = {
           title: projectName,
           status: 'active',
         });
+        feedback.push(`+${projectName} (created)`);
+      } else {
+        feedback.push(`+${projectName}`);
       }
       updates.project = project.id;
     }
     
+    // Handle context
+    if (contextMatch) {
+      updates.context = '@' + contextMatch[1];
+      feedback.push(updates.context);
+    }
+    
+    // Handle tags
     if (tagMatches) {
-      updates.tags = tagMatches.map((t: string) => t.slice(1));
+      const tags = tagMatches.map((t: string) => t.slice(1));
+      updates.tags = tags;
+      feedback.push(tags.map((t: string) => '#' + t).join(' '));
+    }
+    
+    // Handle contact (with)
+    if (withMatch) {
+      const contactName = withMatch[1].trim();
+      // Find or create contact
+      const contacts = context.services.garden.getByType('contact');
+      let contact = contacts.find(c => c.title.toLowerCase().includes(contactName.toLowerCase()));
+      if (!contact) {
+        contact = context.services.garden.create({
+          type: 'contact',
+          title: contactName,
+          status: 'active',
+        });
+        feedback.push(`with ${contactName} (created)`);
+      } else {
+        feedback.push(`with ${contact.title}`);
+      }
+      // Link contact to note
+      updates.contacts = [...(note.contacts || []), contact.id];
     }
     
     if (Object.keys(updates).length > 0) {
@@ -1207,8 +1246,9 @@ export const tagNote: Tool = {
     }
     
     let response = `✓ Note saved: "${note.title}"`;
-    if (updates.project) response += `\n  +${projectMatch![1]}`;
-    if (updates.tags) response += `\n  ${updates.tags.map(t => '#' + t).join(' ')}`;
+    if (feedback.length > 0) {
+      response += '\n  ' + feedback.join(' ');
+    }
     
     return response;
   },
