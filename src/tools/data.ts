@@ -696,6 +696,45 @@ What would you like to explore first?`;
   },
 };
 
+export const exitTaxMode: Tool = {
+  name: 'exitTaxMode',
+  description: 'Exit tax preparation mode',
+
+  routing: {
+    patterns: [
+      /^(exit|leave|end|stop|quit)\s+tax(\s+mode)?$/i,
+      /^tax\s+(done|finished|complete)$/i,
+      /^done\s+with\s+taxes?$/i,
+    ],
+    keywords: {
+      verbs: ['exit', 'leave', 'end', 'stop'],
+      nouns: ['tax mode', 'taxes'],
+    },
+    examples: ['exit tax mode', 'done with taxes'],
+    priority: 90,
+  },
+
+  execute: async (args, context) => {
+    const existed = context.services.context.clearFact('system', 'tax_mode');
+    
+    if (existed) {
+      return `**Tax mode ended.**
+
+Your data is still in the \`summ\` table. To resume later:
+\`\`\`
+tax mode
+\`\`\`
+
+**Reminders:**
+- Snapshots are preserved (run \`snapshots\` to see them)
+- Audit log saved to \`data/audit.log\`
+- Export your cleaned data when ready: \`export "SELECT * FROM summ" to cleaned.csv\``;
+    } else {
+      return `Tax mode wasn't active.`;
+    }
+  },
+};
+
 export const taxStatus: Tool = {
   name: 'taxStatus',
   description: 'Show current tax session status and audit log',
@@ -785,5 +824,6 @@ export const dataTools: Tool[] = [
   restoreSnapshot,
   listSnapshots,
   taxMode,
+  exitTaxMode,
   taxStatus,
 ];

@@ -193,6 +193,14 @@ export class ContextService {
     this.save();
   }
 
+  clearFact(category: UserFact['category'], key: string): boolean {
+    const fullKey = `${category}:${key}`;
+    const existed = this.facts.has(fullKey);
+    this.facts.delete(fullKey);
+    this.save();
+    return existed;
+  }
+
   getFactsByCategory(category: string): UserFact[] {
     return Array.from(this.facts.values()).filter(f => f.category === category);
   }
