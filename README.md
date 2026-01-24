@@ -125,10 +125,23 @@ What would you like to call this note?
 > meeting notes jan 24
 📝 Note: meeting notes jan 24
 What would you like to add to this note?
-> ...
+> discussed Q1 roadmap
+> - prioritize mobile app
+> - hire 2 engineers
+> done
+Any metadata? (e.g., +project @context #tag with person, or ENTER to skip)
+> +q1 planning @work #meeting with sarah
+✓ Note saved: "meeting notes jan 24"
+  +q1 planning @work #meeting with sarah
 ```
 
 While in note mode, everything you type is appended verbatim — no routing, no AI processing. Type `done` when finished.
+
+**Tagging step supports all operators:**
+- `+project name` — link to project (spaces allowed, auto-creates)
+- `@context` — set context  
+- `#tag` — add tags
+- `with person` — link to contact (auto-creates)
 
 ### 5) Import media
 
