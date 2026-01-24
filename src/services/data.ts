@@ -16,6 +16,7 @@ export interface ImportOptions {
   append?: boolean;      // INSERT into existing table
   delimiter?: string;    // Auto-detect if not specified
   hasHeader?: boolean;   // Default: true
+  skipLines?: number;    // Skip N lines at start (for preambles)
 }
 
 export interface ImportResult {
@@ -91,9 +92,16 @@ export class DataService {
     }
 
     // Read file
-    const content = fs.readFileSync(resolvedPath, 'utf-8');
+    let content = fs.readFileSync(resolvedPath, 'utf-8');
     
-    // Auto-detect delimiter
+    // Skip preamble lines if specified
+    if (options.skipLines && options.skipLines > 0) {
+      const lines = content.split('\n');
+      content = lines.slice(options.skipLines).join('\n');
+      debug('Skipped preamble lines', { skipLines: options.skipLines });
+    }
+    
+    // Auto-detect delimiter (use content after skip)
     const delimiter = options.delimiter || this.detectDelimiter(content);
     debug('Detected delimiter', { delimiter: delimiter === '\t' ? 'TAB' : delimiter });
 
@@ -418,6 +426,10 @@ export class DataService {
   }
 
   private detectColumnTypes(records: any[], columnNames: string[]): ColumnInfo[] {
+    // Patterns that look numeric but should stay TEXT
+    const dateTimePattern = /^\d{4}-\d{2}-\d{2}[\sT]/;  // ISO dates
+    const datePattern = /^\d{1,2}\/\d{1,2}\/\d{2,4}/;   // US dates
+    
     return columnNames.map(name => {
       // Sample first 100 rows
       const samples = records.slice(0, 100).map(r => r[name]).filter(v => v !== '' && v !== null && v !== undefined);
@@ -426,14 +438,28 @@ export class DataService {
         return { name, type: 'TEXT' as const };
       }
 
+      // Check if values look like dates/times - keep as TEXT
+      const looksLikeDateTime = samples.some(v => {
+        const s = String(v);
+        return dateTimePattern.test(s) || datePattern.test(s);
+      });
+      if (looksLikeDateTime) {
+        return { name, type: 'TEXT' as const, sample: String(samples[0]).slice(0, 30) };
+      }
+
       // Check if all are integers
       const allIntegers = samples.every(v => /^-?\d+$/.test(String(v)));
       if (allIntegers) {
         return { name, type: 'INTEGER' as const, sample: String(samples[0]) };
       }
 
-      // Check if all are numeric
-      const allNumeric = samples.every(v => !isNaN(parseFloat(String(v).replace(/,/g, ''))));
+      // Check if all are numeric (and the whole string is consumed)
+      const allNumeric = samples.every(v => {
+        const s = String(v).replace(/,/g, '');
+        const num = parseFloat(s);
+        // Ensure the entire string was a valid number
+        return !isNaN(num) && String(num) === s.replace(/^0+/, '') || /^-?\d*\.?\d+$/.test(s);
+      });
       if (allNumeric) {
         return { name, type: 'REAL' as const, sample: String(samples[0]) };
       }

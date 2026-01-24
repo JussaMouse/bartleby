@@ -57,24 +57,28 @@ export const ingestCsv: Tool = {
   parseArgs: (input, match) => {
     if (match) {
       const flags = match[3] || '';
+      // Parse --skip-lines N
+      const skipMatch = flags.match(/--skip-lines\s+(\d+)/);
       return {
         filepath: match[1].trim(),
         tableName: match[2].trim(),
         replace: flags.includes('--replace'),
         append: flags.includes('--append'),
         noHeader: flags.includes('--no-header'),
+        skipLines: skipMatch ? parseInt(skipMatch[1], 10) : 0,
       };
     }
     return {};
   },
 
   execute: async (args, context) => {
-    const { filepath, tableName, replace, append, noHeader } = args as {
+    const { filepath, tableName, replace, append, noHeader, skipLines } = args as {
       filepath?: string;
       tableName?: string;
       replace?: boolean;
       append?: boolean;
       noHeader?: boolean;
+      skipLines?: number;
     };
 
     if (!filepath || !tableName) {
@@ -84,12 +88,13 @@ export const ingestCsv: Tool = {
 - \`--replace\` — Drop existing table first
 - \`--append\` — Add to existing table
 - \`--no-header\` — File has no header row (columns named col_1, col_2, etc)
+- \`--skip-lines N\` — Skip N lines at start (for preambles/metadata)
 
 **Example:**
 \`\`\`
 ingest csv ~/Downloads/summ-2025.csv as transactions
 ingest csv data.tsv as trades --replace
-ingest csv raw-data.csv as raw --no-header
+ingest csv summ-report.csv as summ --skip-lines 12
 \`\`\``;
     }
 
@@ -98,6 +103,7 @@ ingest csv raw-data.csv as raw --no-header
         replace,
         append,
         hasHeader: !noHeader,
+        skipLines,
       });
 
       const colList = result.columns.slice(0, 10).map(c => `- ${c.name} (${c.type})`).join('\n');
