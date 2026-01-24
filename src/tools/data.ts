@@ -596,25 +596,30 @@ export const taxMode: Tool = {
 
   execute: async (args, context) => {
     // Set system context with tax workflow knowledge
-    const taxContext = `You are helping with crypto tax preparation using Summ data.
+    const taxContext = `You are helping Lon clean crypto transaction data for taxes. You have SQL access to the "summ" table.
 
-KEY COMMANDS:
-- sql <query> - Run SQL on summ table
-- preview UPDATE/DELETE - See changes before applying
-- snapshot summ - Backup before edits
-- restore <snap> to summ - Rollback
+YOUR ROLE: Translate natural language requests into SQL queries. Run queries yourself - don't ask Lon to type SQL.
 
-SUMM SCHEMA: Currency, Timestamp, Trade_Type, Price, Quantity, Value, From, To, Account, Transaction_Id, Comments, Notes
+WHEN LON SAYS → YOU DO:
+- "overview" / "summary" → sql SELECT Trade_Type, COUNT(*) as txns, ROUND(SUM(Value),2) as total FROM summ GROUP BY Trade_Type ORDER BY total DESC
+- "suspicious incoming" → sql SELECT Currency, Timestamp, Value, "From" FROM summ WHERE Trade_Type = 'Incoming' AND Value > 100 ORDER BY Value DESC
+- "unknown wallets" → sql SELECT DISTINCT "From" FROM summ WHERE "From" NOT LIKE '%mine%' LIMIT 20
+- "missing prices" → sql SELECT * FROM summ WHERE Price IS NULL OR Price = 0
+- "show fees" → sql SELECT Currency, COUNT(*) as cnt, ROUND(SUM(Value),2) as total FROM summ WHERE Trade_Type = 'Fee' GROUP BY Currency
+- "by currency" / "by asset" → sql SELECT Currency, COUNT(*) as txns, ROUND(SUM(Value),2) as volume FROM summ GROUP BY Currency ORDER BY volume DESC LIMIT 20
 
-ISSUES TO CHECK:
-1. Large "Incoming" that should be "Buy" (misclassified purchases)
-2. Unknown wallet addresses
-3. Missing prices (Price = 0)
-4. Cross-chain mismatches
+WHEN LON IDENTIFIES AN ISSUE:
+1. Show what will change: preview UPDATE summ SET Trade_Type = 'Buy' WHERE Transaction_Id = '...'
+2. Confirm with Lon before proceeding
+3. Backup first: snapshot summ
+4. Apply the fix: sql UPDATE summ SET ...
+5. Verify: sql SELECT * FROM summ WHERE Transaction_Id = '...'
 
-WORKFLOW: Overview query → Find issues → Preview fix → Snapshot → Apply → Verify
+SUMM COLUMNS: Currency, Timestamp, Trade_Type, Price, Quantity, Value, From, To, Account, Transaction_Id, Comments, Notes
 
-Always preview changes and ask before modifying data.`;
+TRADE TYPES: Buy, Sell, Fee, Cross Chain Buy, Cross Chain Sell, Incoming, Outgoing, Remove Liquidity, Add Liquidity, Rebate, Ignore Out, Ignore In
+
+Keep a mental log of issues found and fixes made. Summarize progress when asked.`;
     
     context.services.context.setFact('system', 'tax_mode', taxContext);
     
@@ -659,6 +664,83 @@ What would you like to explore first?`;
   },
 };
 
+export const taxStatus: Tool = {
+  name: 'taxStatus',
+  description: 'Show current tax session status and audit log',
+
+  routing: {
+    patterns: [
+      /^tax\s+(status|log|progress|summary)$/i,
+      /^(what|where)\s+(have\s+)?(we|i)\s+(done|changed|fixed)/i,
+      /^show\s+(tax\s+)?(audit|changes|log)$/i,
+    ],
+    keywords: {
+      verbs: ['show', 'what'],
+      nouns: ['tax status', 'tax log', 'progress', 'changes'],
+    },
+    examples: ['tax status', 'what have we done', 'show changes'],
+    priority: 85,
+  },
+
+  execute: async (args, context) => {
+    const tables = context.services.data.listTables();
+    const hasSumm = tables.find(t => t.name === 'summ');
+    const snapshots = context.services.data.listSnapshots();
+    
+    let status = '## Tax Session Status\n\n';
+    
+    if (hasSumm) {
+      status += `**Data:** \`summ\` table with ${hasSumm.rowCount.toLocaleString()} transactions\n\n`;
+      
+      // Get overview
+      try {
+        const overview = context.services.data.query(
+          'SELECT Trade_Type, COUNT(*) as cnt FROM summ GROUP BY Trade_Type ORDER BY cnt DESC'
+        );
+        status += '**Transaction Types:**\n';
+        overview.rows.forEach(r => {
+          status += `- ${r[0]}: ${r[1]}\n`;
+        });
+        status += '\n';
+      } catch {
+        // Table might not exist or have expected schema
+      }
+    } else {
+      status += '**No data loaded yet.**\n\n';
+    }
+    
+    if (snapshots.length > 0) {
+      status += `**Snapshots:** ${snapshots.length} backup(s) available\n`;
+      snapshots.slice(0, 3).forEach(s => {
+        status += `- \`${s.name}\`\n`;
+      });
+      status += '\n';
+    }
+    
+    // Read recent audit log
+    const fs = await import('fs');
+    const path = await import('path');
+    const auditPath = path.join(
+      context.services.config.paths.database, 
+      '..', 'data', 'audit.log'
+    );
+    
+    if (fs.existsSync(auditPath)) {
+      const content = fs.readFileSync(auditPath, 'utf-8');
+      const lines = content.trim().split('\n').slice(-10);
+      if (lines.length > 0 && lines[0]) {
+        status += '**Recent Activity:**\n```\n';
+        lines.forEach(line => {
+          status += line + '\n';
+        });
+        status += '```\n';
+      }
+    }
+    
+    return status;
+  },
+};
+
 // Export all data tools
 export const dataTools: Tool[] = [
   ingestCsv,
@@ -671,4 +753,5 @@ export const dataTools: Tool[] = [
   restoreSnapshot,
   listSnapshots,
   taxMode,
+  taxStatus,
 ];
