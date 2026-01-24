@@ -576,6 +576,69 @@ ${list}
   },
 };
 
+export const taxMode: Tool = {
+  name: 'taxMode',
+  description: 'Enter tax preparation mode with Summ data tools context',
+
+  routing: {
+    patterns: [
+      /^(start\s+)?tax(es)?\s*(mode|time|work|prep)?$/i,
+      /^(help\s+)?(with\s+)?(my\s+)?taxes?$/i,
+      /^let'?s\s+do\s+taxes?$/i,
+    ],
+    keywords: {
+      verbs: ['start', 'do', 'help', 'work'],
+      nouns: ['tax', 'taxes', 'tax prep', 'tax mode'],
+    },
+    examples: ['tax mode', "let's do taxes", 'help with my taxes'],
+    priority: 90,
+  },
+
+  execute: async (args, context) => {
+    // Set a fact so we remember we're in tax mode
+    context.services.context.setFact('goal', 'current_task', 'tax_preparation');
+    
+    // Check if summ table exists
+    const tables = context.services.data.listTables();
+    const hasSumm = tables.some(t => t.name === 'summ');
+
+    let status = '';
+    if (hasSumm) {
+      const summInfo = tables.find(t => t.name === 'summ');
+      status = `**Data loaded:** \`summ\` table with ${summInfo?.rowCount.toLocaleString()} transactions\n\n`;
+    } else {
+      status = `**No data yet.** Import your Summ export:\n\`\`\`\ningest csv ~/path/to/summ-report.csv as summ --skip-lines 12\n\`\`\`\n\n`;
+    }
+
+    return `**Tax Mode Activated**
+
+${status}## Quick Reference
+
+**Key Commands:**
+\`\`\`
+sql SELECT Trade_Type, COUNT(*), SUM(Value) FROM summ GROUP BY Trade_Type
+sql SELECT * FROM summ WHERE Trade_Type = 'Incoming' AND Value > 100
+preview UPDATE summ SET Trade_Type = 'Buy' WHERE ...
+snapshot summ
+\`\`\`
+
+**Common Issues to Check:**
+1. Large "Incoming" that should be "Buy" (purchases misclassified as airdrops)
+2. Unknown wallet addresses in From/To
+3. Missing prices (Price = 0 or NULL)
+4. Cross-chain mismatches
+
+**Workflow:**
+1. Overview: \`sql SELECT Trade_Type, COUNT(*), SUM(Value) FROM summ GROUP BY Trade_Type\`
+2. Find issues: \`sql SELECT * FROM summ WHERE Trade_Type = 'Incoming' AND Value > 100\`
+3. Preview fix: \`preview UPDATE summ SET Trade_Type = 'Buy' WHERE Transaction_Id = '...'\`
+4. Backup: \`snapshot summ\`
+5. Apply: \`sql UPDATE summ SET Trade_Type = 'Buy' WHERE Transaction_Id = '...'\`
+
+What would you like to explore first?`;
+  },
+};
+
 // Export all data tools
 export const dataTools: Tool[] = [
   ingestCsv,
@@ -587,4 +650,5 @@ export const dataTools: Tool[] = [
   snapshotTable,
   restoreSnapshot,
   listSnapshots,
+  taxMode,
 ];
