@@ -12,6 +12,7 @@ import { SchedulerService } from './scheduler.js';
 import { WeatherService } from './weather.js';
 import { SignalService } from './signal.js';
 import { OCRService } from './ocr.js';
+import { DataService } from './data.js';
 import { info } from '../utils/logger.js';
 
 export interface ServiceContainer {
@@ -22,6 +23,7 @@ export interface ServiceContainer {
   garden: GardenService;
   shed: ShedService;
   calendar: CalendarService;
+  data: DataService;
   
   // Context - Bartleby's memory of you
   context: ContextService;
@@ -66,6 +68,7 @@ export async function initServices(config: Config): Promise<ServiceContainer> {
   const context = new ContextService(config);
   const shed = new ShedService(config, embeddings, vectors, llm);
   const scheduler = new SchedulerService(config, signal);
+  const data = new DataService(config);
 
   // Initialize data services
   await garden.initialize();
@@ -109,6 +112,7 @@ export async function initServices(config: Config): Promise<ServiceContainer> {
     garden,
     shed,
     calendar,
+    data,
     context,
     presence,
     llm,
@@ -129,6 +133,7 @@ export function closeServices(services: ServiceContainer): void {
   services.garden.close();
   services.calendar.close();
   services.context.close();
+  services.data.close();
   services.llm.close();
   services.embeddings.close();
   services.weather.close();
@@ -148,3 +153,4 @@ export { SchedulerService, ScheduledTask } from './scheduler.js';
 export { WeatherService, WeatherData, ForecastDay } from './weather.js';
 export { SignalService } from './signal.js';
 export { OCRService } from './ocr.js';
+export { DataService, ImportResult, QueryResult, ExportResult, TableInfo, ColumnInfo } from './data.js';

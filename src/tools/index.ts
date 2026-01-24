@@ -9,6 +9,7 @@ import { schedulerTools } from './scheduler.js';
 import { weatherTools } from './weather.js';
 import { systemTools } from './system.js';
 import { ocrTools } from './ocr.js';
+import { dataTools } from './data.js';
 
 // Aggregate all tools
 export const allTools: Tool[] = [
@@ -21,6 +22,7 @@ export const allTools: Tool[] = [
   ...weatherTools,
   ...systemTools,
   ...ocrTools,
+  ...dataTools,
 ];
 
 export function getToolByName(name: string): Tool | undefined {
