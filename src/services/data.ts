@@ -145,11 +145,29 @@ export class DataService {
       `INSERT INTO "${safeTableName}" VALUES (${placeholders})`
     );
 
+    // Build column map: sanitized name -> { originalName, type }
+    const columnMap = columnNames.map((originalName, i) => ({
+      originalName,
+      type: columns[i].type,
+    }));
+
     const insertMany = this.db.transaction((rows: any[]) => {
       for (const row of rows) {
-        const values = columns.map(c => {
-          const val = row[c.name];
+        const values = columnMap.map(col => {
+          const val = row[col.originalName];
           if (val === '' || val === undefined || val === null) return null;
+          
+          // Coerce numeric values (strip commas for REAL columns)
+          if (col.type === 'REAL' && typeof val === 'string') {
+            const cleaned = val.replace(/,/g, '');
+            const num = parseFloat(cleaned);
+            return isNaN(num) ? val : num;
+          }
+          if (col.type === 'INTEGER' && typeof val === 'string') {
+            const num = parseInt(val, 10);
+            return isNaN(num) ? val : num;
+          }
+          
           return val;
         });
         insert.run(values);
