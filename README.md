@@ -1118,6 +1118,78 @@ rsync -avz garden/ user@backup-server:~/bartleby-garden/
 
 ---
 
+## Security
+
+Bartleby stores sensitive personal data. Follow these practices to protect it.
+
+### Full-Disk Encryption (Required)
+
+All Bartleby data is stored unencrypted. Enable full-disk encryption:
+
+**macOS (FileVault):**
+```bash
+# Check status
+fdesetup status
+
+# Enable via System Settings → Privacy & Security → FileVault
+# Or via terminal:
+sudo fdesetup enable
+```
+
+**Linux (LUKS):** Enable during OS installation or use `cryptsetup`.
+
+### File Permissions
+
+Restrict access to sensitive files:
+
+```bash
+chmod 600 .env                    # Config with API tokens
+chmod 700 garden database shed    # Your data
+chmod 700 logs                    # May contain titles
+```
+
+### Network Exposure
+
+**Critical:** Most dashboard endpoints have NO authentication. If exposed to a network, anyone can read/modify/delete your data.
+
+| `DASHBOARD_HOST` | Who can access |
+|------------------|----------------|
+| `localhost` | Only the server (default, safest) |
+| `100.x.x.x` (Tailscale IP) | Only your VPN devices |
+| `0.0.0.0` | **Everyone on all networks** (dangerous) |
+
+```env
+# SAFE: Tailscale only
+DASHBOARD_HOST=100.x.x.x
+
+# DANGEROUS: Open to local network
+DASHBOARD_HOST=0.0.0.0
+```
+
+### Logging
+
+Debug logs may contain sensitive content (titles, commands):
+
+```env
+# Production setting
+LOG_LEVEL=info
+
+# Never in production (logs LLM conversations)
+LOG_LLM_VERBOSE=false
+```
+
+### Quick Checklist
+
+- [ ] Full-disk encryption enabled (FileVault/LUKS)
+- [ ] `.env` permissions are `600`
+- [ ] `DASHBOARD_HOST` is `localhost` or Tailscale IP
+- [ ] `LOG_LEVEL` is `info` (not `debug`)
+- [ ] Backups are encrypted
+
+For detailed security analysis, see [devs-notes/SECURITY.md](devs-notes/SECURITY.md).
+
+---
+
 ## Troubleshooting
 
 ### "Cannot find module" errors
