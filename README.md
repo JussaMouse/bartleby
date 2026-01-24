@@ -6,12 +6,14 @@ The personal exocortex, locally.
 - [Quick Start](#quick-start)
 - [First 10 Minutes](#first-10-minutes)
 - [Your Data](#your-data)
+- [Data Tools](#data-tools)
 - [GTD Workflow](#gtd-workflow)
 - [The Time System](#the-time-system)
 - [Dashboard](#dashboard)
 - [Running on a Server](#running-on-a-server)
 - [Configuration](#configuration)
 - [Backups](#backups)
+- [Security](#security)
 - [Troubleshooting](#troubleshooting)
 
 ## What is Bartleby?
@@ -265,6 +267,95 @@ show profile                 Same
 ```
 
 Location: `./database/memory/`
+
+---
+
+## Data Tools
+
+Import, query, and analyze CSV/TSV data with SQL. Designed for financial data cleanup (e.g., crypto tax preparation with Summ exports).
+
+### Import Data
+
+```
+ingest csv ~/Downloads/data.csv as mytable
+ingest csv ~/Downloads/summ-report.csv as summ --skip-lines 12 --replace
+```
+
+**Options:**
+- `--replace` — Drop existing table first
+- `--append` — Add to existing table
+- `--no-header` — File has no header row
+- `--skip-lines N` — Skip N preamble lines (Summ exports have 12)
+
+### Query Data
+
+```
+sql SELECT * FROM mytable LIMIT 10
+sql SELECT type, COUNT(*), SUM(value) FROM summ GROUP BY type
+sql SELECT * FROM summ WHERE value > 1000 ORDER BY value DESC
+```
+
+Full SQLite SQL support. Results truncated at 100 rows.
+
+### Safe Mutations
+
+Always preview before changing data:
+
+```
+preview UPDATE summ SET type = 'Buy' WHERE id = 'abc123'
+```
+
+Backup before making changes:
+
+```
+snapshot summ
+sql UPDATE summ SET type = 'Buy' WHERE id = 'abc123'
+```
+
+Rollback if needed:
+
+```
+snapshots                           # List available backups
+restore summ_snapshot_2026_01_24 to summ
+```
+
+### Schema & Export
+
+```
+tables                              # List all tables
+describe summ                       # Show columns and types
+export "SELECT * FROM summ" to cleaned-data.csv
+```
+
+### Tax Mode
+
+For crypto tax preparation with Summ:
+
+```
+tax mode
+```
+
+This activates tax-specific context with:
+- Common cleanup queries
+- Issue detection patterns
+- Safe workflow reminders
+
+**Typical workflow:**
+```
+> tax mode
+> ingest csv ~/Documents/summ-2025.csv as summ --skip-lines 12
+> sql SELECT Trade_Type, COUNT(*), SUM(Value) FROM summ GROUP BY Trade_Type
+> sql SELECT * FROM summ WHERE Trade_Type = 'Incoming' AND Value > 100
+> preview UPDATE summ SET Trade_Type = 'Buy' WHERE Transaction_Id = '...'
+> snapshot summ
+> sql UPDATE summ SET Trade_Type = 'Buy' WHERE Transaction_Id = '...'
+```
+
+**Storage:**
+- Database: `./database/data.sqlite3`
+- Source files preserved: `./data/sources/`
+- Exports: `./data/exports/`
+- Audit log: `./data/audit.log`
 
 ---
 
