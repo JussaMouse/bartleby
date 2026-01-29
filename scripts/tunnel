@@ -1,0 +1,80 @@
+#!/bin/bash
+# MLX SSH Tunnel Management Script
+#
+# Installation:
+#   1. Copy the plist template and update YOUR_USERNAME:
+#      cp config/mlx-tunnel.plist.example ~/Library/LaunchAgents/com.bartleby.mlx-tunnel.plist
+#      sed -i '' "s/YOUR_USERNAME/$USER/g" ~/Library/LaunchAgents/com.bartleby.mlx-tunnel.plist
+#
+#   2. Ensure your ~/.ssh/config has the mlx-box host configured with port forwards
+#
+#   3. Start the tunnel:
+#      scripts/tunnel start
+
+PLIST="$HOME/Library/LaunchAgents/com.bartleby.mlx-tunnel.plist"
+LABEL="com.bartleby.mlx-tunnel"
+
+case "$1" in
+    start)
+        echo "Starting MLX tunnel..."
+        launchctl load "$PLIST" 2>/dev/null || launchctl start "$LABEL"
+        sleep 2
+        if launchctl list | grep -q "$LABEL"; then
+            echo "✓ Tunnel started"
+            echo "  Logs: ~/Library/Logs/mlx-tunnel.*.log"
+        else
+            echo "✗ Failed to start tunnel"
+            exit 1
+        fi
+        ;;
+
+    stop)
+        echo "Stopping MLX tunnel..."
+        launchctl stop "$LABEL" 2>/dev/null
+        launchctl unload "$PLIST" 2>/dev/null
+        echo "✓ Tunnel stopped"
+        ;;
+
+    restart)
+        $0 stop
+        sleep 1
+        $0 start
+        ;;
+
+    status)
+        if launchctl list | grep -q "$LABEL"; then
+            echo "✓ Tunnel is running"
+            echo ""
+            # Check if ports are actually accessible
+            for port in 8080 8081 8083 8084; do
+                if curl -s --connect-timeout 1 http://127.0.0.1:$port/v1/models >/dev/null 2>&1; then
+                    echo "  Port $port: ✓"
+                else
+                    echo "  Port $port: ✗"
+                fi
+            done
+            echo ""
+            echo "Logs:"
+            echo "  tail -f ~/Library/Logs/mlx-tunnel.*.log"
+        else
+            echo "✗ Tunnel is not running"
+            exit 1
+        fi
+        ;;
+
+    logs)
+        tail -f ~/Library/Logs/mlx-tunnel.*.log
+        ;;
+
+    *)
+        echo "Usage: $0 {start|stop|restart|status|logs}"
+        echo ""
+        echo "Commands:"
+        echo "  start    - Start the MLX tunnel service"
+        echo "  stop     - Stop the MLX tunnel service"
+        echo "  restart  - Restart the tunnel"
+        echo "  status   - Check if tunnel is running and test ports"
+        echo "  logs     - Tail the tunnel logs"
+        exit 1
+        ;;
+esac
