@@ -1211,73 +1211,88 @@ rsync -avz garden/ user@backup-server:~/bartleby-garden/
 
 ## Security
 
-Bartleby stores sensitive personal data. Follow these practices to protect it.
+Bartleby stores sensitive personal data (notes, calendar, financial records). Proper security hardening is essential.
 
-### Full-Disk Encryption (Required)
+### Security Audit
 
-All Bartleby data is stored unencrypted. Enable full-disk encryption:
-
-**macOS (FileVault):**
-```bash
-# Check status
-fdesetup status
-
-# Enable via System Settings → Privacy & Security → FileVault
-# Or via terminal:
-sudo fdesetup enable
-```
-
-**Linux (LUKS):** Enable during OS installation or use `cryptsetup`.
-
-### File Permissions
-
-Restrict access to sensitive files:
+Run the automated security audit to check your system:
 
 ```bash
-chmod 600 .env                    # Config with API tokens
-chmod 700 garden database shed    # Your data
-chmod 700 logs                    # May contain titles
+./scripts/security-audit.sh
 ```
 
-### Network Exposure
+The script performs 8 security checks:
 
-**Critical:** Most dashboard endpoints have NO authentication. If exposed to a network, anyone can read/modify/delete your data.
+**1. File Permissions**
+- Verifies `.env` is 600 (owner read/write only)
+- Checks data directories are 700 (owner access only)
+- Validates `data.sqlite3` permissions
 
-| `DASHBOARD_HOST` | Who can access |
-|------------------|----------------|
-| `localhost` | Only the server (default, safest) |
-| `100.x.x.x` (Tailscale IP) | Only your VPN devices |
-| `0.0.0.0` | **Everyone on all networks** (dangerous) |
+**2. Network Configuration**
+- Checks `DASHBOARD_HOST` setting:
+  - ✓ `localhost` or `127.0.0.1` (local only)
+  - ✓ `100.x.x.x` (Tailscale VPN)
+  - ✗ `0.0.0.0` (exposed to all networks)
+- Verifies `BARTLEBY_API_TOKEN` is set if exposing remotely
 
-```env
-# SAFE: Tailscale only
-DASHBOARD_HOST=100.x.x.x
+**3. LLM Endpoints (Data Privacy)**
+- Ensures all AI models are LOCAL
+- Checks: `ROUTER_URL`, `FAST_URL`, `THINKING_URL`, `EMBEDDINGS_URL`, `OCR_URL`
+- ✗ External URLs mean your data leaves your machine
 
-# DANGEROUS: Open to local network
-DASHBOARD_HOST=0.0.0.0
-```
+**4. Logging Configuration**
+- `LOG_LEVEL` should be `info`/`warn`/`error` (not `debug`)
+- `LOG_LLM_VERBOSE` must be `false` (or full conversations including financial data get logged)
 
-### Logging
+**5. Full-Disk Encryption**
+- macOS: Checks FileVault status
+- Linux: Checks for LUKS/dm-crypt encrypted volumes
+- ✗ Without FDE, anyone with physical access can read your data
 
-Debug logs may contain sensitive content (titles, commands):
+**6. Backup Status**
+- Searches common backup locations
+- Checks Time Machine configuration (macOS)
+- Recommends encrypted backup setup
 
-```env
-# Production setting
-LOG_LEVEL=info
+**7. Sensitive Data Inventory**
+- Shows sizes of data directories
+- ✗ CRITICAL: Checks if `.env` is tracked by git (secrets would be committed!)
 
-# Never in production (logs LLM conversations)
-LOG_LLM_VERBOSE=false
-```
+**8. Financial Data Protection**
+- Checks `database/data.sqlite3` permissions
+- Shows CSV source file count in `data/sources/`
+
+**Output format:**
+- ✓ PASS (green) — secure configuration
+- ⚠ WARN (yellow) — review recommended
+- ✗ FAIL (red) — critical issue requiring immediate fix
 
 ### Quick Checklist
 
+Before importing sensitive data:
+
 - [ ] Full-disk encryption enabled (FileVault/LUKS)
 - [ ] `.env` permissions are `600`
-- [ ] `DASHBOARD_HOST` is `localhost` or Tailscale IP
+- [ ] `DASHBOARD_HOST` is `localhost` or Tailscale IP (not `0.0.0.0`)
 - [ ] `LOG_LEVEL` is `info` (not `debug`)
-- [ ] Backups are encrypted
+- [ ] `LOG_LLM_VERBOSE` is `false`
+- [ ] All LLM endpoints are local (`127.0.0.1` or `localhost`)
+- [ ] Backups exist and are encrypted
+- [ ] `.env` is NOT tracked by git
 
-For detailed security analysis, see [devs-notes/SECURITY.md](devs-notes/SECURITY.md).
+### Critical Network Exposure Warning
+
+Most dashboard endpoints have **NO authentication**. If exposed to a network, anyone can read/modify/delete your data.
+
+| `DASHBOARD_HOST` | Who can access | Safe? |
+|------------------|----------------|-------|
+| `localhost` | Only the server | ✓ Yes (default) |
+| `100.x.x.x` (Tailscale IP) | Only your VPN devices | ✓ Yes |
+| `0.0.0.0` | **Everyone on all networks** | ✗ NEVER |
+
+Only `/api/chat` and `/api/capture` require `BARTLEBY_API_TOKEN`. All other endpoints are unprotected.
+
+For detailed security documentation, see [devs-notes/SECURITY.md](devs-notes/SECURITY.md).
 
 ---
 
