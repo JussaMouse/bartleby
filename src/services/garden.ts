@@ -375,7 +375,11 @@ export class GardenService {
   }
 
   captureToInbox(text: string): GardenRecord {
-    return this.addTask(text, '@inbox');
+    return this.create({
+      type: 'item',
+      title: text,
+      status: 'active',
+    });
   }
 
   /**
