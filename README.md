@@ -994,6 +994,28 @@ DASHBOARD_PORT=3333
 
 This ensures Bartleby is only accessible via the VPN, not on local networks.
 
+### SSH Tunnel to Remote MLX Server
+
+Connect local Bartleby to MLX models running on a remote server via SSH tunnel over Tailscale. Useful for testing locally while using a more powerful server's GPU, or running multiple Bartleby instances against the same backend.
+
+**Setup:**
+
+1. Get remote server's Tailscale IP: `tailscale ip -4` (e.g., `100.x.x.x`)
+2. Create SSH tunnel (replace `<ssh-port>` and `<tailscale-ip>`):
+   ```bash
+   ssh -p <ssh-port> \
+       -L 8080:127.0.0.1:8080 \
+       -L 8081:127.0.0.1:8081 \
+       -L 8083:127.0.0.1:8083 \
+       -L 8084:127.0.0.1:8084 \
+       user@<tailscale-ip>
+   ```
+3. Keep local `.env` unchanged (already points to `127.0.0.1`)
+4. Test: `curl http://127.0.0.1:8080/v1/models`
+5. Start Bartleby: `pnpm start`
+
+The tunnel must stay open while running. Multiple instances can share the same backend (requests queue independently).
+
 ---
 
 ## Configuration
