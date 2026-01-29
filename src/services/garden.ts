@@ -164,8 +164,16 @@ export class GardenService {
       updated_at: now,
     };
 
+    debug('Creating garden record', {
+      type: record.type,
+      title: record.title,
+      contentLength: record.content?.length || 0,
+      hasProject: !!record.project,
+      hasTags: (record.tags?.length || 0) > 0,
+    });
+
     this.db.prepare(`
-      INSERT INTO garden_records 
+      INSERT INTO garden_records
       (id, type, title, status, context, project, due_date, email, phone, birthday, content, tags, contacts, metadata, created_at, updated_at, completed_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
@@ -179,10 +187,19 @@ export class GardenService {
     );
 
     this.syncToFile(record);
-    
+
+    const filePath = this.getFilePath(record);
+    info('Garden record created', {
+      id: record.id,
+      type: record.type,
+      title: record.title,
+      filePath,
+      fileExists: fs.existsSync(filePath),
+    });
+
     // Sync temporal data to calendar
     this.syncToCalendar(record);
-    
+
     return record;
   }
 
@@ -632,7 +649,13 @@ export class GardenService {
     fs.writeFileSync(filepath, markdown);
     this.syncing = false;
 
-    debug('Synced to file', { filepath });
+    debug('Synced to file', {
+      filepath,
+      type: record.type,
+      title: record.title,
+      contentLength: markdown.length,
+      fileExists: fs.existsSync(filepath),
+    });
   }
 
   private syncFromFile(filepath: string): void {

@@ -162,23 +162,36 @@ export class DashboardServer {
 
     // Fast capture endpoint for voice - skips routing overhead
     this.app.post('/api/capture', async (req, res) => {
+      info('/api/capture request received', {
+        body: req.body,
+        hasAuth: this.isAuthorized(req),
+        textLength: req.body?.text?.length || 0,
+      });
+
       if (!this.isAuthorized(req)) {
+        error('/api/capture authorization failed', { hasToken: !!this.apiToken });
         res.status(401).json({ error: 'Unauthorized' });
         return;
       }
 
       const text = typeof req.body?.text === 'string' ? req.body.text.trim() : '';
       if (!text) {
+        error('/api/capture validation failed', { reason: 'Text is required', body: req.body });
         res.status(400).json({ error: 'Text is required' });
         return;
       }
 
       try {
-        const task = this.garden.captureToInbox(text);
-        debug('Captured via voice API', { title: task.title });
-        res.json({ reply: `Captured: ${task.title}` });
+        const item = this.garden.captureToInbox(text);
+        info('Captured to inbox successfully', {
+          id: item.id,
+          title: item.title,
+          type: item.type,
+          filePath: this.garden.getFilePath(item),
+        });
+        res.json({ reply: `Captured: ${item.title}` });
       } catch (err) {
-        error('Capture failed', { error: String(err) });
+        error('Capture failed', { error: String(err), text });
         res.status(500).json({ error: 'Capture failed' });
       }
     });
@@ -347,13 +360,21 @@ export class DashboardServer {
 
     // Create a new note
     this.app.post('/api/note', (req, res) => {
+      info('/api/note request received', {
+        body: req.body,
+        contentLength: req.body?.content?.length || 0,
+        hasTitle: !!req.body?.title,
+        hasContent: !!req.body?.content,
+      });
+
       const { title, content, project, tags } = req.body;
-      
+
       if (!title?.trim()) {
+        error('/api/note validation failed', { reason: 'Title required', body: req.body });
         res.status(400).json({ error: 'Title required' });
         return;
       }
-      
+
       const note = this.garden.create({
         type: 'note',
         title: title.trim(),
@@ -362,8 +383,14 @@ export class DashboardServer {
         tags: tags || [],
         status: 'active',
       });
-      
-      debug('Created note via dashboard', { id: note.id, title: note.title });
+
+      info('Note created successfully', {
+        id: note.id,
+        title: note.title,
+        contentLength: note.content?.length || 0,
+        filePath: this.garden.getFilePath(note),
+      });
+
       this.broadcastAll();
       res.json({ success: true, note });
     });
