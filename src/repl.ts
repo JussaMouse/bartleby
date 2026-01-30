@@ -207,6 +207,70 @@ async function handleMissedReminders(
 }
 
 /**
+ * Process user input (from keyboard or paste)
+ */
+async function processInput(
+  input: string,
+  rl: readline.Interface,
+  router: CommandRouter,
+  agent: Agent,
+  services: ServiceContainer
+): Promise<void> {
+  // Record user message in personal context
+  services.context.recordMessage(input, true);
+
+  try {
+    // Route the input
+    const routerResult = await router.route(input);
+    let response: string;
+
+    switch (routerResult.type) {
+      case 'routed':
+        // Deterministic match - execute tool directly
+        if (routerResult.route) {
+          debug('Executing routed tool', { tool: routerResult.route.tool });
+          response = await router.execute(routerResult.route, input);
+        } else {
+          response = "I didn't understand that. Try 'help' for commands.";
+        }
+        break;
+
+      case 'llm-simple':
+        // Simple request, no router match - use Fast model
+        debug('Handling with Fast model (simple)');
+        response = await agent.handleSimple(input);
+        break;
+
+      case 'llm-complex':
+        // Complex request - use Thinking model with agentic loop
+        debug('Handling with Thinking model (complex agentic loop)');
+        console.log('\n🤔 This looks like a complex request. Let me work on it...\n');
+        response = await agent.handleComplex(input);
+        break;
+
+      default:
+        response = "I'm not sure how to help with that. Try 'help' for commands.";
+    }
+
+    // Check for exit
+    if (response === '__EXIT__') {
+      await handleShutdown(rl, services);
+      return;
+    }
+
+    // Record response in personal context
+    services.context.recordMessage(response, false);
+
+    console.log(`\n${response}`);
+  } catch (err) {
+    error('REPL error', { error: String(err) });
+    console.log(`\nError: ${err}`);
+  }
+
+  rl.prompt();
+}
+
+/**
  * Tab completion for garden page titles, contexts, and projects.
  */
 function createCompleter(services: ServiceContainer) {
@@ -350,11 +414,11 @@ export async function startRepl(
   services: ServiceContainer
 ): Promise<void> {
   // Tab completion requires TTY mode
-  debug('Terminal mode', { 
-    stdinIsTTY: process.stdin.isTTY, 
-    stdoutIsTTY: process.stdout.isTTY 
+  debug('Terminal mode', {
+    stdinIsTTY: process.stdin.isTTY,
+    stdoutIsTTY: process.stdout.isTTY
   });
-  
+
   const rl = readline.createInterface({
     input: process.stdin,
     output: process.stdout,
@@ -362,6 +426,16 @@ export async function startRepl(
     terminal: true,  // Explicitly enable terminal mode for tab completion
     completer: createCompleter(services),
   });
+
+  // Bracketed paste mode support
+  let pasteBuffer: string[] = [];
+  let inPasteMode = false;
+
+  // Enable bracketed paste mode (terminal sends \x1b[200~ before paste, \x1b[201~ after)
+  if (process.stdin.isTTY) {
+    process.stdout.write('\x1b[?2004h'); // Enable bracketed paste
+    debug('Bracketed paste mode enabled');
+  }
 
   const dashboardPort = process.env.DASHBOARD_PORT || '3333';
   console.log('\n📋 Bartleby is ready. Type "help" for commands, "quit" to exit.');
@@ -389,6 +463,52 @@ export async function startRepl(
   rl.prompt();
 
   rl.on('line', async (line) => {
+    // Check for bracketed paste markers
+    if (line.includes('\x1b[200~')) {
+      // Paste start detected
+      inPasteMode = true;
+      pasteBuffer = [];
+      // Remove the marker and keep any content after it
+      const content = line.replace('\x1b[200~', '').trim();
+      if (content) {
+        pasteBuffer.push(content);
+      }
+      debug('Paste mode started');
+      return;
+    }
+
+    if (line.includes('\x1b[201~')) {
+      // Paste end detected
+      inPasteMode = false;
+      // Remove the marker and keep any content before it
+      const content = line.replace('\x1b[201~', '').trim();
+      if (content) {
+        pasteBuffer.push(content);
+      }
+
+      // Process the entire paste buffer as one input
+      const pastedInput = pasteBuffer.join('\n');
+      pasteBuffer = [];
+
+      if (!pastedInput) {
+        rl.prompt();
+        return;
+      }
+
+      debug('Paste mode ended', { lines: pastedInput.split('\n').length });
+
+      // Process the pasted content
+      await processInput(pastedInput, rl, router, agent, services);
+      return;
+    }
+
+    // If in paste mode, buffer the line
+    if (inPasteMode) {
+      pasteBuffer.push(line);
+      return;
+    }
+
+    // Normal input handling
     const input = line.trim();
 
     if (!input) {
@@ -396,61 +516,14 @@ export async function startRepl(
       return;
     }
 
-    // Record user message in personal context
-    services.context.recordMessage(input, true);
-
-    try {
-      // Route the input
-      const routerResult = await router.route(input);
-      let response: string;
-
-      switch (routerResult.type) {
-        case 'routed':
-          // Deterministic match - execute tool directly
-          if (routerResult.route) {
-            debug('Executing routed tool', { tool: routerResult.route.tool });
-            response = await router.execute(routerResult.route, input);
-          } else {
-            response = "I didn't understand that. Try 'help' for commands.";
-          }
-          break;
-
-        case 'llm-simple':
-          // Simple request, no router match - use Fast model
-          debug('Handling with Fast model (simple)');
-          response = await agent.handleSimple(input);
-          break;
-
-        case 'llm-complex':
-          // Complex request - use Thinking model with agentic loop
-          debug('Handling with Thinking model (complex agentic loop)');
-          console.log('\n🤔 This looks like a complex request. Let me work on it...\n');
-          response = await agent.handleComplex(input);
-          break;
-
-        default:
-          response = "I'm not sure how to help with that. Try 'help' for commands.";
-      }
-
-      // Check for exit
-      if (response === '__EXIT__') {
-        await handleShutdown(rl, services);
-        return;
-      }
-
-      // Record response in personal context
-      services.context.recordMessage(response, false);
-
-      console.log(`\n${response}`);
-    } catch (err) {
-      error('REPL error', { error: String(err) });
-      console.log(`\nError: ${err}`);
-    }
-
-    rl.prompt();
+    await processInput(input, rl, router, agent, services);
   });
 
   rl.on('close', async () => {
+    // Disable bracketed paste mode on exit
+    if (process.stdin.isTTY) {
+      process.stdout.write('\x1b[?2004l');
+    }
     info('Session ended');
     await services.context.endSession();
     process.exit(0);
@@ -469,6 +542,11 @@ async function handleShutdown(
   rl: readline.Interface,
   services: ServiceContainer
 ): Promise<void> {
+  // Disable bracketed paste mode
+  if (process.stdin.isTTY) {
+    process.stdout.write('\x1b[?2004l');
+  }
+
   // Show shutdown presence message
   try {
     const shutdownMsg = services.presence.getShutdownMessage();
