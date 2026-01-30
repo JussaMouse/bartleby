@@ -652,4 +652,128 @@ export const quit: Tool = {
   execute: async () => '__EXIT__',
 };
 
-export const systemTools: Tool[] = [help, status, quit];
+export const listFiles: Tool = {
+  name: 'listFiles',
+  description: 'List files in a directory',
+
+  routing: {
+    patterns: [
+      /^ls\s+(.+)$/i,
+      /^list\s+files?\s+(?:in\s+)?(.+)$/i,
+      /^show\s+files?\s+(?:in\s+)?(.+)$/i,
+    ],
+    keywords: {
+      verbs: ['ls', 'list', 'show'],
+      nouns: ['files', 'directory', 'folder'],
+    },
+    examples: [
+      'ls ~/summ-data',
+      'list files in ~/Downloads',
+      'show files ~/data',
+    ],
+    priority: 85,
+  },
+
+  parseArgs: (input, match) => {
+    if (match) {
+      return { path: match[1].trim() };
+    }
+    // Try to extract path from various formats
+    const pathMatch = input.match(/(?:ls|list|show)(?:\s+files?)?\s+(?:in\s+)?(.+)$/i);
+    if (pathMatch) {
+      return { path: pathMatch[1].trim() };
+    }
+    return {};
+  },
+
+  execute: async (args) => {
+    const { path } = args as { path?: string };
+
+    if (!path) {
+      return `**Usage:** \`ls <directory>\`
+
+**Examples:**
+\`\`\`
+ls ~/summ-data
+list files in ~/Downloads
+show files .
+\`\`\``;
+    }
+
+    try {
+      const fs = await import('fs');
+      const pathLib = await import('path');
+      const os = await import('os');
+
+      // Expand ~ to home directory
+      const expandedPath = path.startsWith('~')
+        ? pathLib.join(os.homedir(), path.slice(1))
+        : path;
+
+      // Resolve relative paths
+      const resolvedPath = pathLib.resolve(expandedPath);
+
+      // Check if path exists
+      if (!fs.existsSync(resolvedPath)) {
+        return `**Error:** Directory not found: \`${path}\``;
+      }
+
+      // Check if it's a directory
+      const stats = fs.statSync(resolvedPath);
+      if (!stats.isDirectory()) {
+        return `**Error:** Not a directory: \`${path}\``;
+      }
+
+      // List files
+      const files = fs.readdirSync(resolvedPath);
+
+      if (files.length === 0) {
+        return `**Empty directory:** \`${path}\``;
+      }
+
+      // Get file stats for each
+      const fileInfo = files.map(file => {
+        const filePath = pathLib.join(resolvedPath, file);
+        const fileStats = fs.statSync(filePath);
+        const isDir = fileStats.isDirectory();
+        const size = fileStats.size;
+        const sizeStr = isDir ? '<dir>' : formatBytes(size);
+        return { name: file, isDir, size, sizeStr };
+      });
+
+      // Sort: directories first, then by name
+      fileInfo.sort((a, b) => {
+        if (a.isDir && !b.isDir) return -1;
+        if (!a.isDir && b.isDir) return 1;
+        return a.name.localeCompare(b.name);
+      });
+
+      // Format output
+      const fileList = fileInfo.map(f => {
+        const prefix = f.isDir ? '📁' : '📄';
+        return `  ${prefix} ${f.name}${f.isDir ? '/' : ''} ${!f.isDir ? `(${f.sizeStr})` : ''}`;
+      }).join('\n');
+
+      const totalFiles = fileInfo.filter(f => !f.isDir).length;
+      const totalDirs = fileInfo.filter(f => f.isDir).length;
+      const summary = `${totalFiles} file${totalFiles !== 1 ? 's' : ''}, ${totalDirs} director${totalDirs !== 1 ? 'ies' : 'y'}`;
+
+      return `**${path}** — ${summary}
+
+${fileList}`;
+    } catch (err: any) {
+      return `**Error listing directory:** ${err.message}`;
+    }
+  },
+};
+
+// Helper to format bytes
+function formatBytes(bytes: number): string {
+  if (bytes === 0) return '0 B';
+  const k = 1024;
+  const sizes = ['B', 'KB', 'MB', 'GB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return `${Math.round(bytes / Math.pow(k, i) * 10) / 10} ${sizes[i]}`;
+}
+
+export const systemTools: Tool[] = [help, status, listFiles, quit];
