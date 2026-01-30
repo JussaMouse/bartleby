@@ -43,18 +43,21 @@ export class LLMService {
   constructor(config: Config) {
     this.config = config;
 
+    // Use configured API key or fallback for local-only setups
+    const apiKey = config.llm.apiKey || 'not-needed-for-local';
+
     this.clients = {
       router: new OpenAI({
         baseURL: config.llm.router.url,
-        apiKey: 'not-needed-for-local',
+        apiKey,
       }),
       fast: new OpenAI({
         baseURL: config.llm.fast.url,
-        apiKey: 'not-needed-for-local',
+        apiKey,
       }),
       thinking: new OpenAI({
         baseURL: config.llm.thinking.url,
-        apiKey: 'not-needed-for-local',
+        apiKey,
       }),
     };
   }

@@ -25,12 +25,14 @@ const ConfigSchema = z.object({
     thinking: ThinkingTierSchema,
     healthTimeout: z.number().positive(),
     agentMaxIterations: z.number().positive(),
+    apiKey: z.string().optional(),
   }),
 
   embeddings: z.object({
     url: z.string().url(),
     model: z.string(),
     dimensions: z.number().positive(),
+    apiKey: z.string().optional(),
   }),
 
   ocr: z.object({
@@ -38,6 +40,7 @@ const ConfigSchema = z.object({
     url: z.string().url().optional(),
     model: z.string().optional(),
     maxTokens: z.number().positive(),
+    apiKey: z.string().optional(),
   }),
 
   paths: z.object({
@@ -122,17 +125,20 @@ export function loadConfig(): Config {
       },
       healthTimeout: parseInt(process.env.HEALTH_TIMEOUT || '35000'),
       agentMaxIterations: parseInt(process.env.AGENT_MAX_ITERATIONS || '10'),
+      apiKey: process.env.MLX_API_KEY || undefined,
     },
     embeddings: {
       url: process.env.EMBEDDINGS_URL || 'http://localhost:11434/v1',
       model: process.env.EMBEDDINGS_MODEL || 'nomic-embed-text',
       dimensions: parseInt(process.env.EMBEDDINGS_DIMENSIONS || '4096'),
+      apiKey: process.env.MLX_API_KEY || undefined,
     },
     ocr: {
       enabled: !!process.env.OCR_URL,
       url: process.env.OCR_URL || undefined,
       model: process.env.OCR_MODEL || 'olmocr',
       maxTokens: parseInt(process.env.OCR_MAX_TOKENS || '4096'),
+      apiKey: process.env.MLX_API_KEY || undefined,
     },
     paths: {
       garden: process.env.GARDEN_PATH || './garden',

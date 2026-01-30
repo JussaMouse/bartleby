@@ -21,7 +21,7 @@ export class OCRService {
     if (config.ocr.enabled && config.ocr.url) {
       this.client = new OpenAI({
         baseURL: config.ocr.url,
-        apiKey: 'not-needed-for-local',
+        apiKey: config.ocr.apiKey || 'not-needed-for-local',
       });
     }
   }

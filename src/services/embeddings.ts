@@ -30,9 +30,15 @@ export class EmbeddingService {
     const cached = this.cache.get(text);
     if (cached) return cached;
 
+    // Build headers with optional API key
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (this.config.embeddings.apiKey) {
+      headers['Authorization'] = `Bearer ${this.config.embeddings.apiKey}`;
+    }
+
     const response = await fetch(`${this.config.embeddings.url}/embeddings`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers,
       body: JSON.stringify({
         model: this.config.embeddings.model,
         input: text,
