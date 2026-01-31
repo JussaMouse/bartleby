@@ -266,6 +266,43 @@ export class Agent {
         },
         required: ['message', 'when'],
       },
+      listFiles: {
+        type: 'object',
+        properties: {
+          path: { type: 'string', description: 'Directory path to list (supports ~ expansion)' },
+        },
+        required: ['path'],
+      },
+      ingestCsv: {
+        type: 'object',
+        properties: {
+          filepath: { type: 'string', description: 'Path to CSV/TSV file' },
+          tableName: { type: 'string', description: 'SQLite table name to create' },
+          replace: { type: 'boolean', description: 'Drop existing table first' },
+          append: { type: 'boolean', description: 'Append to existing table' },
+          noHeader: { type: 'boolean', description: 'File has no header row' },
+          skipLines: { type: 'number', description: 'Skip N lines at start (for preambles)' },
+        },
+        required: ['filepath', 'tableName'],
+      },
+      sqlQuery: {
+        type: 'object',
+        properties: {
+          sql: { type: 'string', description: 'SQL query to execute on data database' },
+        },
+        required: ['sql'],
+      },
+      listTables: {
+        type: 'object',
+        properties: {},
+      },
+      describeTable: {
+        type: 'object',
+        properties: {
+          tableName: { type: 'string', description: 'Table name to describe' },
+        },
+        required: ['tableName'],
+      },
     };
 
     return schemas[tool.name] || { type: 'object', properties: {} };
