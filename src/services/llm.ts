@@ -33,6 +33,9 @@ const COMPLEX_PATTERNS = [
   /\b(plan|schedule|organize|prepare|help me with)\b/i,      // Planning
   /\b(compare|analyze|review|summarize)\b/i,                 // Analysis
   /\b(if|when|based on|depending)\b/i,                       // Conditional logic
+  /\b(all|each|every|multiple)\s+(files?|csvs?|documents?)\b/i, // Multiple file operations
+  /\/(.*\*.*|.*\?.*)\b/,                                     // Wildcards in paths
+  /\b(import|ingest|load|upload).*(and|then)\b/i,           // Multi-step file operations
 ];
 
 export class LLMService {
@@ -142,10 +145,11 @@ export class LLMService {
     // Long inputs are often complex
     if (input.length > 150) complexSignals++;
 
-    // Multiple clauses suggest complexity
-    if (input.split(/[,;]/).length > 2) complexSignals++;
+    // Multiple clauses suggest complexity (comma, semicolon, or "and" conjunctions)
+    const clauses = input.split(/[,;]| and /).length;
+    if (clauses > 2) complexSignals++;
 
-    debug('Heuristic complexity check', { signals: complexSignals, input: input.slice(0, 50) });
+    debug('Heuristic complexity check', { signals: complexSignals, clauses, input: input.slice(0, 50) });
 
     return complexSignals >= 2 ? 'COMPLEX' : 'SIMPLE';
   }
