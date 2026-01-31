@@ -1,5 +1,6 @@
 // src/tools/system.ts
 import { Tool } from './types.js';
+import { debug } from '../utils/logger.js';
 
 // === Help Subsections ===
 
@@ -686,7 +687,7 @@ export const listFiles: Tool = {
     return {};
   },
 
-  execute: async (args) => {
+  execute: async (args, context) => {
     const { path } = args as { path?: string };
 
     if (!path) {
@@ -705,13 +706,26 @@ show files .
       const pathLib = await import('path');
       const os = await import('os');
 
+      const homeDir = os.homedir();
+      debug('listFiles called', {
+        path,
+        homeDir,
+        cwd: process.cwd()
+      });
+
       // Expand ~ to home directory
       const expandedPath = path.startsWith('~')
-        ? pathLib.join(os.homedir(), path.slice(1))
+        ? pathLib.join(homeDir, path.slice(1))
         : path;
 
       // Resolve relative paths
       const resolvedPath = pathLib.resolve(expandedPath);
+
+      debug('listFiles paths', {
+        original: path,
+        expanded: expandedPath,
+        resolved: resolvedPath
+      });
 
       // Check if path exists
       if (!fs.existsSync(resolvedPath)) {
@@ -726,6 +740,12 @@ show files .
 
       // List files
       const files = fs.readdirSync(resolvedPath);
+
+      debug('listFiles result', {
+        path: resolvedPath,
+        fileCount: files.length,
+        files: files.slice(0, 10) // Log first 10 only
+      });
 
       if (files.length === 0) {
         return `**Empty directory:** \`${path}\``;
