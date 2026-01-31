@@ -132,6 +132,20 @@ export class LLMService {
    * Heuristic complexity detection when router model unavailable
    */
   private classifyByHeuristics(input: string): Complexity {
+    // Multi-file operations are ALWAYS complex (require listing + iteration)
+    const multiFilePattern = /\b(all|each|every|multiple)\s+(\d+\s+)?(files?|csvs?|documents?)\b/i;
+    if (multiFilePattern.test(input)) {
+      debug('Multi-file operation detected, forcing COMPLEX', { input: input.slice(0, 50) });
+      return 'COMPLEX';
+    }
+
+    // Wildcard paths are ALWAYS complex (require expansion + iteration)
+    const wildcardPattern = /\/(.*\*.*|.*\?.*)\b/;
+    if (wildcardPattern.test(input)) {
+      debug('Wildcard path detected, forcing COMPLEX', { input: input.slice(0, 50) });
+      return 'COMPLEX';
+    }
+
     // Count matching complex patterns
     let complexSignals = 0;
     for (const pattern of COMPLEX_PATTERNS) {
