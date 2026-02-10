@@ -3,7 +3,7 @@
 const PANEL_STORAGE_KEY = 'bartleby.panels';
 const panels = new Map();
 let ws = null;
-let autocompleteData = { contexts: [], projects: [] };
+let autocompleteData = { contexts: [], projects: [], tags: [] };
 let replMessages = [];
 
 // Initialize

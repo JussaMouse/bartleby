@@ -282,7 +282,7 @@ export class DashboardServer {
       const projects = this.garden.getByType('project').filter(p => p.status === 'active');
       const contacts = this.garden.getByType('contact').filter(c => c.status === 'active');
       const recentPages = this.garden.getRecent(100);
-      
+
       // Collect unique contexts
       const contexts = new Set<string>();
       for (const task of tasks) {
@@ -290,7 +290,25 @@ export class DashboardServer {
       }
       // Add common defaults
       ['@phone', '@computer', '@errands', '@home', '@office', '@waiting', '@focus'].forEach(c => contexts.add(c));
-      
+
+      // Collect unique tags from all pages
+      const tags = new Set<string>();
+      const allPages = [
+        ...tasks,
+        ...projects,
+        ...this.garden.getByType('note'),
+        ...this.garden.getByType('entry'),
+        ...this.garden.getByType('media'),
+        ...contacts,
+      ];
+      for (const page of allPages) {
+        if (page.tags) {
+          for (const tag of page.tags) {
+            tags.add(tag);
+          }
+        }
+      }
+
       // Common commands
       const commands = [
         'capture', 'show inbox', 'show next', 'show projects', 'show calendar',
@@ -299,7 +317,7 @@ export class DashboardServer {
         'delete', 'delete project', 'open', 'today', 'calendar', 'help',
         'import', 'process inbox'
       ];
-      
+
       // Collect unique page titles
       const pageTitles = new Set<string>();
       for (const p of recentPages) {
@@ -308,11 +326,12 @@ export class DashboardServer {
       for (const t of tasks) {
         pageTitles.add(t.title);
       }
-      
+
       res.json({
         contexts: Array.from(contexts).sort(),
         projects: projects.map(p => p.title),
         contacts: contacts.map(c => c.title),
+        tags: Array.from(tags).sort(),
         pages: Array.from(pageTitles).sort(),
         commands,
       });
