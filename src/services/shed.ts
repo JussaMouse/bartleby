@@ -15,7 +15,7 @@ export interface ShedSource {
   id: string;
   filename: string;
   filepath: string;
-  title?: string;
+  title: string;
   author?: string;
   sourceType?: string;
   sourceUrl?: string;
@@ -89,6 +89,44 @@ export class ShedService {
 
   // === Document Ingestion ===
 
+  /**
+   * Extract title and author from document content using LLM
+   */
+  private async extractMetadata(content: string, filename: string): Promise<{ title: string; author?: string }> {
+    try {
+      // Try to extract from first 2000 chars
+      const excerpt = content.slice(0, 2000);
+
+      const prompt = `Extract the title and author from this document excerpt. Return ONLY a JSON object with "title" and "author" fields (author optional).
+
+Excerpt:
+${excerpt}
+
+Example response: {"title": "Deep Work", "author": "Cal Newport"}`;
+
+      const response = await this.llm.chat([
+        { role: 'user', content: prompt }
+      ], { tier: 'fast' });
+
+      // Try to parse JSON from response
+      const jsonMatch = response.match(/\{[^}]+\}/);
+      if (jsonMatch) {
+        const metadata = JSON.parse(jsonMatch[0]);
+        if (metadata.title) {
+          return {
+            title: metadata.title,
+            author: metadata.author || undefined
+          };
+        }
+      }
+    } catch (err) {
+      warn('Failed to extract metadata with LLM', { error: String(err) });
+    }
+
+    // Fallback to filename
+    return { title: filename.replace(/\.[^.]+$/, '') };
+  }
+
   async ingestDocument(filepath: string): Promise<ShedSource> {
     let content: string;
     let filename: string;
@@ -96,6 +134,8 @@ export class ShedService {
     let sourceUrl: string | undefined;
     let ext: string;
     let title: string;
+    let author: string | undefined;
+    let originalPath: string | undefined; // Track original file to delete later
 
     // Check if URL
     if (filepath.startsWith('http://') || filepath.startsWith('https://')) {
@@ -197,12 +237,42 @@ export class ShedService {
       // Read content based on file type
       if (ext === '.md' || ext === '.txt') {
         content = fs.readFileSync(absolutePath, 'utf-8');
+
+        // Extract title from markdown heading or use filename
+        const titleMatch = content.match(/^#\s+(.+)$/m);
+        title = titleMatch ? titleMatch[1].trim() : filename.replace(/\.[^.]+$/, '');
+
       } else if (ext === '.pdf') {
         try {
           const dataBuffer = fs.readFileSync(absolutePath);
           const pdfData = await pdf(dataBuffer);
           content = pdfData.text;
           info('PDF parsed', { pages: pdfData.numpages, chars: content.length });
+
+          // Extract metadata using LLM
+          const metadata = await this.extractMetadata(content, filename);
+          title = metadata.title;
+          author = metadata.author;
+
+          // Generate better filename: "Title - Author.md" or "Title.md"
+          const sanitize = (str: string) => str.replace(/[^a-zA-Z0-9\s-]/g, '').replace(/\s+/g, ' ').trim();
+          const newFilename = author
+            ? `${sanitize(title)} - ${sanitize(author)}.md`
+            : `${sanitize(title)}.md`;
+
+          // Save as markdown in sources directory
+          const mdPath = path.join(this.sourcesPath, newFilename);
+          const markdownContent = `# ${title}${author ? `\n**Author:** ${author}` : ''}\n\n---\n\n${content}`;
+          fs.writeFileSync(mdPath, markdownContent, 'utf-8');
+
+          // Update paths to use the markdown file
+          originalPath = absolutePath; // Save original to delete later
+          absolutePath = mdPath;
+          filename = newFilename;
+          ext = '.md';
+
+          info('PDF converted to markdown', { originalFile: path.basename(originalPath), newFile: filename });
+
         } catch (pdfError) {
           error('Failed to parse PDF', { file: filename, error: String(pdfError) });
           throw new Error(`Failed to parse PDF: ${pdfError instanceof Error ? pdfError.message : String(pdfError)}`);
@@ -210,10 +280,6 @@ export class ShedService {
       } else {
         throw new Error(`Unsupported file type: ${ext}. Supported: .md, .txt, .pdf, or URLs`);
       }
-
-      // Extract title from content
-      const titleMatch = content.match(/^#\s+(.+)$/m);
-      title = titleMatch ? titleMatch[1].trim() : filename;
     }
 
     // Check if already ingested (by filepath or URL)
@@ -268,11 +334,23 @@ export class ShedService {
 
     info('Document ingested', { filename, title, chunks: chunks.length, sourceUrl });
 
+    // Delete original PDF/EPUB after successful ingestion
+    if (originalPath && fs.existsSync(originalPath)) {
+      try {
+        fs.unlinkSync(originalPath);
+        info('Deleted original file after conversion', { file: path.basename(originalPath) });
+      } catch (deleteError) {
+        warn('Failed to delete original file', { file: originalPath, error: String(deleteError) });
+        // Non-fatal - continue
+      }
+    }
+
     return {
       id: sourceId,
       filename,
       filepath: absolutePath,
       title,
+      author,
       sourceType: ext.slice(1),
       sourceUrl,
       ingestedAt: new Date().toISOString(),

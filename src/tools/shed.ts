@@ -81,7 +81,8 @@ export const ingestDocument: Tool = {
       const source = await context.services.shed.ingestDocument(filepath);
 
       // Create a Garden page for this media
-      const title = source.title || source.filename.replace(/\.[^.]+$/, '');
+      const title = source.title;
+      const authorLine = source.author ? `Author: ${source.author}\n` : '';
       const sourceInfo = source.sourceUrl
         ? `URL: ${source.sourceUrl}\nSaved as: ${source.filename}`
         : `File: ${source.filename}`;
@@ -94,11 +95,12 @@ export const ingestDocument: Tool = {
         title,
         status: 'active',
         tags: allTags,
-        content: `${sourceInfo}\nIngested: ${new Date(source.ingestedAt).toLocaleDateString()}\nChunks: ${source.chunkCount}\n\nUse \`ask shed <question>\` to query this document.`,
+        content: `${authorLine}${sourceInfo}\nIngested: ${new Date(source.ingestedAt).toLocaleDateString()}\nChunks: ${source.chunkCount}\n\nUse \`ask shed <question>\` to query this document.`,
         metadata: {
           shed_source_id: source.id,
           filename: source.filename,
           source_url: source.sourceUrl,
+          author: source.author,
           chunk_count: source.chunkCount,
           projects: projects.length > 0 ? projects : undefined,
         },
@@ -120,12 +122,13 @@ export const ingestDocument: Tool = {
         }
       }
 
+      const authorDisplay = source.author ? `\n  Author: ${source.author}` : '';
       const sourceDisplay = source.sourceUrl ? `\n  URL: ${source.sourceUrl}` : '';
       const metadataDisplay =
         (projects.length > 0 ? `\n  Projects: ${projects.map(p => '+' + p).join(' ')}` : '') +
         (tags.length > 0 ? `\n  Tags: ${tags.map(t => '#' + t).join(' ')}` : '');
 
-      return `✓ Ingested: "${source.title}"${sourceDisplay}\n  Chunks: ${source.chunkCount}\n  Saved as: ${source.filename}${metadataDisplay}\n  Page created: open "${mediaPage.title}"`;
+      return `✓ Ingested: "${source.title}"${authorDisplay}${sourceDisplay}\n  Chunks: ${source.chunkCount}\n  Saved as: ${source.filename}${metadataDisplay}\n  Page created: open "${mediaPage.title}"`;
     } catch (err) {
       return `Failed to ingest document: ${err instanceof Error ? err.message : String(err)}`;
     }
