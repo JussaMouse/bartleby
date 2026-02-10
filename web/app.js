@@ -1613,21 +1613,21 @@ function handleGenericEditKey(event, input) {
 
     if (contextMatch) {
       const partial = contextMatch[1].toLowerCase();
-      const matches = autocompleteData.contexts.filter(c =>
-        c.toLowerCase().startsWith('@' + partial) || c.toLowerCase().startsWith(partial)
-      );
+      const matches = autocompleteData.contexts
+        .filter(c => c.toLowerCase().replace('@', '').startsWith(partial))
+        .map(c => c.startsWith('@') ? c : '@' + c);
       showAutocomplete(item, matches, '@');
     } else if (projectMatch) {
       const partial = projectMatch[1].toLowerCase();
-      const matches = autocompleteData.projects.filter(p =>
-        p.toLowerCase().startsWith('+' + partial) || p.toLowerCase().startsWith(partial)
-      );
+      const matches = autocompleteData.projects
+        .filter(p => p.toLowerCase().startsWith(partial))
+        .map(p => p.startsWith('+') ? p : '+' + p);
       showAutocomplete(item, matches, '+');
     } else if (tagMatch) {
       const partial = tagMatch[1].toLowerCase();
-      const matches = autocompleteData.tags.filter(t =>
-        t.toLowerCase().startsWith('#' + partial) || t.toLowerCase().startsWith(partial)
-      );
+      const matches = autocompleteData.tags
+        .filter(t => t.toLowerCase().startsWith(partial))
+        .map(t => t.startsWith('#') ? t : '#' + t);
       showAutocomplete(item, matches, '#');
     }
     return;
