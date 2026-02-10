@@ -15,7 +15,7 @@ import type { SchedulerService } from './scheduler.js';
 
 // GTD types: item → action → completed (workflow)
 // Wiki types: entry, note, contact, media, list, daily (persistent knowledge)
-export type RecordType = 
+export type RecordType =
   | 'item'      // Raw inbox, unprocessed
   | 'action'    // Doable next step
   | 'project'   // Multi-action outcome
@@ -26,6 +26,7 @@ export type RecordType =
   | 'list'      // Curated collection
   | 'daily';    // Journal entry
 export type RecordStatus = 'active' | 'completed' | 'archived' | 'someday' | 'waiting';
+export type PrivacyLevel = 'public' | 'private' | 'confidential';
 
 export interface GardenRecord {
   id: string;
@@ -34,6 +35,7 @@ export interface GardenRecord {
   status: RecordStatus;
   context?: string;
   project?: string;
+  privacy?: PrivacyLevel;  // Explicit privacy setting
   due_date?: string;
   email?: string;
   phone?: string;
@@ -66,6 +68,7 @@ CREATE TABLE IF NOT EXISTS garden_records (
   status TEXT DEFAULT 'active',
   context TEXT,
   project TEXT,
+  privacy TEXT,
   due_date TEXT,
   email TEXT,
   phone TEXT,
@@ -90,11 +93,13 @@ CREATE INDEX IF NOT EXISTS idx_garden_status ON garden_records(status);
 CREATE INDEX IF NOT EXISTS idx_garden_context ON garden_records(context);
 CREATE INDEX IF NOT EXISTS idx_garden_project ON garden_records(project);
 CREATE INDEX IF NOT EXISTS idx_garden_due ON garden_records(due_date);
+CREATE INDEX IF NOT EXISTS idx_garden_privacy ON garden_records(privacy);
 `;
 
 // Migrations for existing databases
 const MIGRATIONS = [
   `ALTER TABLE garden_records ADD COLUMN contacts TEXT`,  // JSON array of contact IDs
+  `ALTER TABLE garden_records ADD COLUMN privacy TEXT`,   // Privacy level
 ];
 
 // === Service ===
@@ -174,11 +179,12 @@ export class GardenService {
 
     this.db.prepare(`
       INSERT INTO garden_records
-      (id, type, title, status, context, project, due_date, email, phone, birthday, content, tags, contacts, metadata, created_at, updated_at, completed_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      (id, type, title, status, context, project, privacy, due_date, email, phone, birthday, content, tags, contacts, metadata, created_at, updated_at, completed_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       record.id, record.type, record.title, record.status,
-      record.context, record.project, record.due_date,
+      record.context, record.project, record.privacy,
+      record.due_date,
       record.email, record.phone, record.birthday,
       record.content, JSON.stringify(record.tags || []),
       JSON.stringify(record.contacts || []),
@@ -208,6 +214,42 @@ export class GardenService {
     return row ? this.rowToRecord(row) : null;
   }
 
+  /**
+   * Get effective privacy level for a record (inherited from project if not set explicitly)
+   */
+  getEffectivePrivacy(record: GardenRecord): PrivacyLevel {
+    // If record has explicit privacy, use it
+    if (record.privacy) {
+      return record.privacy;
+    }
+
+    // If record has a project, inherit from project
+    if (record.project) {
+      const projectPages = this.getByType('project').filter(p => p.status === 'active');
+      const project = projectPages.find(p =>
+        p.title.toLowerCase().replace(/\s+/g, '-') === record.project?.toLowerCase()
+      );
+
+      if (project?.privacy) {
+        return project.privacy;
+      }
+    }
+
+    // Default to public
+    return 'public';
+  }
+
+  /**
+   * Get privacy icon for display
+   */
+  getPrivacyIcon(level: PrivacyLevel): string {
+    switch (level) {
+      case 'private': return '🔒';
+      case 'confidential': return '🔐';
+      default: return '';
+    }
+  }
+
   getByTitle(title: string): GardenRecord | null {
     const row = this.db.prepare('SELECT * FROM garden_records WHERE title = ? COLLATE NOCASE').get(title) as any;
     return row ? this.rowToRecord(row) : null;
@@ -230,13 +272,14 @@ export class GardenService {
 
     this.db.prepare(`
       UPDATE garden_records SET
-        type=?, title=?, status=?, context=?, project=?, due_date=?,
+        type=?, title=?, status=?, context=?, project=?, privacy=?, due_date=?,
         email=?, phone=?, birthday=?, content=?, tags=?, contacts=?, metadata=?,
         updated_at=?, completed_at=?
       WHERE id=?
     `).run(
       updated.type, updated.title, updated.status,
-      updated.context, updated.project, updated.due_date,
+      updated.context, updated.project, updated.privacy,
+      updated.due_date,
       updated.email, updated.phone, updated.birthday,
       updated.content, JSON.stringify(updated.tags || []),
       JSON.stringify(updated.contacts || []),
@@ -756,6 +799,7 @@ export class GardenService {
       status: row.status,
       context: row.context || undefined,
       project: row.project || undefined,
+      privacy: row.privacy as PrivacyLevel | undefined,
       due_date: row.due_date || undefined,
       email: row.email || undefined,
       phone: row.phone || undefined,

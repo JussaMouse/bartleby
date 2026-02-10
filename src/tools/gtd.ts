@@ -79,7 +79,13 @@ export const viewNextActions: Tool = {
       for (const task of ctxTasks) {
         const proj = task.project ? ` (${task.project})` : '';
         const due = task.due_date ? ` [due: ${task.due_date}]` : '';
-        lines.push(`  ${num}. ${task.title}${proj}${due}`);
+
+        // Display privacy indicator
+        const privacyLevel = context.services.garden.getEffectivePrivacy(task);
+        const privacyIcon = context.services.garden.getPrivacyIcon(privacyLevel);
+        const privacyPrefix = privacyIcon ? `${privacyIcon} ` : '';
+
+        lines.push(`  ${num}. ${privacyPrefix}${task.title}${proj}${due}`);
         num++;
       }
     }
@@ -124,7 +130,13 @@ export const processInbox: Tool = {
     tasks.forEach((task, i) => {
       const age = Math.floor((Date.now() - new Date(task.created_at).getTime()) / (1000 * 60 * 60 * 24));
       const ageStr = age === 0 ? 'today' : age === 1 ? 'yesterday' : `${age} days ago`;
-      lines.push(`${i + 1}. ${task.title}`);
+
+      // Display privacy indicator
+      const privacyLevel = context.services.garden.getEffectivePrivacy(task);
+      const privacyIcon = context.services.garden.getPrivacyIcon(privacyLevel);
+      const privacyPrefix = privacyIcon ? `${privacyIcon} ` : '';
+
+      lines.push(`${i + 1}. ${privacyPrefix}${task.title}`);
       lines.push(`   captured ${ageStr}`);
     });
 
@@ -837,7 +849,12 @@ export const showWaitingFor: Tool = {
 
     const lines = ['**Waiting For**'];
     tasks.forEach((t, i) => {
-      lines.push(`  ${i + 1}. ${t.title}${t.project ? ` (${t.project})` : ''}`);
+      // Display privacy indicator
+      const privacyLevel = context.services.garden.getEffectivePrivacy(t);
+      const privacyIcon = context.services.garden.getPrivacyIcon(privacyLevel);
+      const privacyPrefix = privacyIcon ? `${privacyIcon} ` : '';
+
+      lines.push(`  ${i + 1}. ${privacyPrefix}${t.title}${t.project ? ` (${t.project})` : ''}`);
     });
 
     return lines.join('\n');
@@ -881,8 +898,13 @@ export const showOverdue: Tool = {
       const dueDate = new Date(t.due_date!);
       const daysOverdue = Math.floor((today.getTime() - dueDate.getTime()) / (1000 * 60 * 60 * 24));
       const daysStr = daysOverdue === 1 ? '1 day' : `${daysOverdue} days`;
-      
-      lines.push(`  ${i + 1}. ${t.title}`);
+
+      // Display privacy indicator
+      const privacyLevel = context.services.garden.getEffectivePrivacy(t);
+      const privacyIcon = context.services.garden.getPrivacyIcon(privacyLevel);
+      const privacyPrefix = privacyIcon ? `${privacyIcon} ` : '';
+
+      lines.push(`  ${i + 1}. ${privacyPrefix}${t.title}`);
       lines.push(`     ⚠️ Due: ${t.due_date} (${daysStr} ago)`);
       if (t.context && t.context !== '@inbox') {
         lines.push(`     ${t.context}`);
@@ -908,22 +930,37 @@ export const addProject: Tool = {
       verbs: ['add', 'create', 'new', 'start'],
       nouns: ['project'],
     },
-    examples: ['new project 2025 taxes', 'create project website redesign', 'add project home renovation'],
+    examples: [
+      'new project 2025 taxes',
+      'create project website redesign',
+      'new project E-2 Visa --private'
+    ],
     priority: 95,  // Higher than addTask to catch "new project X"
   },
 
   parseArgs: (input, match) => {
-    let title = '';
+    let raw = '';
     if (match) {
-      title = match[match.length - 1] || '';
+      raw = match[match.length - 1] || '';
     } else {
-      title = input.replace(/^(new|create|add)\s+project\s*:?\s*/i, '').trim();
+      raw = input.replace(/^(new|create|add)\s+project\s*:?\s*/i, '').trim();
     }
-    return { title };
+
+    // Check for privacy flags
+    let privacy: 'private' | 'confidential' | undefined;
+    if (raw.includes('--private')) {
+      privacy = 'private';
+      raw = raw.replace(/--private/g, '').trim();
+    } else if (raw.includes('--confidential')) {
+      privacy = 'confidential';
+      raw = raw.replace(/--confidential/g, '').trim();
+    }
+
+    return { title: raw, privacy };
   },
 
   execute: async (args, context) => {
-    const { title } = args as { title: string };
+    const { title, privacy } = args as { title: string; privacy?: 'private' | 'confidential' };
 
     if (!title) {
       return 'Please provide a project name. Example: new project website redesign';
@@ -933,9 +970,13 @@ export const addProject: Tool = {
       type: 'project',
       title,
       status: 'active',
+      privacy,
     });
 
-    return `✓ Created project: "${project.title}"\n\nAdd actions with: new action <text> +${project.title.toLowerCase().replace(/\s+/g, '-')}`;
+    const privacyIcon = privacy ? context.services.garden.getPrivacyIcon(privacy) : '';
+    const privacyNote = privacy ? `\n${privacyIcon} Privacy: ${privacy} (all linked items inherit this)` : '';
+
+    return `✓ Created project: "${project.title}"${privacyNote}\n\nAdd actions with: new action <text> +${project.title.toLowerCase().replace(/\s+/g, '-')}`;
   },
 };
 
@@ -974,8 +1015,11 @@ export const showProjects: Tool = {
       
       const actionCount = actions.length;
       const nextAction = actions[0];
-      
-      lines.push(`• **${project.title}**`);
+
+      // Display privacy indicator
+      const privacyLevel = context.services.garden.getEffectivePrivacy(project);
+      const privacyIcon = context.services.garden.getPrivacyIcon(privacyLevel);
+      lines.push(`• ${privacyIcon}${privacyIcon ? ' ' : ''}**${project.title}**`);
       if (actionCount > 0) {
         lines.push(`  ${actionCount} action(s) — Next: ${nextAction?.title || 'none'}`);
       } else {

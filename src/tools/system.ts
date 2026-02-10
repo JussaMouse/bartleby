@@ -25,6 +25,8 @@ const HELP_OVERVIEW = `
 **Learn More**
   help garden           Your wiki (notes, contacts, entries)
   help gtd              Actions & projects
+  help media            Upload files (images, audio, video, docs)
+  help shed             Document library & RAG
   help calendar         Events & time
   help reminders        Scheduled notifications
   help context          What Bartleby remembers
@@ -66,10 +68,17 @@ Actions are things you can do. Projects are outcomes with multiple actions.
 
 **Projects**
   new project <name>           Create a project
+  new project <name> --private Create a private project
   show projects                List with action counts
   open <project>               View project with its actions
   delete project <name>        Remove project (unlinks actions)
   new action <text> +project   Add action to project
+
+**Privacy**
+  --private                    Mark project as private (🔒)
+  --confidential               Mark project as confidential (🔐)
+  • All items linked to a private project inherit its privacy level
+  • Privacy indicators show in all lists automatically
 
 **Examples**
   new action buy groceries @errands
@@ -104,6 +113,12 @@ actions, projects, contacts, notes, wiki entries, and more.
   Contact   Person with details and relationships
   Daily     Journal entries (one per day)
   List      Curated collections (reading list, etc.)
+  Media     Files (images, audio, video, documents)
+
+**Privacy**
+  Pages can be marked private (🔒) or confidential (🔐)
+  Items inherit privacy from their linked project
+  Privacy indicators appear automatically in all lists
 
 **Entry vs Note**
   Entry: permanent wiki page, like "house rules" or "packing checklist"
@@ -527,6 +542,55 @@ Get weather info (requires OpenWeatherMap API key).
 • Free tier allows ~60 requests/minute
 `.trim();
 
+const HELP_MEDIA = `
+**Media — Multimedia Files**
+
+Upload and manage images, audio, video, and documents.
+
+**Commands**
+  add media <file> [+project] [#tag ...]
+      Upload a file to Garden
+      Supports: images, audio, video, documents
+      Optional OCR with --ocr flag
+
+  upload <file> [+project] [#tag ...]
+      Alias for add media
+
+**Supported File Types**
+  Images:     .jpg, .jpeg, .png, .gif, .heic, .webp
+  Audio:      .mp3, .m4a, .wav, .ogg
+  Video:      .mp4, .mov, .avi, .mkv
+  Documents:  .pdf, .doc, .docx, .txt, .md
+
+**Inline Metadata**
+  Use +project-name to link to a project
+  Use #tag to add tags
+  Use --ocr to extract text from images
+
+**Examples**
+  add media photo.jpg +vacation #memories
+  add media contract.pdf +visa #legal --ocr
+  upload voice-memo.m4a +meeting #notes
+  add media screenshot.png --ocr
+
+**How It Works**
+1. File is copied to garden/media/
+2. A Garden page is created with file metadata
+3. Optional OCR extracts text from images
+4. File is linked to projects and tagged
+5. View with: open <filename>
+
+**.env Settings**
+  GARDEN_PATH=./garden          Base path for media storage
+  OCR_URL=...                   Optional OCR service endpoint
+
+**Tips**
+• Files are stored in garden/media/ directory
+• Original filenames are preserved in metadata
+• OCR is optional — only use --ocr when needed
+• Media pages can be private via project inheritance
+`.trim();
+
 const HELP_SECTIONS: Record<string, string> = {
   gtd: HELP_GTD,
   tasks: HELP_GTD,
@@ -552,6 +616,9 @@ const HELP_SECTIONS: Record<string, string> = {
   docs: HELP_SHED,
   ingest: HELP_SHED,
   rag: HELP_SHED,
+  media: HELP_MEDIA,
+  files: HELP_MEDIA,
+  upload: HELP_MEDIA,
   reminders: HELP_REMINDERS,
   reminder: HELP_REMINDERS,
   schedule: HELP_REMINDERS,
