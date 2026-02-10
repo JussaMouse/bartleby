@@ -216,12 +216,14 @@ Location: `./garden/`
 
 Ingest documents and web pages, ask questions.
 
-1. `ingest <file or url>` — chunks and embeds (supports .md, .txt, .pdf, URLs)
+1. `ingest <file or url> [+project] [#tag ...]` — chunks and embeds (supports .md, .txt, .pdf, URLs)
 2. `ask shed <question>` — searches chunks, synthesizes answer
 
 **Commands:**
 ```
-ingest <file or url>    Add to library (also creates Garden page)
+ingest <file or url> [+project] [#tag ...]
+    Add to library (also creates Garden page)
+    Optionally link to projects and add tags with tab completion
 list sources            Show all documents
 ask shed <question>     Query your documents
 ```
@@ -229,21 +231,26 @@ ask shed <question>     Query your documents
 **Examples:**
 ```
 # Local files
-> ingest ~/Documents/contract.pdf
+> ingest ~/Documents/contract.pdf #legal
 ✓ Ingested: contract.pdf (23 chunks)
+  Tags: #legal
 
-# Web pages
-> ingest https://www.uscis.gov/e-2-visa-requirements
+# Web pages with metadata
+> ingest https://www.uscis.gov/e-2-visa-requirements +visa-project #immigration #legal
 ✓ Ingested: "E-2 Treaty Investors"
   URL: https://www.uscis.gov/e-2-visa-requirements
   Chunks: 15
   Saved as: uscis.gov-2026-02-10T20-14-56.md
+  Projects: +visa-project
+  Tags: #immigration #legal
 
 # Query any ingested content
 > ask shed what are the E-2 visa financial requirements
 Based on the USCIS guidelines, E-2 visa requires a substantial
 investment, typically $100,000-$200,000 depending on the business...
 ```
+
+**Tab Completion:** Press Tab after typing `+` or `#` to see available projects and tags.
 
 Location: `./shed/`
 

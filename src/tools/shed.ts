@@ -15,60 +15,117 @@ export const ingestDocument: Tool = {
       verbs: ['ingest', 'import', 'add'],
       nouns: ['shed', 'document', 'file', 'library'],
     },
-    examples: ['ingest notes.md', 'ingest https://example.com/article', 'add to shed article.txt'],
+    examples: [
+      'ingest notes.md',
+      'ingest https://example.com/article +visa-project #immigration #legal',
+      'add to shed article.txt #research'
+    ],
     priority: 80,
   },
 
   parameters: {
     type: 'object',
     properties: {
-      filepath: { type: 'string', description: 'Path to the document file' },
+      filepath: { type: 'string', description: 'Path to the document file or URL' },
+      projects: { type: 'array', items: { type: 'string' }, description: 'Project names (prefixed with +)' },
+      tags: { type: 'array', items: { type: 'string' }, description: 'Tags (prefixed with #)' },
     },
     required: ['filepath'],
   },
 
   parseArgs: (input, match) => {
-    let filepath = '';
+    let rawInput = '';
     if (match) {
-      filepath = match[match.length - 1]?.trim() || '';
+      rawInput = match[match.length - 1]?.trim() || '';
     } else {
-      filepath = input.replace(/^(ingest|add\s+to\s+shed|import\s+(document|file))\s*/i, '').trim();
+      rawInput = input.replace(/^(ingest|add\s+to\s+shed|import\s+(document|file))\s*/i, '').trim();
     }
-    return { filepath };
+
+    // Extract projects (+project-name) and tags (#tag-name)
+    const projects: string[] = [];
+    const tags: string[] = [];
+
+    // Match all +word patterns
+    const projectMatches = rawInput.matchAll(/\+([a-zA-Z0-9_-]+)/g);
+    for (const match of projectMatches) {
+      projects.push(match[1]);
+    }
+
+    // Match all #word patterns
+    const tagMatches = rawInput.matchAll(/#([a-zA-Z0-9_-]+)/g);
+    for (const match of tagMatches) {
+      tags.push(match[1]);
+    }
+
+    // Remove projects and tags from filepath
+    const filepath = rawInput
+      .replace(/\+[a-zA-Z0-9_-]+/g, '')
+      .replace(/#[a-zA-Z0-9_-]+/g, '')
+      .trim();
+
+    return { filepath, projects, tags };
   },
 
   execute: async (args, context) => {
-    const { filepath } = args as { filepath: string };
+    const { filepath, projects = [], tags = [] } = args as {
+      filepath: string;
+      projects?: string[];
+      tags?: string[];
+    };
 
     if (!filepath) {
-      return 'Please provide a file path or URL. Examples:\n  ingest notes.md\n  ingest https://example.com/article\nSupported: .md, .txt, .pdf, or URLs';
+      return 'Please provide a file path or URL. Examples:\n  ingest notes.md\n  ingest https://example.com/article +project #tag\nSupported: .md, .txt, .pdf, or URLs';
     }
 
     try {
       const source = await context.services.shed.ingestDocument(filepath);
-      
+
       // Create a Garden page for this media
       const title = source.title || source.filename.replace(/\.[^.]+$/, '');
       const sourceInfo = source.sourceUrl
         ? `URL: ${source.sourceUrl}\nSaved as: ${source.filename}`
         : `File: ${source.filename}`;
 
+      // Build tags array: always include 'media', plus user-specified tags
+      const allTags = ['media', ...tags];
+
       const mediaPage = context.services.garden.create({
         type: 'media',
         title,
         status: 'active',
-        tags: ['media'],
+        tags: allTags,
         content: `${sourceInfo}\nIngested: ${new Date(source.ingestedAt).toLocaleDateString()}\nChunks: ${source.chunkCount}\n\nUse \`ask shed <question>\` to query this document.`,
         metadata: {
           shed_source_id: source.id,
           filename: source.filename,
           source_url: source.sourceUrl,
           chunk_count: source.chunkCount,
+          projects: projects.length > 0 ? projects : undefined,
         },
       });
 
+      // Link to projects if specified
+      for (const projectSlug of projects) {
+        // Find project by slug (case-insensitive match)
+        const projectPages = context.services.garden.getByType('project');
+        const project = projectPages.find(p =>
+          p.title.toLowerCase().replace(/\s+/g, '-') === projectSlug.toLowerCase()
+        );
+
+        if (project) {
+          // Link the media page to the project
+          context.services.garden.update(mediaPage.id, {
+            content: mediaPage.content + `\n\nProject: [[${project.title}]]`,
+          });
+        }
+      }
+
       const sourceDisplay = source.sourceUrl ? `\n  URL: ${source.sourceUrl}` : '';
-      return `✓ Ingested: "${source.title}"${sourceDisplay}\n  Chunks: ${source.chunkCount}\n  Saved as: ${source.filename}\n  Page created: open "${mediaPage.title}"`;
+      const metadataDisplay =
+        (projects.length > 0 ? `\n  Projects: ${projects.map(p => '+' + p).join(' ')}` : '') +
+        (tags.length > 0 ? `\n  Tags: ${tags.map(t => '#' + t).join(' ')}` : '');
+
+      return `✓ Ingested: "${source.title}"${sourceDisplay}\n  Chunks: ${source.chunkCount}\n  Saved as: ${source.filename}${metadataDisplay}\n  Page created: open "${mediaPage.title}"`;
     } catch (err) {
       return `Failed to ingest document: ${err instanceof Error ? err.message : String(err)}`;
     }

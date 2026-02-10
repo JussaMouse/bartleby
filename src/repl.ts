@@ -382,10 +382,45 @@ function createCompleter(services: ServiceContainer) {
         const projects = services.garden.getByType('project');
         const slugs = projects.map(p => '+' + p.title.toLowerCase().replace(/\s+/g, '-'));
         const matches = slugs.filter(s => s.startsWith('+' + partial));
-        
+
         if (matches.length > 0) {
           const beforePlus = line.slice(0, line.lastIndexOf('+'));
           return [matches.map(s => beforePlus + s), line];
+        }
+      }
+    }
+
+    // Tag completion (#)
+    if (line.includes('#')) {
+      const hashMatch = line.match(/#([\w-]*)$/);
+      if (hashMatch) {
+        const partial = hashMatch[1].toLowerCase();
+
+        // Collect all unique tags from all pages
+        const allPages = [
+          ...services.garden.getTasks({ status: 'active' }),
+          ...services.garden.getByType('project'),
+          ...services.garden.getByType('note'),
+          ...services.garden.getByType('entry'),
+          ...services.garden.getByType('media'),
+          ...services.garden.getByType('contact'),
+        ];
+
+        const allTags = new Set<string>();
+        for (const page of allPages) {
+          if (page.tags) {
+            for (const tag of page.tags) {
+              allTags.add(tag);
+            }
+          }
+        }
+
+        const tagOptions = Array.from(allTags).map(t => '#' + t);
+        const matches = tagOptions.filter(t => t.toLowerCase().startsWith('#' + partial));
+
+        if (matches.length > 0) {
+          const beforeHash = line.slice(0, line.lastIndexOf('#'));
+          return [matches.map(t => beforeHash + t), line];
         }
       }
     }
