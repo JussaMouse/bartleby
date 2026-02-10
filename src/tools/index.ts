@@ -10,6 +10,7 @@ import { weatherTools } from './weather.js';
 import { systemTools } from './system.js';
 import { ocrTools } from './ocr.js';
 import { dataTools } from './data.js';
+import { mediaTools } from './media.js';
 
 // Aggregate all tools
 export const allTools: Tool[] = [
@@ -18,6 +19,7 @@ export const allTools: Tool[] = [
   ...contactTools,
   ...contextTools,
   ...shedTools,
+  ...mediaTools,
   ...schedulerTools,
   ...weatherTools,
   ...systemTools,

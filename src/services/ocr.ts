@@ -152,6 +152,13 @@ export class OCRService {
   }
 
   /**
+   * Alias for extractText (for consistency with media tools)
+   */
+  async processFile(imagePath: string): Promise<string | null> {
+    return this.extractText(imagePath);
+  }
+
+  /**
    * Check if a file is an image that can be OCR'd.
    */
   isOCRableImage(filePath: string): boolean {
