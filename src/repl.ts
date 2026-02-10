@@ -503,8 +503,8 @@ export async function startRepl(
     input: process.stdin,
     output: process.stdout,
     prompt: '\n> ',
-    terminal: true,  // Explicitly enable terminal mode for tab completion
-    completer: createCompleter(services),
+    terminal: !!process.stdin.isTTY,  // Enable terminal mode only if stdin is a TTY
+    completer: process.stdin.isTTY ? createCompleter(services) : undefined,
     history,  // Load persistent history
     historySize: 1000,  // Keep last 1000 commands in memory
   });
