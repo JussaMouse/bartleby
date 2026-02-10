@@ -1,9 +1,48 @@
 // src/repl.ts
 import readline from 'readline';
+import fs from 'fs';
+import path from 'path';
 import { CommandRouter } from './router/index.js';
 import { Agent } from './agent/index.js';
 import { ServiceContainer } from './services/index.js';
 import { info, warn, error, debug } from './utils/logger.js';
+import { getDbPath, ensureDir } from './config.js';
+
+/**
+ * Load command history from disk
+ */
+function loadHistory(historyPath: string, maxLines = 1000): string[] {
+  try {
+    if (fs.existsSync(historyPath)) {
+      const content = fs.readFileSync(historyPath, 'utf-8');
+      const lines = content.split('\n').filter(line => line.trim());
+      // Return most recent maxLines entries
+      return lines.slice(-maxLines);
+    }
+  } catch (err) {
+    warn('Failed to load command history', { error: String(err) });
+  }
+  return [];
+}
+
+/**
+ * Append a command to history file
+ */
+function appendToHistory(historyPath: string, command: string): void {
+  try {
+    // Skip empty commands and duplicates of the last command
+    if (!command.trim()) return;
+
+    const existing = loadHistory(historyPath, 1);
+    if (existing.length > 0 && existing[existing.length - 1] === command) {
+      return; // Don't save duplicate consecutive commands
+    }
+
+    fs.appendFileSync(historyPath, command + '\n', 'utf-8');
+  } catch (err) {
+    warn('Failed to save command to history', { error: String(err) });
+  }
+}
 
 /**
  * Show the list of missed reminders.
@@ -448,6 +487,12 @@ export async function startRepl(
   agent: Agent,
   services: ServiceContainer
 ): Promise<void> {
+  // Load persistent command history
+  const historyPath = getDbPath(services.config, 'history.txt');
+  ensureDir(path.dirname(historyPath));
+  const history = loadHistory(historyPath);
+  debug('Command history loaded', { historyPath, lines: history.length });
+
   // Tab completion requires TTY mode
   debug('Terminal mode', {
     stdinIsTTY: process.stdin.isTTY,
@@ -460,6 +505,8 @@ export async function startRepl(
     prompt: '\n> ',
     terminal: true,  // Explicitly enable terminal mode for tab completion
     completer: createCompleter(services),
+    history,  // Load persistent history
+    historySize: 1000,  // Keep last 1000 commands in memory
   });
 
   // Bracketed paste mode support
@@ -532,6 +579,9 @@ export async function startRepl(
 
       debug('Paste mode ended', { lines: pastedInput.split('\n').length });
 
+      // Save pasted input to history
+      appendToHistory(historyPath, pastedInput);
+
       // Process the pasted content
       await processInput(pastedInput, rl, router, agent, services);
       return;
@@ -550,6 +600,9 @@ export async function startRepl(
       rl.prompt();
       return;
     }
+
+    // Save command to history
+    appendToHistory(historyPath, input);
 
     await processInput(input, rl, router, agent, services);
   });
