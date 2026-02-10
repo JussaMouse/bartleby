@@ -5,7 +5,7 @@ import { v4 as uuidv4 } from 'uuid';
 import fs from 'fs';
 import path from 'path';
 import { Config, getDbPath, ensureDir } from '../config.js';
-import { info, warn, debug } from '../utils/logger.js';
+import { info, warn, debug, error } from '../utils/logger.js';
 
 export interface VectorMetadata {
   id: string;
@@ -40,21 +40,34 @@ export class VectorService {
         this.loadMetadata();
 
         // Check if we need to resize immediately after loading
-        const currentSize = this.index.getCurrentCount();
-        const maxElements = this.index.getMaxElements();
-        const utilizationPercent = (currentSize / maxElements) * 100;
+        try {
+          const currentSize = this.index.getCurrentCount();
+          const maxElements = this.index.getMaxElements();
+          const utilizationPercent = (currentSize / maxElements) * 100;
 
-        if (utilizationPercent >= 90) {
-          info('Vector index near capacity, resizing', {
-            currentSize,
-            maxElements,
-            utilizationPercent: utilizationPercent.toFixed(1),
+          info('VectorService loaded', {
+            vectors: this.metadata.size,
+            indexCount: currentSize,
+            capacity: maxElements,
+            utilization: utilizationPercent.toFixed(1) + '%'
           });
-          this.index.resizeIndex(maxElements * 2);
-          this.save(); // Save the resized index
-        }
 
-        info('VectorService loaded', { vectors: this.metadata.size, capacity: this.index.getMaxElements() });
+          if (utilizationPercent >= 90) {
+            const newCapacity = maxElements * 2;
+            info('Vector index near capacity, resizing', {
+              currentSize,
+              maxElements,
+              newCapacity,
+              utilizationPercent: utilizationPercent.toFixed(1),
+            });
+            this.index.resizeIndex(newCapacity);
+            this.save(); // Save the resized index
+            info('Vector index resized successfully', { newCapacity });
+          }
+        } catch (resizeErr) {
+          warn('Could not check/resize index, will try on add', { error: String(resizeErr) });
+          info('VectorService loaded', { vectors: this.metadata.size });
+        }
       } catch (err) {
         warn('Failed to load vector index, creating new', { error: String(err) });
         this.initializeNewIndex();
@@ -75,20 +88,26 @@ export class VectorService {
   }
 
   private resizeIfNeeded(): void {
-    const currentSize = this.index.getCurrentCount();
-    const maxElements = this.index.getMaxElements();
-    const utilizationPercent = (currentSize / maxElements) * 100;
+    try {
+      const currentSize = this.index.getCurrentCount();
+      const maxElements = this.index.getMaxElements();
+      const utilizationPercent = (currentSize / maxElements) * 100;
 
-    // Resize when 90% full
-    if (utilizationPercent >= 90) {
-      const newSize = maxElements * 2;
-      info('Resizing vector index', {
-        currentSize,
-        maxElements,
-        newSize,
-        utilizationPercent: utilizationPercent.toFixed(1),
-      });
-      this.index.resizeIndex(newSize);
+      // Resize when 90% full
+      if (utilizationPercent >= 90) {
+        const newSize = maxElements * 2;
+        info('Resizing vector index', {
+          currentSize,
+          maxElements,
+          newSize,
+          utilizationPercent: utilizationPercent.toFixed(1),
+        });
+        this.index.resizeIndex(newSize);
+        info('Vector index resized successfully', { newCapacity: newSize });
+      }
+    } catch (err) {
+      error('Failed to resize vector index', { error: String(err) });
+      throw new Error(`Vector index resize failed: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
 
