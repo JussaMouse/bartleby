@@ -43,6 +43,19 @@ export class VectorService {
         try {
           const currentSize = this.index.getCurrentCount();
           const maxElements = this.index.getMaxElements();
+
+          // Handle corrupted/invalid index (capacity = 0)
+          if (maxElements === 0 || maxElements < currentSize) {
+            warn('Invalid index capacity detected, reinitializing', {
+              maxElements,
+              currentSize,
+              metadataSize: this.metadata.size
+            });
+            this.initializeNewIndex();
+            info('VectorService reinitialized with fresh index');
+            return;
+          }
+
           const utilizationPercent = (currentSize / maxElements) * 100;
 
           info('VectorService loaded', {
