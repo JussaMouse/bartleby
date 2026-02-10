@@ -214,9 +214,9 @@ Location: `./garden/`
 
 ### The Shed
 
-Ingest documents, ask questions.
+Ingest documents and web pages, ask questions.
 
-1. `ingest <file>` — chunks and embeds
+1. `ingest <file or url>` — chunks and embeds (supports .md, .txt, .pdf, URLs)
 2. `ask shed <question>` — searches chunks, synthesizes answer
 
 **Commands:**
@@ -226,13 +226,23 @@ list sources            Show all documents
 ask shed <question>     Query your documents
 ```
 
-**Example:**
+**Examples:**
 ```
+# Local files
 > ingest ~/Documents/contract.pdf
 ✓ Ingested: contract.pdf (23 chunks)
 
-> ask shed what are the payment terms
-Based on the contract, payment is due within 30 days...
+# Web pages
+> ingest https://www.uscis.gov/e-2-visa-requirements
+✓ Ingested: "E-2 Treaty Investors"
+  URL: https://www.uscis.gov/e-2-visa-requirements
+  Chunks: 15
+  Saved as: uscis.gov-2026-02-10T20-14-56.md
+
+# Query any ingested content
+> ask shed what are the E-2 visa financial requirements
+Based on the USCIS guidelines, E-2 visa requires a substantial
+investment, typically $100,000-$200,000 depending on the business...
 ```
 
 Location: `./shed/`

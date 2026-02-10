@@ -543,6 +543,7 @@ const HELP_SECTIONS: Record<string, string> = {
   shed: HELP_SHED,
   documents: HELP_SHED,
   docs: HELP_SHED,
+  ingest: HELP_SHED,
   rag: HELP_SHED,
   reminders: HELP_REMINDERS,
   reminder: HELP_REMINDERS,
