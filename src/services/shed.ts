@@ -4,6 +4,7 @@ import { v4 as uuidv4 } from 'uuid';
 import fs from 'fs';
 import path from 'path';
 import pdf from 'pdf-parse';
+import { convert as htmlToText } from 'html-to-text';
 import { Config, resolvePath, getDbPath, ensureDir } from '../config.js';
 import { info, warn, debug, error } from '../utils/logger.js';
 import { EmbeddingService } from './embeddings.js';
@@ -89,50 +90,154 @@ export class ShedService {
   // === Document Ingestion ===
 
   async ingestDocument(filepath: string): Promise<ShedSource> {
-    const absolutePath = path.isAbsolute(filepath)
-      ? filepath
-      : path.join(this.sourcesPath, filepath);
+    let content: string;
+    let filename: string;
+    let absolutePath: string;
+    let sourceUrl: string | undefined;
+    let ext: string;
+    let title: string;
 
-    if (!fs.existsSync(absolutePath)) {
-      throw new Error(`File not found: ${absolutePath}`);
+    // Check if URL
+    if (filepath.startsWith('http://') || filepath.startsWith('https://')) {
+      info('Fetching URL', { url: filepath });
+
+      try {
+        // Fetch web page with timeout
+        const response = await fetch(filepath, {
+          signal: AbortSignal.timeout(30000) // 30s timeout
+        });
+
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+
+        const html = await response.text();
+
+        if (!html || html.trim().length === 0) {
+          throw new Error('Retrieved empty content from URL');
+        }
+
+        info('URL fetched', { url: filepath, size: html.length });
+
+        // Convert HTML to text
+        try {
+          content = htmlToText(html, {
+            wordwrap: false,
+            selectors: [
+              { selector: 'a', options: { ignoreHref: true } },
+              { selector: 'img', format: 'skip' },
+              { selector: 'script', format: 'skip' },
+              { selector: 'style', format: 'skip' },
+              { selector: 'nav', format: 'skip' },
+              { selector: 'footer', format: 'skip' },
+            ]
+          });
+
+          if (!content || content.trim().length === 0) {
+            throw new Error('HTML conversion resulted in empty content');
+          }
+
+          info('HTML converted to text', { chars: content.length });
+
+        } catch (conversionError) {
+          error('Failed to convert HTML to text', { error: String(conversionError) });
+          throw new Error(`Failed to convert HTML to text: ${conversionError instanceof Error ? conversionError.message : String(conversionError)}`);
+        }
+
+        // Generate filename from URL
+        const urlObj = new URL(filepath);
+        const hostname = urlObj.hostname.replace(/^www\./, '');
+        const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+        filename = `${hostname}-${timestamp}.md`;
+        absolutePath = path.join(this.sourcesPath, filename);
+        sourceUrl = filepath;
+        ext = '.md';
+
+        // Extract title from HTML title tag or use URL
+        const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i);
+        title = titleMatch ? titleMatch[1].trim() : urlObj.hostname;
+
+        // Save content as markdown file for reference
+        try {
+          const markdownContent = `# ${title}\n\nSource: ${filepath}\nFetched: ${new Date().toLocaleString()}\n\n---\n\n${content}`;
+          fs.writeFileSync(absolutePath, markdownContent, 'utf-8');
+          info('Saved web content to file', { path: absolutePath });
+        } catch (saveError) {
+          warn('Failed to save web content to file', { error: String(saveError) });
+          // Continue anyway - we have the content in memory
+        }
+
+      } catch (fetchError) {
+        error('Failed to fetch URL', { url: filepath, error: String(fetchError) });
+
+        if (fetchError instanceof Error) {
+          if (fetchError.name === 'AbortError') {
+            throw new Error(`Request timed out after 30 seconds: ${filepath}`);
+          } else if (fetchError.message.includes('fetch failed')) {
+            throw new Error(`Network error: Cannot reach ${filepath}. Check your internet connection.`);
+          }
+        }
+
+        throw new Error(`Failed to fetch URL: ${fetchError instanceof Error ? fetchError.message : String(fetchError)}`);
+      }
+
+    } else {
+      // Handle local file
+      absolutePath = path.isAbsolute(filepath)
+        ? filepath
+        : path.join(this.sourcesPath, filepath);
+
+      if (!fs.existsSync(absolutePath)) {
+        throw new Error(`File not found: ${absolutePath}`);
+      }
+
+      filename = path.basename(absolutePath);
+      ext = path.extname(filename).toLowerCase();
+
+      // Read content based on file type
+      if (ext === '.md' || ext === '.txt') {
+        content = fs.readFileSync(absolutePath, 'utf-8');
+      } else if (ext === '.pdf') {
+        try {
+          const dataBuffer = fs.readFileSync(absolutePath);
+          const pdfData = await pdf(dataBuffer);
+          content = pdfData.text;
+          info('PDF parsed', { pages: pdfData.numpages, chars: content.length });
+        } catch (pdfError) {
+          error('Failed to parse PDF', { file: filename, error: String(pdfError) });
+          throw new Error(`Failed to parse PDF: ${pdfError instanceof Error ? pdfError.message : String(pdfError)}`);
+        }
+      } else {
+        throw new Error(`Unsupported file type: ${ext}. Supported: .md, .txt, .pdf, or URLs`);
+      }
+
+      // Extract title from content
+      const titleMatch = content.match(/^#\s+(.+)$/m);
+      title = titleMatch ? titleMatch[1].trim() : filename;
     }
 
-    const filename = path.basename(absolutePath);
-    const ext = path.extname(filename).toLowerCase();
-
-    // Check if already ingested
+    // Check if already ingested (by filepath or URL)
+    const checkPath = sourceUrl || absolutePath;
     const existing = this.db.prepare(
-      'SELECT * FROM sources WHERE filepath = ?'
-    ).get(absolutePath) as any;
-    
+      'SELECT * FROM sources WHERE filepath = ? OR source_url = ?'
+    ).get(checkPath, checkPath) as any;
+
     if (existing) {
       info('Document already ingested, updating', { filename });
       await this.deleteSource(existing.id);
     }
 
-    // Read content based on file type
-    let content: string;
-    if (ext === '.md' || ext === '.txt') {
-      content = fs.readFileSync(absolutePath, 'utf-8');
-    } else if (ext === '.pdf') {
-      const dataBuffer = fs.readFileSync(absolutePath);
-      const pdfData = await pdf(dataBuffer);
-      content = pdfData.text;
-      info('PDF parsed', { pages: pdfData.numpages, chars: content.length });
-    } else {
-      throw new Error(`Unsupported file type: ${ext}. Supported: .md, .txt, .pdf`);
+    // Validate content before proceeding
+    if (!content || content.trim().length === 0) {
+      throw new Error('Cannot ingest document: content is empty');
     }
-
-    // Extract title from content
-    const titleMatch = content.match(/^#\s+(.+)$/m);
-    const title = titleMatch ? titleMatch[1].trim() : filename;
 
     // Create source record
     const sourceId = uuidv4();
     this.db.prepare(`
-      INSERT INTO sources (id, filename, filepath, title, source_type)
-      VALUES (?, ?, ?, ?, ?)
-    `).run(sourceId, filename, absolutePath, title, ext.slice(1));
+      INSERT INTO sources (id, filename, filepath, title, source_type, source_url)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `).run(sourceId, filename, absolutePath, title, ext.slice(1), sourceUrl || null);
 
     // Chunk the document
     const chunks = this.chunkDocument(content);
@@ -161,7 +266,7 @@ export class ShedService {
       `).run(chunkId, sourceId, i, chunkContent, this.estimateTokens(chunkContent), embeddingId);
     }
 
-    info('Document ingested', { filename, title, chunks: chunks.length });
+    info('Document ingested', { filename, title, chunks: chunks.length, sourceUrl });
 
     return {
       id: sourceId,
@@ -169,6 +274,7 @@ export class ShedService {
       filepath: absolutePath,
       title,
       sourceType: ext.slice(1),
+      sourceUrl,
       ingestedAt: new Date().toISOString(),
       chunkCount: chunks.length,
     };

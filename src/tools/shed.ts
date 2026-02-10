@@ -15,7 +15,7 @@ export const ingestDocument: Tool = {
       verbs: ['ingest', 'import', 'add'],
       nouns: ['shed', 'document', 'file', 'library'],
     },
-    examples: ['ingest notes.md', 'add to shed article.txt'],
+    examples: ['ingest notes.md', 'ingest https://example.com/article', 'add to shed article.txt'],
     priority: 80,
   },
 
@@ -41,7 +41,7 @@ export const ingestDocument: Tool = {
     const { filepath } = args as { filepath: string };
 
     if (!filepath) {
-      return 'Please provide a file path. Example: ingest notes.md\nSupported formats: .md, .txt, .pdf';
+      return 'Please provide a file path or URL. Examples:\n  ingest notes.md\n  ingest https://example.com/article\nSupported: .md, .txt, .pdf, or URLs';
     }
 
     try {
@@ -49,20 +49,26 @@ export const ingestDocument: Tool = {
       
       // Create a Garden page for this media
       const title = source.title || source.filename.replace(/\.[^.]+$/, '');
+      const sourceInfo = source.sourceUrl
+        ? `URL: ${source.sourceUrl}\nSaved as: ${source.filename}`
+        : `File: ${source.filename}`;
+
       const mediaPage = context.services.garden.create({
         type: 'media',
         title,
         status: 'active',
         tags: ['media'],
-        content: `Source: ${source.filename}\nIngested: ${new Date(source.ingestedAt).toLocaleDateString()}\nChunks: ${source.chunkCount}\n\nUse \`ask shed <question>\` to query this document.`,
+        content: `${sourceInfo}\nIngested: ${new Date(source.ingestedAt).toLocaleDateString()}\nChunks: ${source.chunkCount}\n\nUse \`ask shed <question>\` to query this document.`,
         metadata: {
           shed_source_id: source.id,
           filename: source.filename,
+          source_url: source.sourceUrl,
           chunk_count: source.chunkCount,
         },
       });
-      
-      return `✓ Ingested: "${source.title}"\n  Chunks: ${source.chunkCount}\n  Page created: open "${mediaPage.title}"`;
+
+      const sourceDisplay = source.sourceUrl ? `\n  URL: ${source.sourceUrl}` : '';
+      return `✓ Ingested: "${source.title}"${sourceDisplay}\n  Chunks: ${source.chunkCount}\n  Saved as: ${source.filename}\n  Page created: open "${mediaPage.title}"`;
     } catch (err) {
       return `Failed to ingest document: ${err instanceof Error ? err.message : String(err)}`;
     }

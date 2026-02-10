@@ -20,6 +20,7 @@
     "express": "^5.2.1",
     "gray-matter": "^4.0.3",
     "hnswlib-node": "^3.0.0",
+    "html-to-text": "^9.0.5",
     "multer": "^2.0.2",
     "openai": "^4.77.0",
     "pdf-parse": "^1.1.1",
@@ -31,6 +32,7 @@
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.12",
     "@types/express": "^5.0.6",
+    "@types/html-to-text": "^9.0.4",
     "@types/multer": "^2.0.0",
     "@types/node": "^22.10.5",
     "@types/uuid": "^10.0.0",

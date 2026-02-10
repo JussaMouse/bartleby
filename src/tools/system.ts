@@ -294,15 +294,16 @@ const HELP_SHED = `
 Ingest documents and query them with semantic search (RAG).
 
 **Commands**
-  ingest <filepath>       Add a document to the library
+  ingest <filepath|url>   Add a document or web page to the library
   list sources            Show all ingested documents
   ask shed <question>     Query your documents
 
 **Supported Formats**
-  .md, .txt, .pdf
+  .md, .txt, .pdf, or URLs (https://...)
 
 **Examples**
   ingest ~/Documents/meeting-notes.md
+  ingest https://www.uscis.gov/e-2-visa-requirements
   ingest ./contracts/agreement.pdf
   list sources
   ask shed what were the key decisions from the planning meeting
