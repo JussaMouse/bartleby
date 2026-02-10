@@ -38,7 +38,23 @@ export class VectorService {
       try {
         this.index.readIndexSync(this.indexPath);
         this.loadMetadata();
-        info('VectorService loaded', { vectors: this.metadata.size });
+
+        // Check if we need to resize immediately after loading
+        const currentSize = this.index.getCurrentCount();
+        const maxElements = this.index.getMaxElements();
+        const utilizationPercent = (currentSize / maxElements) * 100;
+
+        if (utilizationPercent >= 90) {
+          info('Vector index near capacity, resizing', {
+            currentSize,
+            maxElements,
+            utilizationPercent: utilizationPercent.toFixed(1),
+          });
+          this.index.resizeIndex(maxElements * 2);
+          this.save(); // Save the resized index
+        }
+
+        info('VectorService loaded', { vectors: this.metadata.size, capacity: this.index.getMaxElements() });
       } catch (err) {
         warn('Failed to load vector index, creating new', { error: String(err) });
         this.initializeNewIndex();
@@ -51,14 +67,35 @@ export class VectorService {
 
   private initializeNewIndex(): void {
     // M=16, efConstruction=200 are good defaults
-    // Can hold 100k vectors, will auto-resize if needed
-    this.index.initIndex(100000, 16, 200, 100);
+    // Start with 500k capacity (more headroom for large document collections)
+    this.index.initIndex(500000, 16, 200, 100);
     this.metadata.clear();
     this.idToLabel.clear();
     this.nextLabel = 0;
   }
 
+  private resizeIfNeeded(): void {
+    const currentSize = this.index.getCurrentCount();
+    const maxElements = this.index.getMaxElements();
+    const utilizationPercent = (currentSize / maxElements) * 100;
+
+    // Resize when 90% full
+    if (utilizationPercent >= 90) {
+      const newSize = maxElements * 2;
+      info('Resizing vector index', {
+        currentSize,
+        maxElements,
+        newSize,
+        utilizationPercent: utilizationPercent.toFixed(1),
+      });
+      this.index.resizeIndex(newSize);
+    }
+  }
+
   async add(embedding: number[], metadata: Omit<VectorMetadata, 'id'>): Promise<string> {
+    // Check if resize is needed before adding
+    this.resizeIfNeeded();
+
     const id = uuidv4();
     const label = this.nextLabel++;
 
