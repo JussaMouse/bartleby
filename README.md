@@ -558,11 +558,20 @@ These can appear anywhere in a command:
 
 ### Tips
 
-**Tab completion.** Hit `TAB` to autocomplete commands, page names, `@contexts`, `+projects`, and `with` contacts:
+**Tab completion.** Hit `TAB` to autocomplete commands, page names, `@contexts`, `+projects`, `#tags`, and `with` contacts:
 ```
 edit scr[TAB] @ho[TAB] +20[TAB]  →  edit screenshot tax form @home +2025-taxes
 new action call with sar[TAB]   →  new action call with sarah chen
+ingest doc.pdf +visa[TAB] #imm[TAB]  →  ingest doc.pdf +visa-project #immigration
 ```
+
+**Command history.** Use `↑` and `↓` arrow keys to cycle through previous commands, even from past sessions:
+```
+↑           Previous command
+↓           Next command
+Ctrl+R      Reverse search through history
+```
+History is saved to `~/.bartleby/database/history.txt` (last 1,000 commands).
 
 **Batch completion.** Complete multiple items at once after viewing any list:
 ```

@@ -19,7 +19,8 @@ const HELP_OVERVIEW = `
   done <number>         Complete action
   edit <#> @context     Change action context
 
-**💡 Use TAB for autocomplete** — page titles, @contexts, +projects, commands
+**💡 Use TAB for autocomplete** — page titles, @contexts, +projects, #tags, commands
+**💡 Use ↑/↓ arrow keys** — cycle through command history (persists across sessions)
 
 **Learn More**
   help garden           Your wiki (notes, contacts, entries)
