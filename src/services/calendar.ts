@@ -486,6 +486,21 @@ export class CalendarService {
     info('Calendar reconciliation complete');
   }
 
+  /**
+   * Get calendar entries for a specific project
+   * Searches metadata for projectId reference
+   */
+  getForProject(projectId: string): CalendarEntry[] {
+    const stmt = this.db.prepare(`
+      SELECT * FROM events
+      WHERE metadata LIKE ?
+      ORDER BY start_time ASC
+    `);
+
+    const rows = stmt.all(`%"projectId":"${projectId}"%`) as any[];
+    return rows.map(this.rowToEntry);
+  }
+
   close(): void {
     this.db.close();
   }

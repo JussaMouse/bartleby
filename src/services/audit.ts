@@ -167,4 +167,29 @@ export class AuditService {
     });
     return failed.length >= threshold;
   }
+
+  /**
+   * Get activity for a specific resource (e.g., a garden record)
+   * Useful for displaying recent activity on project pages
+   */
+  getActivity(options: {
+    resource?: string;
+    action?: string;
+    since?: Date;
+    limit?: number;
+  } = {}): AuditEvent[] {
+    // Query with base filters
+    const events = this.query({
+      since: options.since,
+      action: options.action,
+      limit: options.limit,
+    });
+
+    // Filter by resource if provided
+    if (options.resource) {
+      return events.filter(e => e.resource.includes(options.resource!));
+    }
+
+    return events;
+  }
 }
