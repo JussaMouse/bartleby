@@ -471,6 +471,70 @@ const nextAction = garden.query()
 - Paginated record listings
 - Complex filtered views
 
+### Graph Structure
+
+Navigate the relationship graph with **GardenGraph** - traverse relationships in any direction:
+
+```typescript
+const graph = garden.graph();
+
+// Get all children of a project
+const actions = graph.getChildren(projectId);
+
+// Find who references this note
+const backlinks = graph.getBacklinks(noteId);
+
+// Get all related records within 2 hops
+const cluster = graph.getCluster(recordId, 2);
+
+// Navigate with depth and filtering
+const related = graph.getRelated(recordId, {
+  depth: 2,
+  direction: 'outgoing',
+  types: ['reference', 'mentions'],
+  recordTypes: ['note']
+});
+```
+
+**GardenGraph Methods:**
+- `getRelated(recordId, options)` - Flexible graph traversal with BFS
+- `getParents()` - Records this one points to as parent
+- `getChildren()` - Records that point to this one as parent
+- `getReferences()` - Explicit outgoing references
+- `getMentions()` - Outgoing wiki link mentions
+- `getBacklinks(types?)` - All incoming references (optionally filtered)
+- `getCluster(radius)` - Records within N hops (bidirectional)
+
+**Options for getRelated:**
+- `depth` - How many hops to traverse (default: 1)
+- `direction` - 'outgoing', 'incoming', or 'both'
+- `types` - Filter by relationship type(s)
+- `recordTypes` - Filter by record type(s)
+- `filter` - Custom filter function
+
+**Features:**
+- **Bidirectional traversal** - Navigate in any direction
+- **Multi-hop queries** - Depth-configurable graph traversal
+- **Cycle detection** - BFS algorithm avoids infinite loops
+- **Cached adjacency list** - In-memory graph structure for performance
+- **Event-driven invalidation** - Auto-refresh on relationship changes
+- **Type filtering** - Filter by relationship or record types
+- **Lazy loading** - Builds adjacency list on first query
+
+**Use Cases:**
+- Find all actions in a project: `graph.getChildren(projectId)`
+- Discover backlinks: `graph.getBacklinks(noteId)`
+- Navigate related notes: `graph.getRelated(noteId, { depth: 2, recordTypes: ['note'] })`
+- Build graph visualizations: `graph.getCluster(recordId, 3)`
+- Find connection paths between records
+- Cluster analysis and related item suggestions
+
+**Performance:**
+- Adjacency list cached in memory
+- Single database query loads all relationships
+- BFS traversal: O(V + E) where V = vertices, E = edges
+- Cache invalidates automatically via EventBus
+
 ---
 
 ## Extending Bartleby
