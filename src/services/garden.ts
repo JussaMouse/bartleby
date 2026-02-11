@@ -60,6 +60,24 @@ export interface TaskFilters {
   dueAfter?: string;
 }
 
+// Relationship types for graph structure
+export type RelationType =
+  | 'parent'      // Child belongs to parent (action → project)
+  | 'child'       // Parent has children (project → action)
+  | 'reference'   // Explicit reference (action → contact, note → note)
+  | 'mentions';   // Extracted from [[wiki links]] in content
+
+export interface Relationship {
+  id: string;
+  sourceId: string;
+  sourceType: RecordType;
+  targetId: string;
+  targetType: RecordType;
+  relationType: RelationType;
+  metadata?: Record<string, unknown>;  // e.g., { role: 'primary', strength: 0.8 }
+  created_at: string;
+}
+
 // === Schema ===
 
 const SCHEMA = `
@@ -99,6 +117,17 @@ CREATE TABLE IF NOT EXISTS context_facts (
   PRIMARY KEY (record_id, key)
 );
 
+CREATE TABLE IF NOT EXISTS garden_relationships (
+  id TEXT PRIMARY KEY,
+  source_id TEXT NOT NULL,
+  source_type TEXT NOT NULL,
+  target_id TEXT NOT NULL,
+  target_type TEXT NOT NULL,
+  relation_type TEXT NOT NULL,
+  metadata TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 CREATE INDEX IF NOT EXISTS idx_garden_type ON garden_records(type);
 CREATE INDEX IF NOT EXISTS idx_garden_status ON garden_records(status);
 CREATE INDEX IF NOT EXISTS idx_garden_context ON garden_records(context);
@@ -108,6 +137,10 @@ CREATE INDEX IF NOT EXISTS idx_garden_privacy ON garden_records(privacy);
 CREATE INDEX IF NOT EXISTS idx_facts_record ON context_facts(record_id);
 CREATE INDEX IF NOT EXISTS idx_facts_key ON context_facts(key);
 CREATE INDEX IF NOT EXISTS idx_facts_expires ON context_facts(expires_at);
+CREATE INDEX IF NOT EXISTS idx_rel_source ON garden_relationships(source_id);
+CREATE INDEX IF NOT EXISTS idx_rel_target ON garden_relationships(target_id);
+CREATE INDEX IF NOT EXISTS idx_rel_type ON garden_relationships(relation_type);
+CREATE INDEX IF NOT EXISTS idx_rel_source_type ON garden_relationships(source_id, relation_type);
 `;
 
 // Migrations for existing databases
@@ -406,6 +439,275 @@ export class GardenService {
     }
 
     return true;
+  }
+
+  // === Relationships ===
+
+  /**
+   * Add a relationship between two records
+   */
+  addRelationship(
+    sourceId: string,
+    targetId: string,
+    relationType: RelationType,
+    metadata?: Record<string, unknown>
+  ): Relationship {
+    const source = this.get(sourceId);
+    const target = this.get(targetId);
+
+    if (!source || !target) {
+      throw new Error(`Cannot create relationship: source or target not found`);
+    }
+
+    const relationship: Relationship = {
+      id: uuidv4(),
+      sourceId,
+      sourceType: source.type,
+      targetId,
+      targetType: target.type,
+      relationType,
+      metadata,
+      created_at: new Date().toISOString()
+    };
+
+    this.db.prepare(`
+      INSERT INTO garden_relationships
+      (id, source_id, source_type, target_id, target_type, relation_type, metadata, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      relationship.id,
+      relationship.sourceId,
+      relationship.sourceType,
+      relationship.targetId,
+      relationship.targetType,
+      relationship.relationType,
+      JSON.stringify(relationship.metadata || {}),
+      relationship.created_at
+    );
+
+    debug('Relationship created', {
+      id: relationship.id,
+      type: relationType,
+      from: `${source.type}:${sourceId}`,
+      to: `${target.type}:${targetId}`
+    });
+
+    // Emit event (unless syncing)
+    if (!this.syncing) {
+      this.eventBus.emit({
+        type: 'relationship.created',
+        sourceId,
+        targetId,
+        relationType
+      });
+    }
+
+    return relationship;
+  }
+
+  /**
+   * Remove a relationship between two records
+   */
+  removeRelationship(sourceId: string, targetId: string, relationType?: RelationType): boolean {
+    let sql = 'DELETE FROM garden_relationships WHERE source_id = ? AND target_id = ?';
+    const params: any[] = [sourceId, targetId];
+
+    if (relationType) {
+      sql += ' AND relation_type = ?';
+      params.push(relationType);
+    }
+
+    const result = this.db.prepare(sql).run(...params);
+
+    if (result.changes > 0) {
+      debug('Relationship removed', { sourceId, targetId, relationType, count: result.changes });
+
+      // Emit event (unless syncing)
+      if (!this.syncing && relationType) {
+        this.eventBus.emit({
+          type: 'relationship.deleted',
+          sourceId,
+          targetId,
+          relationType
+        });
+      }
+    }
+
+    return result.changes > 0;
+  }
+
+  /**
+   * Get all relationships for a record
+   */
+  getRelationships(
+    recordId: string,
+    options?: {
+      direction?: 'outgoing' | 'incoming' | 'both';
+      types?: RelationType[];
+    }
+  ): Relationship[] {
+    const direction = options?.direction || 'both';
+    const types = options?.types;
+
+    let sql = 'SELECT * FROM garden_relationships WHERE ';
+    const params: any[] = [];
+
+    if (direction === 'outgoing') {
+      sql += 'source_id = ?';
+      params.push(recordId);
+    } else if (direction === 'incoming') {
+      sql += 'target_id = ?';
+      params.push(recordId);
+    } else {
+      sql += '(source_id = ? OR target_id = ?)';
+      params.push(recordId, recordId);
+    }
+
+    if (types && types.length > 0) {
+      sql += ` AND relation_type IN (${types.map(() => '?').join(',')})`;
+      params.push(...types);
+    }
+
+    const rows = this.db.prepare(sql).all(...params) as any[];
+
+    return rows.map(row => ({
+      id: row.id,
+      sourceId: row.source_id,
+      sourceType: row.source_type,
+      targetId: row.target_id,
+      targetType: row.target_type,
+      relationType: row.relation_type,
+      metadata: row.metadata ? JSON.parse(row.metadata) : undefined,
+      created_at: row.created_at
+    }));
+  }
+
+  /**
+   * Get related records (follows relationships and returns the records)
+   */
+  getRelatedRecords(
+    recordId: string,
+    options?: {
+      direction?: 'outgoing' | 'incoming' | 'both';
+      types?: RelationType[];
+      recordTypes?: RecordType[];
+    }
+  ): GardenRecord[] {
+    const relationships = this.getRelationships(recordId, options);
+    const relatedIds = new Set<string>();
+
+    for (const rel of relationships) {
+      if (rel.sourceId === recordId) {
+        relatedIds.add(rel.targetId);
+      } else {
+        relatedIds.add(rel.sourceId);
+      }
+    }
+
+    const records = Array.from(relatedIds)
+      .map(id => this.get(id))
+      .filter((r): r is GardenRecord => r !== null);
+
+    // Filter by record type if specified
+    if (options?.recordTypes) {
+      return records.filter(r => options.recordTypes!.includes(r.type));
+    }
+
+    return records;
+  }
+
+  /**
+   * Migrate existing project/context/contact fields to relationships table.
+   * This is a one-time migration to populate the new relationships system.
+   * Old fields are kept for backward compatibility.
+   */
+  migrateToRelationships(): { created: number; skipped: number; errors: number } {
+    info('Starting relationship migration...');
+
+    const stats = { created: 0, skipped: 0, errors: 0 };
+
+    // Temporarily disable events during bulk migration
+    this.eventBus.disable();
+    const originalSyncing = this.syncing;
+    this.syncing = true;
+
+    try {
+      const allRecords = this.db.prepare('SELECT * FROM garden_records').all() as any[];
+
+      for (const row of allRecords) {
+        const record = this.rowToRecord(row);
+
+        // Migrate project relationships (child → parent)
+        if (record.project) {
+          const projectRecord = this.getByTitle(record.project.replace(/^\+/, ''));
+          if (projectRecord) {
+            try {
+              // Check if relationship already exists
+              const existing = this.getRelationships(record.id, {
+                direction: 'outgoing',
+                types: ['parent']
+              }).find(r => r.targetId === projectRecord.id);
+
+              if (!existing) {
+                this.addRelationship(record.id, projectRecord.id, 'parent');
+                stats.created++;
+              } else {
+                stats.skipped++;
+              }
+            } catch (err) {
+              warn('Failed to migrate project relationship', {
+                record: record.id,
+                project: projectRecord.id,
+                error: String(err)
+              });
+              stats.errors++;
+            }
+          }
+        }
+
+        // Migrate contact relationships (reference)
+        if (record.contacts && Array.isArray(record.contacts)) {
+          for (const contactId of record.contacts) {
+            const contactRecord = this.get(contactId);
+            if (contactRecord) {
+              try {
+                const existing = this.getRelationships(record.id, {
+                  direction: 'outgoing',
+                  types: ['reference']
+                }).find(r => r.targetId === contactId);
+
+                if (!existing) {
+                  this.addRelationship(record.id, contactId, 'reference', {
+                    role: 'contact'
+                  });
+                  stats.created++;
+                } else {
+                  stats.skipped++;
+                }
+              } catch (err) {
+                warn('Failed to migrate contact relationship', {
+                  record: record.id,
+                  contact: contactId,
+                  error: String(err)
+                });
+                stats.errors++;
+              }
+            }
+          }
+        }
+
+        // Note: context (@phone, @computer) are not migrated to relationships
+        // as they're more like tags/filters than record relationships
+      }
+
+      info('Relationship migration complete', stats);
+    } finally {
+      // Re-enable events and restore syncing state
+      this.eventBus.enable();
+      this.syncing = originalSyncing;
+    }
+
+    return stats;
   }
 
   // === Queries ===
