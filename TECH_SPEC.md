@@ -884,6 +884,84 @@ defaults:
 - Custom page types
 - Team templates and conventions
 
+### Additional Page Views
+
+Specialized views for different record types:
+
+**ContactPageView:**
+
+Shows contact information with all related activity:
+
+```typescript
+const view = ViewRegistry.create(contactRecord, services);
+const markdown = view.render();
+```
+
+Sections:
+- **Contact Information** - Email, phone, birthday
+- **Projects** - Projects involving this contact
+- **Actions** - Active actions assigned to or mentioning contact
+- **Notes** - Notes referencing this contact
+- **Metadata** - View counts, last accessed
+- **Backlinks** - All records linking to contact
+
+**DailyPageView:**
+
+Daily journal page showing that day's activity:
+
+```typescript
+const view = ViewRegistry.create(dailyRecord, services);
+const markdown = view.render();
+```
+
+Sections:
+- **User Content** - Journal entry for the day
+- **Due Today** - Actions with this due date
+- **Events** - Calendar events happening today
+- **Completed** - Actions completed on this day
+- **Metadata** - Stats for the day
+
+**TagPageView:**
+
+Aggregate view of all records with a tag:
+
+```typescript
+// Note: Requires tagName parameter
+const view = new TagPageView(record, services, 'medical');
+const markdown = view.render();
+```
+
+Sections:
+- **Overview** - Tag name and total item count
+- **Projects** - Active projects with this tag
+- **Actions** - Active actions with this tag (sorted by due date)
+- **Notes** - Notes and entries with this tag
+- **People** - Contacts with this tag
+- **Other** - Other record types with this tag
+
+**Registered Views:**
+
+The ViewRegistry automatically uses the appropriate view:
+
+```typescript
+// Auto-selects view based on record type
+const view = ViewRegistry.create(record, services);
+
+// Currently registered:
+// - project → ProjectPageView
+// - contact → ContactPageView
+// - daily → DailyPageView
+// - * → DefaultPageView (fallback)
+```
+
+**Features:**
+- **Automatic registration** - Views mapped to record types
+- **Relationship queries** - Uses GardenGraph for related records
+- **Tag filtering** - TagPageView queries by tag
+- **Date filtering** - DailyPageView filters by date
+- **Dual output** - Markdown and JSON for all views
+- **Empty section filtering** - Skips sections with no content
+
 ---
 
 ## Extending Bartleby

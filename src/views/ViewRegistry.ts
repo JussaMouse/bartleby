@@ -2,6 +2,8 @@
 import type { GardenRecord, RecordType } from '../services/garden.js';
 import { PageView, type ViewServices, type Section } from './PageView.js';
 import { ProjectPageView } from './ProjectPageView.js';
+import { ContactPageView } from './ContactPageView.js';
+import { DailyPageView } from './DailyPageView.js';
 
 /**
  * View Registry - Factory for creating page views
@@ -87,3 +89,5 @@ export class ViewRegistry {
 
 // Register built-in views
 ViewRegistry.register('project', ProjectPageView);
+ViewRegistry.register('contact', ContactPageView);
+ViewRegistry.register('daily', DailyPageView);
