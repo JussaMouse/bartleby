@@ -740,7 +740,11 @@ export class GardenService {
 
       // Check if this file has an ID (was created by us)
       const existingId = meta.id as string | undefined;
-      const existing = existingId ? this.get(existingId) : this.getByTitle(title);
+      // Try ID first, then fall back to title if ID not found
+      let existing = existingId ? this.get(existingId) : null;
+      if (!existing) {
+        existing = this.getByTitle(title);
+      }
 
       // Extract content (remove title heading and any stray backmatter)
       let extractedContent = body.replace(/^#\s+.+\n+/, '').trim();
