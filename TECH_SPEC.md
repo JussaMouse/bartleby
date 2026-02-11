@@ -725,6 +725,76 @@ const metrics = viewCache.getMetrics();
 - CLI commands (cache expensive queries)
 - Monitoring cache metrics for optimization
 
+### LLM Generator
+
+AI-powered content generation for Garden records:
+
+```typescript
+import { LLMGenerator } from './llm/LLMGenerator.js';
+
+const generator = new LLMGenerator(llmService);
+
+// Generate project summary
+const relatedData = {
+  actions: graph.getChildren(projectId).filter(r => r.type === 'action'),
+  notes: graph.getRelated(projectId, { recordTypes: ['note'] }),
+  contacts: graph.getRelated(projectId, { recordTypes: ['contact'] }),
+  media: graph.getRelated(projectId, { recordTypes: ['media'] }),
+};
+
+const summary = await generator.summarizeProject(project, relatedData);
+// "This project is progressing well with 3 active tasks..."
+
+// Suggest next actions
+const suggestions = await generator.suggestNextActions(
+  project,
+  'Need to launch new feature',
+  existingActions
+);
+// ['Review design mockups', 'Complete spec', 'Schedule kickoff', ...]
+
+// Generate weekly review
+const review = await generator.generateWeeklyReview(
+  completedActions,
+  upcomingEvents,
+  { includeStats: true, includeProjects: true }
+);
+// "Great week! You completed 5 tasks across 3 projects..."
+```
+
+**LLMGenerator Methods:**
+- `summarizeProject(project, relatedData)` - Generate 2-3 sentence project summary
+- `suggestNextActions(project, context, actions)` - AI-suggested next steps (max 5)
+- `generateWeeklyReview(completed, upcoming, options)` - Weekly review summary
+- `invalidateProject(projectId)` - Clear cached responses for a project
+- `clearCache()` - Clear all cached responses
+
+**Features:**
+- **Automatic caching** - Responses cached with TTL (1 hour default, 24 hours for reviews)
+- **Cache invalidation** - Cache keys include updated_at timestamp
+- **Fast model** - Uses 'fast' tier for quick generation
+- **Bullet parsing** - Automatically extracts list items from LLM responses
+- **Project grouping** - Optional grouping for weekly reviews
+- **Graceful degradation** - Handles missing data, empty projects
+
+**Cache Behavior:**
+- Project summaries: Cached per `${projectId}:${updated_at}`
+- Next actions: Cached per `${projectId}:${updated_at}`
+- Weekly reviews: Cached per week start date + action count
+- TTL: 1 hour (summaries/actions), 24 hours (reviews)
+
+**Use Cases:**
+- Project page summaries (auto-generated overview)
+- AI-suggested next steps (help users plan)
+- Weekly review generation (reflection tool)
+- Dashboard widgets (progress summaries)
+- CLI commands (quick project status)
+
+**Performance:**
+- LLM calls: 1-3s depending on model
+- Cache hits: <1ms
+- TTL ensures fresh data without excessive API calls
+
 ---
 
 ## Extending Bartleby
