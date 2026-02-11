@@ -400,6 +400,77 @@ const projects = garden.getRelatedRecords(actionId, { recordTypes: ['project'] }
 
 **Future:** Graph traversal, path finding, clustering, related item suggestions.
 
+### Query Layer
+
+Build complex queries with **QueryBuilder** - a fluent API for composing SQL queries:
+
+```typescript
+// Simple type filtering
+const actions = garden.query()
+  .type('action')
+  .status('active')
+  .exec();
+
+// Complex query with relationships
+const myTasks = garden.query()
+  .type('action')
+  .where('status', '=', 'active')
+  .related('parent', projectId)
+  .tag('urgent')
+  .orderBy('due_date', 'asc')
+  .limit(10)
+  .exec();
+
+// Backlinks - find what references this record
+const backlinks = garden.query()
+  .related('reference', noteId, 'incoming')
+  .exec();
+
+// Count queries (efficient, no record fetching)
+const activeCount = garden.query()
+  .type('action')
+  .status('active')
+  .execCount();
+
+// Get first result
+const nextAction = garden.query()
+  .type('action')
+  .status('active')
+  .orderBy('due_date', 'asc')
+  .execFirst();
+```
+
+**QueryBuilder Methods:**
+- `type(type)` - Filter by record type(s)
+- `status(status)` - Filter by status(es)
+- `where(field, operator, value)` - Add WHERE clause (supports =, !=, >, <, >=, <=, LIKE, IN, IS NULL, IS NOT NULL)
+- `related(relationType, targetId, direction)` - Filter by relationships (direction: 'outgoing' or 'incoming')
+- `tag(tag)` - Filter by tag(s)
+- `orderBy(field, direction)` - Sort results ('asc' or 'desc')
+- `limit(count)` - Limit number of results
+- `offset(count)` - Skip results (for pagination)
+
+**Execution Methods:**
+- `exec()` - Execute and return all matching records
+- `execFirst()` - Execute and return first result (or null)
+- `execCount()` - Execute and return count (efficient, no record fetching)
+- `toSQL()` - Get SQL and parameters for debugging
+
+**Features:**
+- Fluent, chainable API
+- Parameterized queries (SQL injection safe)
+- Relationship joins with bidirectional support
+- Tag filtering using SQLite JSON functions
+- Efficient count queries without fetching records
+- Multiple execution modes
+
+**Use Cases:**
+- Find all active tasks in a project
+- Get backlinks (what references this note?)
+- Find tagged items with specific criteria
+- Paginated record listings
+- Complex filtered views
+
 ---
 
 ## Extending Bartleby
