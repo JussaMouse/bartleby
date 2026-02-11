@@ -694,15 +694,15 @@ Web UI at http://localhost:3333. View panels, edit pages, speak commands. Same d
 
 ### Starting the Dashboard
 
-```bash
-# Terminal 1: Bartleby CLI
-pnpm start
+The dashboard is integrated into Bartleby and starts automatically:
 
-# Terminal 2: Dashboard server
-pnpm dashboard
+```bash
+pnpm start
 ```
 
 Open http://localhost:3333 in your browser.
+
+**Authentication:** When `DASHBOARD_HOST` is not `localhost`, you'll be prompted to enter your `BARTLEBY_API_TOKEN` on first use. The token is stored in browser localStorage for subsequent visits.
 
 ### Panels
 

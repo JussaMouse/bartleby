@@ -26,6 +26,7 @@ const HELP_OVERVIEW = `
 **Learn More**
   help garden           Your wiki (notes, contacts, entries)
   help gtd              Actions & projects
+  help dashboard        Web interface & remote access
   help media            Upload files (images, audio, video, docs)
   help shed             Document library & RAG
   help calendar         Events & time
@@ -593,6 +594,48 @@ Upload and manage images, audio, video, and documents.
 • Media pages can be private via project inheritance
 `.trim();
 
+const HELP_DASHBOARD = `
+**Dashboard — Web Interface**
+
+Live-updating web UI at http://localhost:3333 (integrated into Bartleby).
+
+**Panels**
+  Inbox         Unprocessed items
+  Next Actions  Actions grouped by context
+  Projects      Active projects (click to expand)
+  Notes         All notes (click to open)
+  Calendar      Upcoming events + deadlines
+  Today         Today's schedule + overdue
+  Recent        Last 10 modified pages
+  REPL          Command line in browser
+
+Click + buttons in footer to add panels. Layout persists.
+
+**Authentication**
+When DASHBOARD_HOST is not localhost, you'll be prompted for your
+BARTLEBY_API_TOKEN on first use. Token is stored in browser localStorage.
+
+**.env Settings**
+  DASHBOARD_HOST=localhost     Local only (most secure)
+  DASHBOARD_HOST=100.x.x.x     Tailscale VPN (recommended for remote)
+  DASHBOARD_HOST=0.0.0.0       All interfaces (requires IP whitelist!)
+  DASHBOARD_PORT=3333          Default port
+  BARTLEBY_API_TOKEN=...       Required for non-localhost (openssl rand -hex 32)
+  BARTLEBY_ALLOWED_IPS=...     IP whitelist for 0.0.0.0 (e.g., 127.0.0.1,100.x.x.x)
+
+**Security**
+• localhost: No auth required (SSH tunnel recommended)
+• Tailscale: Auth required, VPN-secured
+• 0.0.0.0: Auth + IP whitelist required (multi-device access)
+• Localhost (127.0.0.1, ::1) is always allowed in IP whitelist
+
+**Remote Access**
+  SSH Tunnel:  ssh -L 3333:localhost:3333 user@server
+  Tailscale:   Set DASHBOARD_HOST to Tailscale IP (100.x.x.x)
+
+See README.md for detailed setup instructions.
+`.trim();
+
 const HELP_SECTIONS: Record<string, string> = {
   gtd: HELP_GTD,
   tasks: HELP_GTD,
@@ -634,6 +677,9 @@ const HELP_SECTIONS: Record<string, string> = {
   settings: HELP_SETTINGS,
   config: HELP_SETTINGS,
   configuration: HELP_SETTINGS,
+  dashboard: HELP_DASHBOARD,
+  web: HELP_DASHBOARD,
+  ui: HELP_DASHBOARD,
 };
 
 export const help: Tool = {
