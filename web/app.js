@@ -1,10 +1,54 @@
 // Bartleby Dashboard
 
 const PANEL_STORAGE_KEY = 'bartleby.panels';
+const API_TOKEN_KEY = 'bartleby.apiToken';
 const panels = new Map();
 let ws = null;
 let autocompleteData = { contexts: [], projects: [], tags: [] };
 let replMessages = [];
+let apiToken = null;
+
+// API token management
+function getApiToken() {
+  if (!apiToken) {
+    apiToken = localStorage.getItem(API_TOKEN_KEY);
+  }
+  return apiToken;
+}
+
+function setApiToken(token) {
+  apiToken = token;
+  if (token) {
+    localStorage.setItem(API_TOKEN_KEY, token);
+  } else {
+    localStorage.removeItem(API_TOKEN_KEY);
+  }
+}
+
+// Fetch wrapper that adds auth token
+async function apiFetch(url, options = {}) {
+  const token = getApiToken();
+  const headers = { ...options.headers };
+
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+
+  const response = await fetch(url, { ...options, headers });
+
+  // If 401, token might be invalid - prompt for new one
+  if (response.status === 401) {
+    const newToken = prompt('API token required. Please enter your BARTLEBY_API_TOKEN:');
+    if (newToken) {
+      setApiToken(newToken);
+      // Retry with new token
+      headers['Authorization'] = `Bearer ${newToken}`;
+      return fetch(url, { ...options, headers });
+    }
+  }
+
+  return response;
+}
 
 // Initialize
 document.addEventListener('DOMContentLoaded', () => {
@@ -46,7 +90,7 @@ function connectWebSocket() {
 // Autocomplete data
 async function fetchAutocomplete() {
   try {
-    const res = await fetch('/api/autocomplete');
+    const res = await apiFetch('/api/autocomplete');
     if (res.ok) {
       autocompleteData = await res.json();
       console.log('Autocomplete data loaded:', autocompleteData);
@@ -439,7 +483,7 @@ function editNoteInRepl(noteId) {
   }
   
   // Trigger the edit command
-  fetch('/api/chat', {
+  apiFetch('/api/chat', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ text: `edit ${noteId}` }),
@@ -459,7 +503,7 @@ async function removeNoteFromPanel(noteId) {
   if (!confirm('Remove this note?')) return;
   
   try {
-    const res = await fetch(`/api/page/${noteId}`, { method: 'DELETE' });
+    const res = await apiFetch(`/api/page/${noteId}`, { method: 'DELETE' });
     if (!res.ok) throw new Error('Delete failed');
     
     // Close the note panel
@@ -506,7 +550,7 @@ async function saveNoteContent(noteId) {
   
   try {
     // Get current note to preserve title
-    const getRes = await fetch(`/api/page/${noteId}`);
+    const getRes = await apiFetch(`/api/page/${noteId}`);
     if (!getRes.ok) throw new Error('Failed to get note');
     const noteData = await getRes.json();
     
@@ -516,7 +560,7 @@ async function saveNoteContent(noteId) {
       newContent = `# ${noteData.title}\n\n${content}`;
     }
     
-    const res = await fetch(`/api/page/${noteId}`, {
+    const res = await apiFetch(`/api/page/${noteId}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ content: newContent }),
@@ -539,7 +583,7 @@ async function convertNote(noteId, targetType) {
     console.log('Converting note:', noteId, 'to:', targetType);
     
     // Use direct convert endpoint (no auth needed)
-    const res = await fetch(`/api/page/${noteId}/convert`, {
+    const res = await apiFetch(`/api/page/${noteId}/convert`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ targetType }),
@@ -659,7 +703,7 @@ async function createNewNote() {
   if (!title?.trim()) return;
   
   try {
-    const res = await fetch('/api/note', {
+    const res = await apiFetch('/api/note', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ title: title.trim() }),
@@ -677,7 +721,7 @@ async function createNewItem() {
   if (!title?.trim()) return;
   
   try {
-    const res = await fetch('/api/item', {
+    const res = await apiFetch('/api/item', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ title: title.trim() }),
@@ -693,7 +737,7 @@ async function createNewItem() {
 async function createNewAction() {
   try {
     // Create action with placeholder title (server won't broadcast)
-    const res = await fetch('/api/action?nobroadcast=1', {
+    const res = await apiFetch('/api/action?nobroadcast=1', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ title: '' }),
@@ -764,7 +808,7 @@ async function createNewProject() {
   if (!title?.trim()) return;
   
   try {
-    const res = await fetch('/api/project', {
+    const res = await apiFetch('/api/project', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ title: title.trim() }),
@@ -785,7 +829,7 @@ async function createNewEvent() {
   if (!dateStr?.trim()) return;
   
   try {
-    const res = await fetch('/api/event', {
+    const res = await apiFetch('/api/event', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ title: title.trim(), dateStr: dateStr.trim() }),
@@ -841,7 +885,7 @@ async function sendReplMessage(event) {
   
   // Send to server
   try {
-    const res = await fetch('/api/chat', {
+    const res = await apiFetch('/api/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ text }),
@@ -1334,7 +1378,7 @@ async function saveEdit(item) {
   title = title.replace(/\s+/g, ' ').trim();
 
   try {
-    const res = await fetch(`/api/action/${id}`, {
+    const res = await apiFetch(`/api/action/${id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ title, context, project, due_date }),
@@ -1405,7 +1449,7 @@ function parseDueDate(str) {
 
 async function markDone(id) {
   try {
-    const res = await fetch(`/api/action/${id}/done`, { method: 'POST' });
+    const res = await apiFetch(`/api/action/${id}/done`, { method: 'POST' });
     if (!res.ok) throw new Error('Failed');
 
     const item = document.querySelector(`[data-id="${id}"]`);
@@ -1427,7 +1471,7 @@ async function processItem(item) {
   input.value = text;
 
   try {
-    await fetch(`/api/action/${id}`, {
+    await apiFetch(`/api/action/${id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ context: null }),
@@ -1453,7 +1497,7 @@ async function convertItem(item, targetType) {
   if (targetType === 'action') {
     // Simple conversion - just remove @inbox context
     try {
-      await fetch(`/api/action/${id}`, {
+      await apiFetch(`/api/action/${id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ context: null }),
@@ -1487,7 +1531,7 @@ async function convertItem(item, targetType) {
   
   try {
     // Create the new item via chat
-    const res = await fetch('/api/chat', {
+    const res = await apiFetch('/api/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ text: command }),
@@ -1496,7 +1540,7 @@ async function convertItem(item, targetType) {
     if (!res.ok) throw new Error('Failed to create');
     
     // Delete the old inbox item
-    await fetch(`/api/action/${id}/done`, { method: 'POST' });
+    await apiFetch(`/api/action/${id}/done`, { method: 'POST' });
     
     // Visual feedback
     item.style.opacity = '0.5';
@@ -1706,7 +1750,7 @@ async function saveGenericEdit(item) {
       if (project !== null) body.project = project;
       if (tags.length > 0) body.tags = tags;
 
-      const res = await fetch(`/api/note/${id}`, {
+      const res = await apiFetch(`/api/note/${id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
@@ -1728,7 +1772,7 @@ async function saveGenericEdit(item) {
       if (project !== null) body.project = project;
       if (tags.length > 0) body.tags = tags;
 
-      const res = await fetch(`/api/action/${id}`, {
+      const res = await apiFetch(`/api/action/${id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
@@ -1743,14 +1787,14 @@ async function saveGenericEdit(item) {
       showToast('Saved');
     } else {
       // Fallback for other types - update via content
-      const res = await fetch(`/api/page/${id}`, { method: 'GET' });
+      const res = await apiFetch(`/api/page/${id}`, { method: 'GET' });
       
       if (res.ok) {
         const data = await res.json();
         let content = data.content || '';
         content = content.replace(/^#\s+.+$/m, `# ${title}`);
         
-        await fetch(`/api/page/${id}`, {
+        await apiFetch(`/api/page/${id}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ content }),
@@ -1781,7 +1825,7 @@ async function removeItem(item) {
       ? `delete event ${title}` 
       : `delete ${title}`;
     
-    const res = await fetch('/api/chat', {
+    const res = await apiFetch('/api/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ text: command }),
@@ -1846,7 +1890,7 @@ function setupDragDrop() {
         showToast('Extracting text...');
         
         try {
-          const res = await fetch('/api/ocr', { method: 'POST', body: formData });
+          const res = await apiFetch('/api/ocr', { method: 'POST', body: formData });
           if (!res.ok) {
             const data = await res.json();
             throw new Error(data.error || 'OCR failed');
@@ -1882,7 +1926,7 @@ function setupDragDrop() {
         formData.append('name', name);
 
         try {
-          const res = await fetch('/api/media/upload', { method: 'POST', body: formData });
+          const res = await apiFetch('/api/media/upload', { method: 'POST', body: formData });
           if (!res.ok) throw new Error('Upload failed');
           showToast('Media imported');
         } catch (e) {
@@ -1901,7 +1945,7 @@ function setupDragDrop() {
       showToast('Extracting text...');
       
       try {
-        const res = await fetch('/api/ocr/note', { method: 'POST', body: formData });
+        const res = await apiFetch('/api/ocr/note', { method: 'POST', body: formData });
         if (!res.ok) {
           const data = await res.json();
           throw new Error(data.error || 'OCR failed');
@@ -1928,7 +1972,7 @@ function setupDragDrop() {
       formData.append('name', name);
 
       try {
-        const res = await fetch('/api/media/upload', { method: 'POST', body: formData });
+        const res = await apiFetch('/api/media/upload', { method: 'POST', body: formData });
         if (!res.ok) throw new Error('Upload failed');
         showToast('Media imported');
       } catch (e) {
