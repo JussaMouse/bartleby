@@ -11,6 +11,7 @@ import { info, warn, error, debug } from '../utils/logger.js';
 import type { CalendarService } from './calendar.js';
 import type { SchedulerService } from './scheduler.js';
 import { FactsService } from './facts.js';
+import { EventBus, getEventBus } from '../events/EventBus.js';
 
 // === Types ===
 
@@ -126,6 +127,7 @@ export class GardenService {
   private calendar?: CalendarService;
   private scheduler?: SchedulerService;
   private facts: FactsService;
+  private eventBus: EventBus;
 
   constructor(private config: Config) {
     const dbPath = getDbPath(config, 'garden.sqlite3');
@@ -139,6 +141,10 @@ export class GardenService {
     // Initialize FactsService for tracking record metadata
     this.facts = new FactsService(this.db);
     debug('FactsService initialized');
+
+    // Initialize EventBus for loose coupling
+    this.eventBus = getEventBus();
+    debug('EventBus connected');
   }
 
   /**
@@ -158,6 +164,13 @@ export class GardenService {
    */
   getFactsService(): FactsService {
     return this.facts;
+  }
+
+  /**
+   * Get the EventBus instance for listening to garden events.
+   */
+  getEventBus(): EventBus {
+    return this.eventBus;
   }
 
   async initialize(): Promise<void> {
@@ -255,6 +268,11 @@ export class GardenService {
 
     // Sync temporal data to calendar
     this.syncToCalendar(record);
+
+    // Emit event (unless syncing from file to avoid loops)
+    if (!this.syncing) {
+      this.eventBus.emit({ type: 'record.created', record });
+    }
 
     return record;
   }
@@ -358,6 +376,11 @@ export class GardenService {
       this.facts.setFact(id, 'lastEdited', new Date().toISOString());
     }
 
+    // Emit event (unless syncing from file to avoid loops)
+    if (!this.syncing) {
+      this.eventBus.emit({ type: 'record.updated', record: updated, previous: existing });
+    }
+
     return updated;
   }
 
@@ -376,6 +399,11 @@ export class GardenService {
     // Delete file and DB record
     this.deleteFile(record);
     this.deleteFromDb(id);
+
+    // Emit event (unless syncing from file to avoid loops)
+    if (!this.syncing) {
+      this.eventBus.emit({ type: 'record.deleted', record });
+    }
 
     return true;
   }
