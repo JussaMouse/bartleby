@@ -5,6 +5,7 @@ import { initServices, closeServices, ServiceContainer } from './services/index.
 import { CommandRouter } from './router/index.js';
 import { Agent } from './agent/index.js';
 import { startRepl } from './repl.js';
+import { DashboardServer } from './server/index.js';
 
 function validateSecurityPosture(config: Config): void {
   const errors: string[] = [];
@@ -148,16 +149,25 @@ async function main(): Promise<void> {
 
   const agent = new Agent(services);
 
-  // 5. Handle shutdown
+  // 5. Start dashboard server
+  const dashboardHost = process.env.DASHBOARD_HOST || 'localhost';
+  const dashboardPort = parseInt(process.env.DASHBOARD_PORT || '3333');
+  const dashboardServer = new DashboardServer(services, router, agent);
+  dashboardServer.start(dashboardPort, dashboardHost);
+  info(`Dashboard server started at http://${dashboardHost}:${dashboardPort}`);
+
+  // 6. Handle shutdown
   const shutdown = async () => {
     info('Shutting down...');
+    dashboardServer.stop();
     closeServices(services);
     process.exit(0);
   };
 
   process.on('SIGTERM', shutdown);
+  process.on('SIGINT', shutdown);
 
-  // 6. Start REPL
+  // 7. Start REPL
   await startRepl(router, agent, services);
 }
 
