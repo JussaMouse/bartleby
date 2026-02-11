@@ -1052,9 +1052,10 @@ Authorization: Bearer <your-token>
 |---------|----------|-------------|
 | `DASHBOARD_HOST=localhost` | ✅ High | Local server access only (default) |
 | `DASHBOARD_HOST=100.x.x.x` | ✅ High | Tailscale VPN access (recommended for remote) |
-| `DASHBOARD_HOST=0.0.0.0` | ❌ NEVER | Exposes to ALL networks - unsafe |
+| `DASHBOARD_HOST=0.0.0.0` | ⚠️ With IP whitelist | Multi-device access with IP restrictions |
+| `DASHBOARD_HOST=0.0.0.0` | ❌ NEVER | Without IP whitelist - unsafe |
 
-**⚠️ Critical:** Using `0.0.0.0` exposes your data to any device on any network you're connected to. Bartleby will refuse to start with this configuration.
+**⚠️ Critical:** Using `0.0.0.0` without an IP whitelist exposes your data to any device on any network. Bartleby will refuse to start with this insecure configuration.
 
 For remote access via Tailscale, you can bind specifically to your Tailscale IP:
 
@@ -1064,6 +1065,30 @@ DASHBOARD_PORT=3333
 ```
 
 This ensures Bartleby is only accessible via the VPN, not on local networks.
+
+#### IP Whitelisting for Multi-Device Access
+
+If you need to access Bartleby from multiple devices with different connection methods (e.g., laptop via SSH tunnel + iPhone via Tailscale), you can use IP whitelisting with `0.0.0.0` binding:
+
+```env
+DASHBOARD_HOST=0.0.0.0
+DASHBOARD_PORT=3333
+BARTLEBY_API_TOKEN=your-64-char-token-here
+BARTLEBY_ALLOWED_IPS=127.0.0.1,100.x.x.x  # Localhost + iPhone Tailscale IP
+```
+
+**How it works:**
+- `DASHBOARD_HOST=0.0.0.0` binds to all network interfaces
+- `BARTLEBY_ALLOWED_IPS` restricts access to specific IPs only
+- `127.0.0.1` allows localhost access (SSH tunnels work)
+- `100.x.x.x` is your iPhone's Tailscale IP (direct access)
+- Any other IP will receive `403 Forbidden`
+
+**Finding your device IPs:**
+```bash
+# On iPhone: Install Tailscale app, find IP in settings (starts with 100.)
+# On server: Run `tailscale status` to see all connected devices and their IPs
+```
 
 ### SSH Tunnel to Remote MLX Server
 
@@ -1242,7 +1267,8 @@ Get a free API key at [openweathermap.org](https://openweathermap.org/api).
 ```env
 DASHBOARD_PORT=3333       # Default port
 DASHBOARD_HOST=localhost  # Options: localhost, 0.0.0.0, or specific IP
-BARTLEBY_API_TOKEN=       # Optional: require token for /api/chat and /api/capture
+BARTLEBY_API_TOKEN=       # REQUIRED for remote access (generate: openssl rand -hex 32)
+BARTLEBY_ALLOWED_IPS=     # Optional: comma-separated IP whitelist (e.g., 127.0.0.1,100.x.x.x)
 ```
 
 **Host binding options:**
@@ -1250,10 +1276,12 @@ BARTLEBY_API_TOKEN=       # Optional: require token for /api/chat and /api/captu
 | Value | Accessible from | When to use |
 |-------|-----------------|-------------|
 | `localhost` | Server only | Default, most secure |
-| `0.0.0.0` | All interfaces | Behind VPN/firewall only |
+| `0.0.0.0` | All interfaces | Only with IP whitelist or behind VPN |
 | `100.x.x.x` | Tailscale only | Remote access without exposing to LAN |
 
-**Authentication:** The API token is required only for `/api/chat` and `/api/capture`. Dashboard panels and other endpoints work without auth (they're read-only or modify only your own data).
+**Authentication:** All API endpoints require `BARTLEBY_API_TOKEN` when `DASHBOARD_HOST` is not `localhost`. Generate a secure token with `openssl rand -hex 32`.
+
+**IP Whitelisting:** Use `BARTLEBY_ALLOWED_IPS` to restrict access to specific IPs when binding to `0.0.0.0`. Example: `BARTLEBY_ALLOWED_IPS=127.0.0.1,100.64.x.x` allows localhost and one Tailscale device. Localhost (127.0.0.1, ::1) is automatically included.
 
 ---
 

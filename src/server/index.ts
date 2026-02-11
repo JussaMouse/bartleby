@@ -48,6 +48,36 @@ export class DashboardServer {
   private setupRoutes() {
     this.app.use(express.json({ limit: '1mb' }));
 
+    // IP whitelist middleware - restrict access to specific IPs if configured
+    this.app.use((req, res, next) => {
+      const allowedIpsEnv = process.env.BARTLEBY_ALLOWED_IPS?.trim();
+
+      // If no whitelist configured, allow all
+      if (!allowedIpsEnv) {
+        return next();
+      }
+
+      const allowedIps = allowedIpsEnv.split(',').map(ip => ip.trim()).filter(ip => ip);
+
+      // Always allow localhost (IPv4 and IPv6)
+      const localhostIps = ['127.0.0.1', '::1', '::ffff:127.0.0.1'];
+      const allAllowedIps = [...allowedIps, ...localhostIps];
+
+      const clientIp = req.ip || req.socket.remoteAddress || 'unknown';
+
+      // Check if client IP is in whitelist
+      if (!allAllowedIps.includes(clientIp)) {
+        info('[IP] Blocked request from non-whitelisted IP', {
+          ip: clientIp,
+          path: req.path,
+          method: req.method,
+        });
+        return res.status(403).json({ error: 'Forbidden - IP not whitelisted' });
+      }
+
+      next();
+    });
+
     // Serve static files from web directory
     const webDir = path.join(__dirname, '..', '..', 'web');
     this.app.use(express.static(webDir));

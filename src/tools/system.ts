@@ -901,12 +901,19 @@ export const securityAudit: Tool = {
     const host = process.env.DASHBOARD_HOST || 'localhost';
     const port = process.env.DASHBOARD_PORT || '3333';
 
+    const allowedIpsEnv = process.env.BARTLEBY_ALLOWED_IPS?.trim();
+    const hasIpWhitelist = allowedIpsEnv && allowedIpsEnv.split(',').map(ip => ip.trim()).filter(ip => ip).length > 0;
+
     if (host === 'localhost' || host === '127.0.0.1') {
       lines.push(`  ✅ Dashboard: ${host}:${port} (server only)`);
     } else if (host.startsWith('100.')) {
       lines.push(`  ✅ Dashboard: ${host}:${port} (Tailscale VPN)`);
     } else if (host === '0.0.0.0') {
-      lines.push(`  ❌ Dashboard: 0.0.0.0:${port} (EXPOSED TO ALL NETWORKS!)`);
+      if (hasIpWhitelist) {
+        lines.push(`  ⚠️  Dashboard: 0.0.0.0:${port} (all networks, IP whitelist active)`);
+      } else {
+        lines.push(`  ❌ Dashboard: 0.0.0.0:${port} (EXPOSED TO ALL NETWORKS!)`);
+      }
     } else {
       lines.push(`  ⚠️  Dashboard: ${host}:${port}`);
     }
@@ -924,6 +931,21 @@ export const securityAudit: Tool = {
         lines.push(`  ⚠️  API Token: Not set (OK for localhost only)`);
       } else {
         lines.push(`  ❌ API Token: Not set (REQUIRED for network access!)`);
+      }
+    }
+
+    if (allowedIpsEnv) {
+      const ips = allowedIpsEnv.split(',').map(ip => ip.trim()).filter(ip => ip);
+      if (ips.length > 0) {
+        lines.push(`  ✅ IP Whitelist: ${ips.length} IP(s) allowed (${ips.join(', ')})`);
+      } else {
+        lines.push(`  ⚠️  IP Whitelist: Set but empty (allows all IPs)`);
+      }
+    } else {
+      if (host === '0.0.0.0') {
+        lines.push(`  ⚠️  IP Whitelist: Not set (allows all IPs on 0.0.0.0)`);
+      } else {
+        lines.push(`  ℹ️  IP Whitelist: Not set (restricted by host binding)`);
       }
     }
 

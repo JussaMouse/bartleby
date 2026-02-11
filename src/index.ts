@@ -12,11 +12,17 @@ function validateSecurityPosture(config: Config): void {
 
   const dashboardHost = process.env.DASHBOARD_HOST || 'localhost';
   const apiToken = process.env.BARTLEBY_API_TOKEN?.trim() || '';
+  const allowedIps = process.env.BARTLEBY_ALLOWED_IPS?.trim() || '';
 
   // Check dashboard host binding
   if (dashboardHost === '0.0.0.0') {
-    errors.push('DASHBOARD_HOST=0.0.0.0 exposes Bartleby to ALL networks');
-    errors.push('Use localhost (server-only) or Tailscale IP (VPN-only)');
+    // 0.0.0.0 is acceptable IF IP whitelist is configured
+    if (!allowedIps) {
+      errors.push('DASHBOARD_HOST=0.0.0.0 exposes Bartleby to ALL networks');
+      errors.push('Either use specific IP (localhost/Tailscale) or set BARTLEBY_ALLOWED_IPS');
+    } else {
+      warnings.push('DASHBOARD_HOST=0.0.0.0 with IP whitelist - ensure whitelist is correct');
+    }
   }
 
   // Require API token if not localhost
@@ -26,6 +32,21 @@ function validateSecurityPosture(config: Config): void {
       errors.push('Generate with: openssl rand -hex 32');
     } else if (apiToken.length < 32) {
       warnings.push('BARTLEBY_API_TOKEN should be at least 32 characters for security');
+    }
+  }
+
+  // Validate IP whitelist format
+  if (allowedIps) {
+    const ips = allowedIps.split(',').map(ip => ip.trim()).filter(ip => ip);
+    if (ips.length === 0) {
+      warnings.push('BARTLEBY_ALLOWED_IPS is set but empty - will allow all IPs');
+    } else {
+      // Simple validation - check if IPs look valid
+      const ipPattern = /^(\d{1,3}\.){3}\d{1,3}$|^([0-9a-f:]+)$/i;
+      const invalidIps = ips.filter(ip => !ipPattern.test(ip));
+      if (invalidIps.length > 0) {
+        warnings.push(`BARTLEBY_ALLOWED_IPS contains potentially invalid IPs: ${invalidIps.join(', ')}`);
+      }
     }
   }
 
