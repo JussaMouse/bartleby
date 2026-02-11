@@ -249,6 +249,10 @@ This keeps the Garden clean (only active items as files) while maintaining a per
 │   GTD │ Calendar │ Contacts │ Shed │ Scheduler │ System    │
 └─────────────────────────┬───────────────────────────────────┘
                           │
+                ┌─────────┴──────────┐
+                │     EventBus       │  ← Loosely couples services
+                └─────────┬──────────┘
+                          │
 ┌─────────────────────────┴───────────────────────────────────┐
 │                       Services                              │
 │  Garden │ Calendar │ Context │ Shed │ Scheduler │ Presence  │
@@ -331,6 +335,35 @@ export const myTool: Tool = {
 - Bartleby writes: Updates file immediately
 - User edits file: `chokidar` detects change, syncs to DB
 - Files are truth: If conflict, file wins
+
+### Event System
+
+Services communicate via **EventBus** for loose coupling:
+
+```typescript
+// Services emit events
+garden.create(data);  // → emits 'record.created'
+garden.update(id);    // → emits 'record.updated'
+garden.delete(id);    // → emits 'record.deleted'
+
+// Other services listen
+eventBus.on('record.created', (event) => {
+  viewCache.invalidate(event.record.id);
+  auditLog.log('create', event.record);
+});
+```
+
+**Event Types:**
+- `record.created` - New garden record
+- `record.updated` - Record modified (includes previous state)
+- `record.deleted` - Record removed
+- `relationship.*` - Future: graph relationships
+
+**Benefits:**
+- Services don't know about each other
+- Easy to add new listeners (plugins!)
+- Testable in isolation
+- Can disable for bulk operations
 
 ---
 
