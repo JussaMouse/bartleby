@@ -357,13 +357,48 @@ eventBus.on('record.created', (event) => {
 - `record.created` - New garden record
 - `record.updated` - Record modified (includes previous state)
 - `record.deleted` - Record removed
-- `relationship.*` - Future: graph relationships
+- `relationship.created` - New relationship
+- `relationship.deleted` - Relationship removed
 
 **Benefits:**
 - Services don't know about each other
 - Easy to add new listeners (plugins!)
 - Testable in isolation
 - Can disable for bulk operations
+
+### Graph/Relationship System
+
+Records connect via **typed relationships** for graph queries:
+
+```typescript
+// Add relationships
+garden.addRelationship(actionId, projectId, 'parent');
+garden.addRelationship(actionId, contactId, 'reference', { role: 'assignee' });
+
+// Query relationships
+const outgoing = garden.getRelationships(actionId, { direction: 'outgoing' });
+const incoming = garden.getRelationships(projectId, { direction: 'incoming' });  // Backlinks!
+const parents = garden.getRelationships(actionId, { types: ['parent'] });
+
+// Get related records directly
+const relatedRecords = garden.getRelatedRecords(actionId);  // Returns actual records
+const projects = garden.getRelatedRecords(actionId, { recordTypes: ['project'] });
+```
+
+**Relationship Types:**
+- `parent` - Child belongs to parent (action → project)
+- `child` - Parent has children (project → actions)
+- `reference` - Explicit connection (action → contact)
+- `mentions` - Extracted from [[wiki links]]
+
+**Features:**
+- Bidirectional queries (get backlinks!)
+- Type filtering
+- Metadata support (role, strength, etc.)
+- Migration from old fields (`project`, `contacts`)
+- Event emission on changes
+
+**Future:** Graph traversal, path finding, clustering, related item suggestions.
 
 ---
 
@@ -444,6 +479,22 @@ CREATE TABLE context_facts (
 CREATE INDEX idx_facts_record ON context_facts(record_id);
 CREATE INDEX idx_facts_key ON context_facts(key);
 CREATE INDEX idx_facts_expires ON context_facts(expires_at);
+
+CREATE TABLE garden_relationships (
+  id TEXT PRIMARY KEY,
+  source_id TEXT NOT NULL,
+  source_type TEXT NOT NULL,
+  target_id TEXT NOT NULL,
+  target_type TEXT NOT NULL,
+  relation_type TEXT NOT NULL,  -- parent, child, reference, mentions
+  metadata TEXT,                 -- JSON: { role, strength, ... }
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX idx_rel_source ON garden_relationships(source_id);
+CREATE INDEX idx_rel_target ON garden_relationships(target_id);
+CREATE INDEX idx_rel_type ON garden_relationships(relation_type);
+CREATE INDEX idx_rel_source_type ON garden_relationships(source_id, relation_type);
 ```
 
 **context_facts** stores dynamic metadata about garden records without writing to markdown files:
@@ -453,6 +504,14 @@ CREATE INDEX idx_facts_expires ON context_facts(expires_at);
 - Temporary state (snooze history, queue status)
 
 This data is **derived and non-essential** - if lost, it regenerates going forward. Markdown files remain the source of truth.
+
+**garden_relationships** stores typed connections between records:
+- **Relationship types:** parent (child→parent), child (parent→child), reference (explicit link), mentions (from [[links]])
+- **Bidirectional queries:** Fast lookups in both directions (source→target, target→source)
+- **Metadata support:** Store role, strength, or custom attributes
+- **Graph navigation:** Enables backlinks, related items, path finding
+
+Old fields (`project`, `contacts`) are preserved for backward compatibility but relationships are the primary system going forward.
 
 ### Calendar (`calendar.sqlite3`)
 
