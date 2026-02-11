@@ -87,6 +87,8 @@ You'll see:
 📊 Dashboard: http://localhost:3333
 ```
 
+Open http://localhost:3333 in your browser for the web UI with live-updating panels. Same data as the CLI, visual interface.
+
 **Pro tip:** Hit `TAB` to autocomplete commands, page names, contexts, and projects.
 
 ---
@@ -222,7 +224,13 @@ Three layers:
 
 If you lose the database, Bartleby rebuilds it from files on startup. If you lose facts, they start fresh going forward. Only the markdown files are irreplaceable.
 
-Pages are dynamic — projects automatically display linked actions, notes, media, and calendar events.
+**How dynamic pages work:** Bartleby builds a knowledge graph from your markdown files. When you use `[[wiki links]]`, `+projects`, `with contacts`, or `#tags`, these become edges in the graph. Pages automatically display related items by querying this graph:
+
+- **Project pages** → show all actions with `+project-name`, notes mentioning `[[Project Name]]`, and media tagged to the project
+- **Contact pages** → show all actions/events with `with person-name`
+- **Any page** → shows backlinks (what references this page)
+
+Example: Create `new action book flights +thailand-trip` and it immediately appears on the Thailand Trip project page. Create a note mentioning `[[Thailand Trip]]` and it appears there too. No manual organization needed — just link things together.
 
 **Commands:**
 ```
@@ -560,6 +568,12 @@ Capture → Clarify → Organize → Review → Do
 > done 1
 ```
 
+**Dashboard workflow:** The web UI provides visual task management:
+- **Inbox panel** — Click items to edit inline, convert to actions/projects/notes
+- **Next Actions** — Grouped by context, click any action to edit
+- **Projects** — Click to open project panel showing all related actions/notes/media
+- Tab completion works in the dashboard too (`@ho[TAB]` → `@home`, `+proj[TAB]` → `+project-name`)
+
 ### Linking Operators
 
 Three operators connect actions and events to context, projects, and people:
@@ -731,6 +745,25 @@ The dashboard shows live-updating panels:
 | **REPL** | Command line in the browser |
 
 Click the `+` buttons in the footer to add panels. Layout persists across reloads.
+
+### Rich Project & Note Views
+
+Project and note panels display **auto-generated sections** built from the knowledge graph:
+
+**Project panels show:**
+- 📝 **Content** — Your project description
+- 👥 **People** — Contacts referenced by this project (`with person`)
+- ✅ **Next Actions** — Tasks with `+project-name`
+- 📝 **Notes** — Notes mentioning `[[Project Name]]`
+- 📎 **Media** — Images and files tagged to this project
+- 🔗 **Backlinks** — Any page that links to this project
+
+**Note panels show:**
+- 📝 **Content** — Full note with markdown rendering
+- 🔗 **Backlinks** — Pages that reference this note
+- 📊 **Stats** — View counts, last edited
+
+Sections update automatically as you link items together. When you create `new action research visa +thailand-trip`, it instantly appears in the Thailand Trip project panel under "Next Actions". When you mention `[[Sarah]]` in a note, both the note and Sarah's contact page show the connection.
 
 ### Quick Create
 
@@ -1378,12 +1411,18 @@ pnpm start
 - ✅ All relationships (projects, contexts, wiki links)
 - ✅ File organization
 
-**What you might lose** (derived data):
-- ❌ Historical usage stats (view counts, edit history)
-- ❌ Embeddings vectors (costly to regenerate)
-- ❌ Computed metrics (momentum scores, AI assessments)
+**What you might lose** (derived data, can be regenerated):
+- ❌ Historical usage stats (view counts) — stats start fresh going forward
+- ❌ Embeddings vectors (costly to regenerate) — re-run `ingest` on shed documents
+- ❌ View cache — auto-rebuilt on first page access
 
-**None of these are essential** — they're computed from your markdown files.
+**Good news:** Bartleby automatically rebuilds from markdown:
+- ✅ Knowledge graph (all `[[links]]`, `+projects`, `with contacts`)
+- ✅ PageViews and sections (auto-generated from graph relationships)
+- ✅ Full-text search index
+- ✅ All queries and filters
+
+**None of the lost data is essential** — it's all computed from your markdown files.
 
 ### Sync to Cloud
 
@@ -1487,17 +1526,25 @@ Before importing sensitive data:
 - [ ] Backups exist and are encrypted
 - [ ] `.env` is NOT tracked by git
 
-### Critical Network Exposure Warning
+### Authentication & Network Exposure
 
-Most dashboard endpoints have **NO authentication**. If exposed to a network, anyone can read/modify/delete your data.
+All API endpoints require authentication when accessing remotely (`DASHBOARD_HOST` is not `localhost`).
 
-| `DASHBOARD_HOST` | Who can access | Safe? |
-|------------------|----------------|-------|
-| `localhost` | Only the server | ✓ Yes (default) |
-| `100.x.x.x` (Tailscale IP) | Only your VPN devices | ✓ Yes |
-| `0.0.0.0` | **Everyone on all networks** | ✗ NEVER |
+| `DASHBOARD_HOST` | Authentication | Who can access | Safe? |
+|------------------|---------------|----------------|-------|
+| `localhost` | None (local-only) | Only the server | ✓ Yes (default) |
+| `100.x.x.x` (Tailscale) | API token required | Only your VPN devices | ✓ Yes |
+| `0.0.0.0` + IP whitelist | API token + IP check | Whitelisted IPs only | ✓ Yes |
+| `0.0.0.0` without whitelist | ✗ Blocked at startup | N/A | ✗ NEVER |
 
-Only `/api/chat` and `/api/capture` require `BARTLEBY_API_TOKEN`. All other endpoints are unprotected.
+**Token requirement:** All requests to a remote dashboard must include:
+```
+Authorization: Bearer <your-token>
+```
+
+Browser sessions cache the token in localStorage after first entry. Siri Shortcuts and API clients must include the header in every request.
+
+**Why this matters:** Bartleby stores highly sensitive data (calendar, notes, financial records). Without authentication, anyone on the network could read, modify, or delete everything.
 
 For detailed security documentation, see [devs-notes/SECURITY.md](devs-notes/SECURITY.md).
 
