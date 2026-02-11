@@ -193,9 +193,10 @@ Everything lives on your machine in three places.
 
 Plain markdown files. One file per page.
 
-Two layers:
-- **Files** — Flat directory of `.md` files with YAML backmatter
-- **Database** — SQLite index, rebuilt automatically from files
+Three layers:
+- **Files** — Flat directory of `.md` files with YAML frontmatter (source of truth)
+- **Database** — SQLite index, rebuilt automatically from files (fast queries)
+- **Facts** — Dynamic metadata tracking (view counts, momentum, AI insights)
 
 **Page types:**
 | Type | What it's for |
@@ -210,6 +211,16 @@ Two layers:
 | `media` | Images and files imported into the garden |
 
 **Entry vs Note:** An *entry* is a permanent wiki page ("house rules", "packing checklist"). A *note* is scratch/working text, often attached to a project.
+
+**Data Layers Explained:**
+
+| Layer | Contains | Essential? | Example |
+|-------|----------|------------|---------|
+| **Files** | User content, static metadata | ✅ Required | Title, status, tags, due dates |
+| **Database** | Parsed data, search indexes | ⚠️ Derived | Full-text index, fast lookups |
+| **Facts** | Usage stats, AI insights | ❌ Optional | View counts, momentum scores |
+
+If you lose the database, Bartleby rebuilds it from files on startup. If you lose facts, they start fresh going forward. Only the markdown files are irreplaceable.
 
 Pages are dynamic — projects automatically display linked actions, notes, media, and calendar events.
 

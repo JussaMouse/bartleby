@@ -287,6 +287,7 @@ If nothing matches, ask the Fast model to pick a tool. If complex, use Thinking 
 | Service | Purpose |
 |---------|---------|
 | `GardenService` | CRUD for wiki pages, file sync |
+| `FactsService` | Dynamic metadata tracking (view counts, momentum) |
 | `CalendarService` | Events, temporal index |
 | `ContextService` | User facts, conversation history |
 | `ShedService` | Document ingestion, RAG |
@@ -397,7 +398,28 @@ CREATE TABLE garden_records (
 CREATE INDEX idx_type ON garden_records(type);
 CREATE INDEX idx_status ON garden_records(status);
 CREATE INDEX idx_due_date ON garden_records(due_date);
+
+CREATE TABLE context_facts (
+  record_id TEXT NOT NULL,
+  key TEXT NOT NULL,
+  value TEXT NOT NULL,           -- JSON-serialized value
+  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  expires_at TEXT,               -- Optional TTL
+  PRIMARY KEY (record_id, key)
+);
+
+CREATE INDEX idx_facts_record ON context_facts(record_id);
+CREATE INDEX idx_facts_key ON context_facts(key);
+CREATE INDEX idx_facts_expires ON context_facts(expires_at);
 ```
+
+**context_facts** stores dynamic metadata about garden records without writing to markdown files:
+- Usage statistics (view counts, edit counts, last accessed)
+- AI-generated insights (momentum scores, risk assessments)
+- Behavioral patterns (session times, completion rates)
+- Temporary state (snooze history, queue status)
+
+This data is **derived and non-essential** - if lost, it regenerates going forward. Markdown files remain the source of truth.
 
 ### Calendar (`calendar.sqlite3`)
 
