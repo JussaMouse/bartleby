@@ -14,6 +14,7 @@ import { FactsService } from './facts.js';
 import { EventBus, getEventBus } from '../events/EventBus.js';
 import { QueryBuilder } from '../query/QueryBuilder.js';
 import { GardenGraph } from '../graph/GardenGraph.js';
+import { ViewCache } from '../views/ViewCache.js';
 
 // === Types ===
 
@@ -164,6 +165,7 @@ export class GardenService {
   private facts: FactsService;
   private eventBus: EventBus;
   private _graphInstance?: GardenGraph;
+  private _viewCacheInstance?: ViewCache;
 
   constructor(private config: Config) {
     const dbPath = getDbPath(config, 'garden.sqlite3');
@@ -192,6 +194,35 @@ export class GardenService {
     this.eventBus.on('relationship.deleted', () => {
       if (this._graphInstance) {
         this._graphInstance.invalidate();
+      }
+    });
+
+    // Listen for record changes to invalidate view cache
+    this.eventBus.on('record.updated', (event: any) => {
+      if (this._viewCacheInstance && event.record) {
+        this._viewCacheInstance.invalidate(event.record.id);
+      }
+    });
+
+    this.eventBus.on('record.deleted', (event: any) => {
+      if (this._viewCacheInstance && event.record) {
+        this._viewCacheInstance.invalidate(event.record.id);
+      }
+    });
+
+    this.eventBus.on('relationship.created', (event: any) => {
+      if (this._viewCacheInstance && event.sourceId && event.targetId) {
+        // Invalidate both source and target
+        this._viewCacheInstance.invalidate(event.sourceId);
+        this._viewCacheInstance.invalidate(event.targetId);
+      }
+    });
+
+    this.eventBus.on('relationship.deleted', (event: any) => {
+      if (this._viewCacheInstance && event.sourceId && event.targetId) {
+        // Invalidate both source and target
+        this._viewCacheInstance.invalidate(event.sourceId);
+        this._viewCacheInstance.invalidate(event.targetId);
       }
     });
   }
@@ -744,6 +775,17 @@ export class GardenService {
       this._graphInstance = new GardenGraph(this.db, this.get.bind(this));
     }
     return this._graphInstance;
+  }
+
+  /**
+   * Get the view cache for rendered views
+   * Returns cached instance for performance
+   */
+  viewCache(): ViewCache {
+    if (!this._viewCacheInstance) {
+      this._viewCacheInstance = new ViewCache(this.graph());
+    }
+    return this._viewCacheInstance;
   }
 
   getTasks(filters: TaskFilters = {}): GardenRecord[] {
