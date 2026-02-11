@@ -1,6 +1,7 @@
 // src/tools/system.ts
 import { Tool } from './types.js';
 import { debug } from '../utils/logger.js';
+import fs from 'fs';
 
 // === Help Subsections ===
 
@@ -872,4 +873,166 @@ function formatBytes(bytes: number): string {
   return `${Math.round(bytes / Math.pow(k, i) * 10) / 10} ${sizes[i]}`;
 }
 
-export const systemTools: Tool[] = [help, status, listFiles, quit];
+export const securityAudit: Tool = {
+  name: 'securityAudit',
+  description: 'Show security posture and data flows',
+
+  routing: {
+    patterns: [
+      /^security\s+audit$/i,
+      /^audit\s+security$/i,
+      /^security\s+status$/i,
+    ],
+    keywords: {
+      verbs: ['security', 'audit', 'show'],
+      nouns: ['security', 'audit'],
+    },
+    examples: ['security audit', 'audit security'],
+    priority: 80,
+  },
+
+  execute: async (args, context) => {
+    const config = context.services.config;
+    const lines: string[] = ['**Security Audit**', ''];
+
+    // Network exposure
+    lines.push('**Network Exposure:**');
+    const host = process.env.DASHBOARD_HOST || 'localhost';
+    const port = process.env.DASHBOARD_PORT || '3333';
+
+    if (host === 'localhost' || host === '127.0.0.1') {
+      lines.push(`  ✅ Dashboard: ${host}:${port} (server only)`);
+    } else if (host.startsWith('100.')) {
+      lines.push(`  ✅ Dashboard: ${host}:${port} (Tailscale VPN)`);
+    } else if (host === '0.0.0.0') {
+      lines.push(`  ❌ Dashboard: 0.0.0.0:${port} (EXPOSED TO ALL NETWORKS!)`);
+    } else {
+      lines.push(`  ⚠️  Dashboard: ${host}:${port}`);
+    }
+
+    const apiToken = process.env.BARTLEBY_API_TOKEN;
+    if (apiToken) {
+      const tokenLength = apiToken.length;
+      if (tokenLength >= 32) {
+        lines.push(`  ✅ API Token: Set (${tokenLength} chars)`);
+      } else {
+        lines.push(`  ⚠️  API Token: Set but short (${tokenLength} chars, recommend 32+)`);
+      }
+    } else {
+      if (host === 'localhost' || host === '127.0.0.1') {
+        lines.push(`  ⚠️  API Token: Not set (OK for localhost only)`);
+      } else {
+        lines.push(`  ❌ API Token: Not set (REQUIRED for network access!)`);
+      }
+    }
+
+    // AI endpoints
+    lines.push('\n**AI Processing (where your queries go):**');
+    const endpoints = [
+      { name: 'Router', url: config.llm.router.url },
+      { name: 'Fast', url: config.llm.fast.url },
+      { name: 'Thinking', url: config.llm.thinking.url },
+      { name: 'Embeddings', url: config.embeddings.url },
+    ];
+
+    if (config.ocr.enabled && config.ocr.url) {
+      endpoints.push({ name: 'OCR', url: config.ocr.url });
+    }
+
+    for (const { name, url } of endpoints) {
+      const isLocal = url.includes('localhost') || url.includes('127.0.0.1');
+      if (isLocal) {
+        lines.push(`  ✅ ${name}: Local (${url})`);
+      } else {
+        lines.push(`  ⚠️  ${name}: Remote (${url}) - data may leave machine`);
+      }
+    }
+
+    const mlxApiKey = config.llm.apiKey || process.env.MLX_API_KEY;
+    if (mlxApiKey) {
+      lines.push(`  ✅ MLX API Key: Set`);
+    } else {
+      const hasRemote = endpoints.some(e => !e.url.includes('localhost') && !e.url.includes('127.0.0.1'));
+      if (hasRemote) {
+        lines.push(`  ⚠️  MLX API Key: Not set (remote endpoints exposed)`);
+      } else {
+        lines.push(`  ℹ️  MLX API Key: Not set (all endpoints local)`);
+      }
+    }
+
+    // External services
+    lines.push('\n**External Services (data leaving machine):**');
+    if (config.weather.apiKey) {
+      const city = config.weather.city || 'not set';
+      lines.push(`  ⚠️  Weather: Enabled (sends city: ${city} to OpenWeatherMap)`);
+    } else {
+      lines.push(`  ✅ Weather: Disabled`);
+    }
+
+    if (config.signal.enabled) {
+      lines.push(`  ⚠️  Signal: Enabled (sends notifications E2E encrypted)`);
+    } else {
+      lines.push(`  ✅ Signal: Disabled`);
+    }
+
+    // Logging
+    lines.push('\n**Logging:**');
+    lines.push(`  Level: ${config.logging.level}`);
+    if (config.logging.level === 'debug') {
+      lines.push(`  ⚠️  Debug logging may contain sensitive data`);
+    } else {
+      lines.push(`  ✅ Safe logging level`);
+    }
+
+    if (config.logging.llmVerbose) {
+      lines.push(`  ❌ LLM verbose: Enabled (logs full conversations!)`);
+    } else {
+      lines.push(`  ✅ LLM verbose: Disabled`);
+    }
+
+    // File permissions
+    lines.push('\n**File Security:**');
+    try {
+      const envStats = fs.statSync('.env');
+      const mode = (envStats.mode & parseInt('777', 8)).toString(8);
+      if (mode === '600') {
+        lines.push(`  ✅ .env permissions: ${mode} (owner only)`);
+      } else {
+        lines.push(`  ⚠️  .env permissions: ${mode} (recommend 600)`);
+        lines.push(`     Fix: chmod 600 .env`);
+      }
+    } catch {
+      lines.push(`  ⚠️  Could not check .env permissions`);
+    }
+
+    // Disk encryption (macOS only for now)
+    lines.push('\n**Encryption at Rest:**');
+    try {
+      const { execSync } = await import('child_process');
+      const result = execSync('fdesetup status 2>&1', { encoding: 'utf-8' });
+      if (result.includes('FileVault is On')) {
+        lines.push(`  ✅ FileVault: Enabled`);
+      } else {
+        lines.push(`  ⚠️  FileVault: Disabled (enable for encryption at rest)`);
+      }
+    } catch {
+      lines.push(`  ℹ️  Could not check FileVault status (may not be macOS)`);
+    }
+
+    lines.push('\n**Summary:**');
+    const hasIssues = lines.some(l => l.includes('❌') || (l.includes('⚠️') && host !== 'localhost'));
+    if (!hasIssues) {
+      lines.push('  ✅ Security posture looks good');
+    } else {
+      lines.push('  ⚠️  Issues detected - review warnings above');
+    }
+
+    lines.push('\n**Next Steps:**');
+    lines.push('  • Review devs-notes/security-implementation-plan.md');
+    lines.push('  • Run ./scripts/security-audit.sh for detailed check');
+
+    return lines.join('\n');
+  },
+};
+
+export const systemTools: Tool[] = [help, status, securityAudit, listFiles, quit];
