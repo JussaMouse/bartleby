@@ -56,6 +56,51 @@ export class DashboardServer {
     const mediaDir = this.garden.getMediaDir();
     this.app.use('/media', express.static(mediaDir));
 
+    // Auth middleware for all /api/* endpoints
+    this.app.use('/api', (req, res, next) => {
+      // Public endpoints (none currently - might add health check later)
+      const publicPaths: string[] = [];
+
+      if (publicPaths.some(p => req.path.startsWith(p))) {
+        return next();
+      }
+
+      // All API endpoints require token
+      const authHeader = req.headers.authorization;
+      const token = authHeader?.replace('Bearer ', '').trim();
+
+      // Server must have token configured (unless localhost)
+      if (!this.apiToken) {
+        const host = process.env.DASHBOARD_HOST || 'localhost';
+        if (host !== 'localhost' && host !== '127.0.0.1') {
+          error('[AUTH] BARTLEBY_API_TOKEN not configured - server misconfigured', {
+            host,
+            path: req.path,
+          });
+          return res.status(500).json({
+            error: 'Server authentication not configured'
+          });
+        }
+        // Localhost without token - allow (for development)
+        return next();
+      }
+
+      // Request must provide valid token
+      if (!token || token !== this.apiToken) {
+        info('[AUTH] Failed auth attempt', {
+          ip: req.ip,
+          method: req.method,
+          path: req.path,
+          hasToken: !!token,
+        });
+
+        return res.status(401).json({ error: 'Unauthorized' });
+      }
+
+      // Token valid - proceed
+      next();
+    });
+
     // Test endpoint to verify logging is working
     this.app.get('/api/test', (req, res) => {
       const timestamp = new Date().toISOString();
