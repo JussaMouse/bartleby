@@ -47,15 +47,32 @@ cp .env.example .env
 
 Edit `.env` with your LLM endpoints. You'll need local models running (e.g., via [MLX](https://github.com/ml-explore/mlx), [Ollama](https://ollama.ai), or [llama.cpp](https://github.com/ggerganov/llama.cpp)).
 
-At minimum:
+**Minimum configuration:**
 
 ```env
+# LLM endpoints (must be local)
 FAST_MODEL=your-model-name
 FAST_URL=http://127.0.0.1:8080/v1
 
 EMBEDDINGS_MODEL=your-embedding-model
 EMBEDDINGS_URL=http://127.0.0.1:8081/v1
 ```
+
+**For remote access** (accessing dashboard from other devices):
+
+```bash
+# Generate secure API token
+openssl rand -hex 32
+```
+
+Add to `.env`:
+```env
+# Required for remote access
+BARTLEBY_API_TOKEN=<paste-generated-token>
+DASHBOARD_HOST=localhost  # or your Tailscale IP
+```
+
+See [Running on a Server](#running-on-a-server) for Tailscale setup.
 
 **3. Run**
 
@@ -799,13 +816,21 @@ git clone https://github.com/JussaMouse/bartleby.git
 cd bartleby
 pnpm install && pnpm approve-builds && pnpm build
 cp .env.example .env
+
+# Generate API token for authentication
+openssl rand -hex 32
+
 # Edit .env with your config
+# Add the generated token as BARTLEBY_API_TOKEN=<token>
+# Set DASHBOARD_HOST=localhost (or Tailscale IP for VPN access)
 
 # Start in tmux or screen
 tmux new -s bartleby
 pnpm start
 # Ctrl+B D to detach
 ```
+
+**⚠️ Security Note:** All API endpoints require authentication. Set `BARTLEBY_API_TOKEN` in `.env` before accessing remotely.
 
 ### Accessing the Dashboard Remotely
 
@@ -883,13 +908,23 @@ tailscale ip -4
 **Configure Bartleby for VPN access:**
 
 ```env
-DASHBOARD_HOST=0.0.0.0
+# Bind to Tailscale IP (not 0.0.0.0 - that exposes to all networks!)
+DASHBOARD_HOST=100.x.x.x  # Your server's Tailscale IP (find with: tailscale ip -4)
 DASHBOARD_PORT=3333
+BARTLEBY_API_TOKEN=<your-generated-token>  # Required for authentication
 ```
 
 **Option 3: Siri Shortcuts (recommended for voice)**
 
 Use iOS Shortcuts for hands-free voice commands. All speech recognition and text-to-speech happens on-device for speed.
+
+**⚠️ Authentication Required:** All shortcuts must include your `BARTLEBY_API_TOKEN` in the Authorization header.
+
+Get your token from server's `.env` file:
+```bash
+# On server
+grep BARTLEBY_API_TOKEN .env
+```
 
 **Quick Capture Shortcut** (fastest — dedicated endpoint):
 
@@ -898,9 +933,9 @@ Use iOS Shortcuts for hands-free voice commands. All speech recognition and text
 3. Add action: **Get Contents of URL**
    - URL: `http://<tailscale-ip>:3333/api/capture`
    - Method: **POST**
-   - Headers: 
+   - Headers:
      - `Content-Type`: `application/json`
-     - `Authorization`: `Bearer YOUR_TOKEN`
+     - `Authorization`: `Bearer <paste-your-token-here>`
    - Request Body: **JSON**
      - Add field `text` with value: select **Dictated Text** variable
 4. Add action: **Get Dictionary Value**
@@ -994,22 +1029,32 @@ Same as above but use URL: `http://<tailscale-ip>:3333/api/inbox?voice=true`
 
 ### API Token
 
-For remote access, set an API token:
+**⚠️ REQUIRED for all remote access.** All API endpoints now require authentication.
 
+Generate a secure token:
+```bash
+openssl rand -hex 32
+```
+
+Add to `.env`:
 ```env
-BARTLEBY_API_TOKEN=your-secret-token
+BARTLEBY_API_TOKEN=<paste-generated-token>
 ```
 
-Requests must include:
+All API requests must include:
 ```
-Authorization: Bearer your-secret-token
+Authorization: Bearer <your-token>
 ```
 
-**Security notes:**
+**Security: Dashboard Host Binding**
 
-- **`DASHBOARD_HOST=localhost`** (default) — Only accessible from the server itself
-- **`DASHBOARD_HOST=0.0.0.0`** — Accessible from any network interface (use only with VPN/firewall)
-- **`DASHBOARD_HOST=<tailscale-ip>`** — Bind only to Tailscale interface (recommended for remote access)
+| Setting | Security | When to use |
+|---------|----------|-------------|
+| `DASHBOARD_HOST=localhost` | ✅ High | Local server access only (default) |
+| `DASHBOARD_HOST=100.x.x.x` | ✅ High | Tailscale VPN access (recommended for remote) |
+| `DASHBOARD_HOST=0.0.0.0` | ❌ NEVER | Exposes to ALL networks - unsafe |
+
+**⚠️ Critical:** Using `0.0.0.0` exposes your data to any device on any network you're connected to. Bartleby will refuse to start with this configuration.
 
 For remote access via Tailscale, you can bind specifically to your Tailscale IP:
 

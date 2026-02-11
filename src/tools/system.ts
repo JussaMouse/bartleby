@@ -35,6 +35,7 @@ const HELP_OVERVIEW = `
 
 **System**
   status                Health check
+  security audit        Show security posture
   quit                  Exit Bartleby
 `.trim();
 
