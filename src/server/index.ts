@@ -14,6 +14,7 @@ import { CommandRouter } from '../router/index.js';
 import { ServiceContainer } from '../services/index.js';
 import { loadConfig } from '../config.js';
 import { info, error, debug } from '../utils/logger.js';
+import { ViewRegistry } from '../views/ViewRegistry.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -1161,6 +1162,7 @@ export class DashboardServer {
 
   private sendViewData(client: DashboardClient, view: string) {
     let data: any;
+    let pageView: any = null;
 
     if (view === 'inbox') {
       data = this.garden.getByType('item').filter(i => i.status === 'active');
@@ -1175,29 +1177,55 @@ export class DashboardServer {
         const projectId = project.id;
         const projectSlug = project.title.toLowerCase().replace(/\s+/g, '-');
         const projectTitle = project.title.toLowerCase();
-        
+
         // Match by project ID or by title/slug (for backwards compat)
-        const matchesProject = (p?: string) => 
-          p === projectId || 
-          p?.toLowerCase() === projectSlug || 
+        const matchesProject = (p?: string) =>
+          p === projectId ||
+          p?.toLowerCase() === projectSlug ||
           p?.toLowerCase() === projectTitle;
-        
+
         const actions = this.garden.getTasks({ status: 'active' })
           .filter(a => matchesProject(a.project));
-        
+
         const media = this.garden.getByType('media')
           .filter(m => matchesProject(m.project));
-        
+
         const notes = this.garden.getByType('note')
           .filter(n => matchesProject(n.project));
-        
+
         data = { project, actions, media, notes };
+
+        // Generate PageView for project
+        try {
+          const services = {
+            garden: this.garden,
+            graph: this.garden.graph(),
+            facts: this.garden.getFactsService(),
+          };
+          const view = ViewRegistry.create(project, services);
+          pageView = view.toJSON();
+        } catch (err: any) {
+          debug(`Failed to generate PageView for project: ${err?.message || err}`);
+        }
       }
     } else if (view.startsWith('note:')) {
       const noteId = view.slice(5);
       const note = this.garden.get(noteId);
       if (note) {
         data = { note };
+
+        // Generate PageView for note
+        try {
+          const services = {
+            garden: this.garden,
+            graph: this.garden.graph(),
+            facts: this.garden.getFactsService(),
+          };
+          const noteView = ViewRegistry.create(note, services);
+          pageView = noteView.toJSON();
+        } catch (err: any) {
+          debug(`Failed to generate PageView for note: ${err?.message || err}`);
+        }
       }
     } else if (view === 'calendar') {
       data = this.calendar.getUpcoming(15);
@@ -1213,7 +1241,11 @@ export class DashboardServer {
     }
 
     if (data) {
-      client.ws.send(JSON.stringify({ type: 'data', view, data }));
+      const message: any = { type: 'data', view, data };
+      if (pageView) {
+        message.pageView = pageView;
+      }
+      client.ws.send(JSON.stringify(message));
     }
   }
 
