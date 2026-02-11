@@ -795,6 +795,95 @@ const review = await generator.generateWeeklyReview(
 - Cache hits: <1ms
 - TTL ensures fresh data without excessive API calls
 
+### Templates
+
+Create Garden records from templates with variable substitution:
+
+```typescript
+import { TemplateEngine } from './templates/TemplateEngine.js';
+
+const templates = new TemplateEngine(garden, config);
+await templates.initialize();
+
+// Create default templates (gtd-project, meeting-notes, contact)
+templates.createDefaultTemplates();
+
+// Create record from template
+const project = templates.createFromTemplate(
+  'gtd-project',
+  {
+    title: 'Launch Product',
+    description: 'Launch our new product to market.',
+    goal1: 'Complete development',
+    goal2: 'Marketing campaign',
+    goal3: 'Sales targets',
+  },
+  { status: 'active' }
+);
+```
+
+**Template Format:**
+
+Templates are markdown files with frontmatter:
+
+```markdown
+---
+name: gtd-project
+description: GTD project with goals and success criteria
+type: project
+defaults:
+  status: active
+---
+# {{title}}
+
+{{description}}
+
+## Goals
+- {{goal1}}
+- {{goal2}}
+- {{goal3}}
+
+## Success Criteria
+- [ ] {{criteria1}}
+- [ ] {{criteria2}}
+```
+
+**TemplateEngine Methods:**
+- `register(template)` - Register a template programmatically
+- `get(name)` - Get a template by name
+- `list()` - List all available templates
+- `render(name, vars)` - Render template with variable substitution
+- `createFromTemplate(name, vars, overrides)` - Create Garden record from template
+- `saveTemplate(template)` - Save template to disk
+- `deleteTemplate(name)` - Delete a template
+- `createDefaultTemplates()` - Create built-in templates
+
+**Default Templates:**
+- **gtd-project** - GTD project with goals, success criteria, next actions
+- **meeting-notes** - Structured meeting notes (agenda, decisions, action items)
+- **contact** - Contact information template
+
+**Features:**
+- **Variable substitution** - `{{variable}}` placeholders
+- **Default values** - Template-level defaults
+- **Override mechanism** - Provided vars override defaults
+- **Title extraction** - Auto-extract title from first heading
+- **Disk persistence** - Templates saved to `garden/templates/`
+- **Auto-loading** - Templates loaded on initialization
+
+**Variable Substitution:**
+- Syntax: `{{variableName}}`
+- Defaults can be specified in frontmatter
+- Provided variables override defaults
+- Unsubstituted placeholders are removed
+
+**Use Cases:**
+- Consistent project structure
+- Standardized meeting notes
+- Contact information capture
+- Custom page types
+- Team templates and conventions
+
 ---
 
 ## Extending Bartleby
