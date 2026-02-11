@@ -137,16 +137,41 @@ export class GardenService {
 
   async initialize(): Promise<void> {
     this.db.exec(SCHEMA);
-    
+
     // Run migrations for existing databases
     for (const migration of MIGRATIONS) {
       try {
         this.db.exec(migration);
-      } catch {
-        // Column already exists, ignore
+        debug('Migration applied', { migration: migration.substring(0, 50) });
+      } catch (err) {
+        // Column already exists or other issue - check if it's the expected error
+        const errMsg = String(err);
+        if (errMsg.includes('duplicate column name')) {
+          debug('Migration skipped (column exists)', { migration: migration.substring(0, 50) });
+        } else {
+          warn('Migration failed', { migration: migration.substring(0, 50), error: errMsg });
+        }
       }
     }
-    
+
+    // Verify critical columns exist
+    try {
+      const tableInfo = this.db.prepare('PRAGMA table_info(garden_records)').all() as any[];
+      const columns = tableInfo.map((col: any) => col.name);
+      const requiredColumns = ['privacy', 'contacts'];
+      const missing = requiredColumns.filter(col => !columns.includes(col));
+
+      if (missing.length > 0) {
+        error('Database schema is missing required columns', { missing });
+        throw new Error(`Database schema outdated. Missing columns: ${missing.join(', ')}. Please delete database/garden.sqlite3 and restart.`);
+      }
+
+      debug('Database schema verified', { columns });
+    } catch (err) {
+      if ((err as Error).message.includes('schema outdated')) throw err;
+      warn('Could not verify schema', { error: String(err) });
+    }
+
     ensureDir(this.gardenPath);
 
     await this.syncFromFiles();
