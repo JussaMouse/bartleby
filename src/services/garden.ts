@@ -10,6 +10,7 @@ import { parseGardenPage, toGardenPage, extractTitle } from '../utils/garden-par
 import { info, warn, error, debug } from '../utils/logger.js';
 import type { CalendarService } from './calendar.js';
 import type { SchedulerService } from './scheduler.js';
+import { FactsService } from './facts.js';
 
 // === Types ===
 
@@ -88,12 +89,24 @@ CREATE TABLE IF NOT EXISTS garden_links (
   PRIMARY KEY (source_id, target_id)
 );
 
+CREATE TABLE IF NOT EXISTS context_facts (
+  record_id TEXT NOT NULL,
+  key TEXT NOT NULL,
+  value TEXT NOT NULL,
+  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  expires_at TEXT,
+  PRIMARY KEY (record_id, key)
+);
+
 CREATE INDEX IF NOT EXISTS idx_garden_type ON garden_records(type);
 CREATE INDEX IF NOT EXISTS idx_garden_status ON garden_records(status);
 CREATE INDEX IF NOT EXISTS idx_garden_context ON garden_records(context);
 CREATE INDEX IF NOT EXISTS idx_garden_project ON garden_records(project);
 CREATE INDEX IF NOT EXISTS idx_garden_due ON garden_records(due_date);
 CREATE INDEX IF NOT EXISTS idx_garden_privacy ON garden_records(privacy);
+CREATE INDEX IF NOT EXISTS idx_facts_record ON context_facts(record_id);
+CREATE INDEX IF NOT EXISTS idx_facts_key ON context_facts(key);
+CREATE INDEX IF NOT EXISTS idx_facts_expires ON context_facts(expires_at);
 `;
 
 // Migrations for existing databases
@@ -112,6 +125,7 @@ export class GardenService {
   private syncing = false;
   private calendar?: CalendarService;
   private scheduler?: SchedulerService;
+  private facts: FactsService;
 
   constructor(private config: Config) {
     const dbPath = getDbPath(config, 'garden.sqlite3');
@@ -121,6 +135,10 @@ export class GardenService {
     this.db.pragma('journal_mode = WAL');
     this.gardenPath = resolvePath(config, 'garden');
     this.archivePath = path.join(this.gardenPath, 'archive.log');
+
+    // Initialize FactsService for tracking record metadata
+    this.facts = new FactsService(this.db);
+    debug('FactsService initialized');
   }
 
   /**
@@ -133,6 +151,13 @@ export class GardenService {
 
   setScheduler(scheduler: SchedulerService): void {
     this.scheduler = scheduler;
+  }
+
+  /**
+   * Get the FactsService instance for tracking record metadata.
+   */
+  getFactsService(): FactsService {
+    return this.facts;
   }
 
   async initialize(): Promise<void> {
@@ -236,7 +261,17 @@ export class GardenService {
 
   get(id: string): GardenRecord | null {
     const row = this.db.prepare('SELECT * FROM garden_records WHERE id = ?').get(id) as any;
-    return row ? this.rowToRecord(row) : null;
+    if (!row) return null;
+
+    const record = this.rowToRecord(row);
+
+    // Track view in facts (unless syncing to avoid noise)
+    if (!this.syncing) {
+      this.facts.increment(id, 'viewCount');
+      this.facts.setFact(id, 'lastViewed', new Date().toISOString());
+    }
+
+    return record;
   }
 
   /**
@@ -313,10 +348,16 @@ export class GardenService {
     );
 
     this.syncToFile(updated);
-    
+
     // Sync temporal data to calendar (handles add/update/remove)
     this.syncToCalendar(updated, existing);
-    
+
+    // Track edit in facts (unless syncing to avoid noise)
+    if (!this.syncing) {
+      this.facts.increment(id, 'editCount');
+      this.facts.setFact(id, 'lastEdited', new Date().toISOString());
+    }
+
     return updated;
   }
 

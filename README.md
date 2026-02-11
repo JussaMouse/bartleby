@@ -1287,33 +1287,92 @@ BARTLEBY_ALLOWED_IPS=     # Optional: comma-separated IP whitelist (e.g., 127.0.
 
 ## Backups
 
+### Data Architecture: Markdown as Source of Truth
+
+Bartleby follows a **files-first architecture** where markdown files are authoritative:
+
+**Essential data (in markdown files):**
+- All content (notes, descriptions, journal entries)
+- Essential metadata (type, status, tags, due dates)
+- Relationships (projects, contexts, contacts, wiki links)
+- File structure and organization
+
+**Derived data (in database):**
+- SQLite indexes for fast queries
+- Full-text search index
+- Embeddings vectors
+- Usage statistics (view counts, momentum scores)
+
+**Recovery guarantee:** If you have only the `garden/` directory, Bartleby can rebuild everything else. The database is a performance cache, not the data-of-record.
+
 ### What to Back Up
 
-| Path | Contains | Format |
-|------|----------|--------|
-| `garden/` | All your pages, notes, media | Markdown files |
-| `garden/archive.log` | Completed/deleted items | Text log |
-| `database/` | SQLite indexes | `.sqlite3` files |
-| `shed/` | Ingested documents and embeddings | Mixed |
+| Path | Priority | Contains | Recoverable? |
+|------|----------|----------|--------------|
+| `garden/` | **CRITICAL** | All pages, notes, media (markdown) | Source of truth |
+| `garden/archive.log` | **CRITICAL** | Completed/deleted items | No rebuild |
+| `.env` | **CRITICAL** | Configuration, API keys | No rebuild |
+| `database/` | Optional | SQLite indexes, stats | ✅ Auto-rebuilt |
+| `shed/` | Optional | Ingested docs, embeddings | Expensive to rebuild |
 
-### Quick Backup
+### Backup Strategies
 
+**Minimal backup (essential data only):**
 ```bash
-# Backup everything personal
+# Just the irreplaceable data
+rsync -avz garden/ backup/garden/
+cp .env backup/.env
+```
+
+**Full backup (includes derived data):**
+```bash
 tar -czvf bartleby-backup-$(date +%Y%m%d).tar.gz \
     garden/ \
-    database/*.sqlite3 \
+    database/ \
     shed/ \
     .env
 ```
 
-### Restore
+**Git backup (versioned, recommended):**
+```bash
+cd garden/
+git init  # if not already a repo
+git add -A
+git commit -m "Daily backup"
+git push origin main
+```
+
+### Disaster Recovery
+
+**Scenario:** You lost the database but have the `garden/` folder.
 
 ```bash
-# Stop Bartleby first
-tar -xzvf bartleby-backup-20260115.tar.gz
+# 1. Start Bartleby
 pnpm start
+
+# 2. Garden service automatically:
+#    - Scans all .md files
+#    - Parses frontmatter (type, status, tags, dates)
+#    - Extracts [[wiki links]] and +projects/@contexts
+#    - Rebuilds entire database
+#    - Regenerates full-text search index
+#    - Recreates relationship graph
+
+# 3. Result: Full recovery of all essential data
 ```
+
+**What you never lose** (as long as you have markdown files):
+- ✅ All content and notes
+- ✅ All essential metadata (type, status, tags, dates)
+- ✅ All relationships (projects, contexts, wiki links)
+- ✅ File organization
+
+**What you might lose** (derived data):
+- ❌ Historical usage stats (view counts, edit history)
+- ❌ Embeddings vectors (costly to regenerate)
+- ❌ Computed metrics (momentum scores, AI assessments)
+
+**None of these are essential** — they're computed from your markdown files.
 
 ### Sync to Cloud
 
@@ -1323,10 +1382,26 @@ The `garden/` folder is just markdown — sync it however you like:
 # rsync to another machine
 rsync -avz garden/ user@backup-server:~/bartleby-garden/
 
-# Or use any cloud sync (Syncthing, Dropbox, iCloud Drive)
+# Or use any cloud sync (Syncthing, Dropbox, iCloud Drive, git)
 ```
 
-**Tip:** The SQLite databases are indexes derived from the markdown files. If you lose them, Bartleby rebuilds them on startup from the files in `garden/`.
+**Why this works:** Every action, project, note has its metadata in frontmatter:
+
+```markdown
+---
+id: action-xyz789
+type: action
+title: Call dentist
+status: active
+contexts: [phone]
+due_date: 2026-02-15
+project: +medical
+---
+
+Follow up about [[Insurance claim]].
+```
+
+If you sync this file, you sync the complete record. The database just makes it fast to query.
 
 ---
 
