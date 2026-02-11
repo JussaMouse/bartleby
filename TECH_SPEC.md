@@ -637,6 +637,94 @@ This is my project description...
 - Last viewed: today
 ```
 
+### View Cache
+
+Cache rendered views for performance optimization:
+
+```typescript
+const viewCache = garden.viewCache();
+
+// Try to get cached view
+const cached = viewCache.get(recordId, 'markdown');
+if (cached) {
+  return cached; // Fast path
+}
+
+// Generate and cache view
+const view = ViewRegistry.create(record, services);
+const markdown = view.render();
+viewCache.set(recordId, 'markdown', markdown);
+return markdown;
+```
+
+**ViewCache Methods:**
+- `get(recordId, format)` - Retrieve cached view ('markdown' or 'json')
+- `set(recordId, format, content)` - Store rendered view
+- `invalidate(recordId, cascade)` - Mark view as stale (with optional cascade)
+- `clear()` - Remove all cached entries
+- `prune()` - Remove stale entries
+- `has(recordId, format)` - Check if view is cached (and fresh)
+- `size(format?)` - Get cache entry count
+- `getMetrics()` - Get cache performance metrics
+- `resetMetrics()` - Reset hit/miss counters
+
+**Event-Driven Invalidation:**
+
+ViewCache automatically invalidates when data changes:
+
+```typescript
+// These events trigger automatic invalidation:
+// - record.created/updated/deleted → invalidates that record
+// - relationship.created/deleted → invalidates source and target
+```
+
+**Cascade Invalidation:**
+
+When a record is invalidated, related records are automatically invalidated:
+
+```typescript
+// Invalidating a project also invalidates:
+// - All actions pointing to it
+// - All notes referencing it
+// - All contacts linked to it
+viewCache.invalidate(projectId, true); // cascade = true
+```
+
+**Cache Metrics:**
+
+```typescript
+const metrics = viewCache.getMetrics();
+// {
+//   hits: 150,
+//   misses: 50,
+//   hitRate: 0.75,  // 75%
+//   size: 42,
+//   markdownCacheSize: 30,
+//   jsonCacheSize: 12
+// }
+```
+
+**Features:**
+- **Separate caches** for markdown and JSON formats
+- **Event-driven** - Auto-invalidates on data changes
+- **Cascade invalidation** - Invalidates related records via graph
+- **Stale flag** - Prevents serving outdated content
+- **Metrics tracking** - Monitor cache effectiveness
+- **Prune operation** - Remove stale entries
+- **In-memory** - Fast access, no disk I/O
+
+**Performance Benefits:**
+- Avoid regenerating expensive views
+- Reduce database queries for related data
+- Lower CPU usage for repeated requests
+- Improve response times for API endpoints
+
+**Use Cases:**
+- Dashboard rendering (same views requested repeatedly)
+- API endpoints (cache JSON responses)
+- CLI commands (cache expensive queries)
+- Monitoring cache metrics for optimization
+
 ---
 
 ## Extending Bartleby
