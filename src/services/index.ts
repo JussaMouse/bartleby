@@ -13,30 +13,32 @@ import { WeatherService } from './weather.js';
 import { SignalService } from './signal.js';
 import { OCRService } from './ocr.js';
 import { DataService } from './data.js';
+import { AuditService } from './audit.js';
 import { info } from '../utils/logger.js';
 
 export interface ServiceContainer {
   // Config (source of truth)
   config: Config;
-  
+
   // Core data
   garden: GardenService;
   shed: ShedService;
   calendar: CalendarService;
   data: DataService;
-  
+
   // Context - Bartleby's memory of you
   context: ContextService;
-  
+
   // Presence - Bartleby's initiative layer (decides when to speak unprompted)
   presence: PresenceService;
-  
+
   // Infrastructure
   llm: LLMService;
   embeddings: EmbeddingService;
   vectors: VectorService;
   scheduler: SchedulerService;
-  
+  audit: AuditService;
+
   // Optional integrations
   weather: WeatherService;
   signal: SignalService;
@@ -53,7 +55,8 @@ export async function initServices(config: Config): Promise<ServiceContainer> {
   const signal = new SignalService(config);
   const weather = new WeatherService(config);
   const ocr = new OCRService(config);
-  
+  const audit = new AuditService(config);
+
   // Initialize infrastructure first
   await llm.initialize();
   await embeddings.initialize();
@@ -61,6 +64,7 @@ export async function initServices(config: Config): Promise<ServiceContainer> {
   await signal.initialize();
   await weather.initialize();
   await ocr.initialize();
+  audit.initialize();
 
   // Create data services (depend on infrastructure)
   const garden = new GardenService(config);
@@ -119,6 +123,7 @@ export async function initServices(config: Config): Promise<ServiceContainer> {
     embeddings,
     vectors,
     scheduler,
+    audit,
     weather,
     signal,
     ocr,
@@ -154,3 +159,4 @@ export { WeatherService, WeatherData, ForecastDay } from './weather.js';
 export { SignalService } from './signal.js';
 export { OCRService } from './ocr.js';
 export { DataService, ImportResult, QueryResult, ExportResult, TableInfo, ColumnInfo } from './data.js';
+export { AuditService, AuditEvent } from './audit.js';

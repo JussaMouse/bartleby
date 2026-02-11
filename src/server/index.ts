@@ -72,6 +72,18 @@ export class DashboardServer {
           path: req.path,
           method: req.method,
         });
+
+        // Log IP block to audit trail
+        this.services.audit.log({
+          timestamp: new Date().toISOString(),
+          ip: clientIp,
+          action: 'ip_blocked',
+          resource: req.path,
+          result: 'denied',
+          method: req.method,
+          details: 'ip_not_whitelisted',
+        });
+
         return res.status(403).json({ error: 'Forbidden - IP not whitelisted' });
       }
 
@@ -117,17 +129,40 @@ export class DashboardServer {
 
       // Request must provide valid token
       if (!token || token !== this.apiToken) {
+        const clientIp = req.ip || req.socket.remoteAddress || 'unknown';
+
         info('[AUTH] Failed auth attempt', {
-          ip: req.ip,
+          ip: clientIp,
           method: req.method,
           path: req.path,
           hasToken: !!token,
         });
 
+        // Log failed auth attempt to audit trail
+        this.services.audit.log({
+          timestamp: new Date().toISOString(),
+          ip: clientIp,
+          action: 'auth_failed',
+          resource: req.path,
+          result: 'denied',
+          method: req.method,
+          details: token ? 'invalid_token' : 'missing_token',
+        });
+
         return res.status(401).json({ error: 'Unauthorized' });
       }
 
-      // Token valid - proceed
+      // Token valid - log successful auth and proceed
+      const clientIp = req.ip || req.socket.remoteAddress || 'unknown';
+      this.services.audit.log({
+        timestamp: new Date().toISOString(),
+        ip: clientIp,
+        action: 'auth_success',
+        resource: req.path,
+        result: 'success',
+        method: req.method,
+      });
+
       next();
     });
 

@@ -1042,6 +1042,47 @@ export const securityAudit: Tool = {
       lines.push(`  ℹ️  Could not check FileVault status (may not be macOS)`);
     }
 
+    // Audit trail
+    lines.push('\n**Audit Trail:**');
+    const last24h = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const last7d = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+
+    // Get suspicious activity summary
+    const suspicious = context.services.audit.getSuspiciousActivity(last24h);
+
+    if (suspicious.totalFailedAuths === 0) {
+      lines.push(`  ✅ No failed auth attempts (24h)`);
+    } else {
+      lines.push(`  ⚠️  Failed auth attempts (24h): ${suspicious.totalFailedAuths}`);
+
+      // Show top offending IPs
+      const sortedIps = Object.entries(suspicious.failedAuthsByIp)
+        .sort(([, a], [, b]) => b - a)
+        .slice(0, 5);
+
+      for (const [ip, count] of sortedIps) {
+        lines.push(`     - ${ip}: ${count} attempt${count > 1 ? 's' : ''}`);
+      }
+    }
+
+    // Get successful access in last 7 days
+    const recentAccess = context.services.audit.getSuccessfulAccess(last7d, 1);
+    if (recentAccess.length > 0) {
+      const lastAccess = recentAccess[0];
+      const lastAccessTime = new Date(lastAccess.timestamp);
+      const timeAgo = Math.floor((Date.now() - lastAccessTime.getTime()) / 1000 / 60);
+
+      if (timeAgo < 60) {
+        lines.push(`  ℹ️  Last access: ${timeAgo}m ago from ${lastAccess.ip}`);
+      } else if (timeAgo < 1440) {
+        lines.push(`  ℹ️  Last access: ${Math.floor(timeAgo / 60)}h ago from ${lastAccess.ip}`);
+      } else {
+        lines.push(`  ℹ️  Last access: ${Math.floor(timeAgo / 1440)}d ago from ${lastAccess.ip}`);
+      }
+    } else {
+      lines.push(`  ℹ️  No access logged yet`);
+    }
+
     lines.push('\n**Summary:**');
     const hasIssues = lines.some(l => l.includes('❌') || (l.includes('⚠️') && host !== 'localhost'));
     if (!hasIssues) {
