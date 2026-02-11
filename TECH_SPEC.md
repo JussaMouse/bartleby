@@ -535,6 +535,108 @@ const related = graph.getRelated(recordId, {
 - BFS traversal: O(V + E) where V = vertices, E = edges
 - Cache invalidates automatically via EventBus
 
+### View Layer
+
+Generate rich, dynamic pages by composing sections from multiple data sources:
+
+```typescript
+import { ViewRegistry } from './views/ViewRegistry.js';
+
+// Get view services
+const services = {
+  garden: garden,
+  graph: garden.graph(),
+  facts: garden.facts,
+};
+
+// Create view for a project
+const view = ViewRegistry.create(projectRecord, services);
+
+// Render as markdown
+const markdown = view.render();
+
+// Or export as JSON for API
+const json = view.toJSON();
+```
+
+**PageView Base Class:**
+- Abstract base for all dynamic views
+- `generateSections()` - subclasses implement to define page structure
+- `render()` - outputs markdown
+- `toJSON()` - outputs structured JSON for API
+- Built-in helpers: formatDate(), formatAction(), formatNote()
+
+**ProjectPageView Example:**
+
+```typescript
+class ProjectPageView extends PageView {
+  generateSections(): Section[] {
+    return [
+      this.userContentSection(),      // User's markdown content
+      this.contactsSection(),          // People involved (from graph)
+      this.actionsSection(),           // Active tasks (from graph + filter)
+      this.notesSection(),             // Related notes (from graph)
+      this.mediaSection(),             // Files/images (from graph)
+      this.metadataSection(),          // Stats (from facts service)
+      this.backlinksSection(),         // References (from graph)
+    ];
+  }
+}
+```
+
+**Section Types:**
+- **User Content** - The markdown body written by user
+- **Contacts** - People referenced by project (graph relationships)
+- **Actions** - Active next actions (graph children filtered by status)
+- **Notes** - Related notes and documentation (graph relationships)
+- **Media** - Images and files (graph relationships)
+- **Metadata/Stats** - View counts, last accessed (facts service)
+- **Backlinks** - All pages that reference this one (graph incoming)
+
+**ViewRegistry:**
+- Factory pattern for creating views by record type
+- `register(type, viewClass)` - register custom views
+- `create(record, services)` - instantiate appropriate view
+- DefaultPageView fallback for unregistered types
+
+**Features:**
+- **Multi-source composition** - Combine graph, query, facts, calendar data
+- **Smart formatting** - Relative dates, context/tag display
+- **Empty section handling** - Skip sections with no data
+- **Dual output** - Markdown for CLI/files, JSON for API
+- **Extensible** - Register custom views for any record type
+- **Type-safe** - Full TypeScript support
+
+**Use Cases:**
+- Rich project pages showing all related data
+- API endpoints returning structured page data
+- Dashboard page rendering
+- Export functionality (markdown, JSON, HTML)
+- Custom views for different record types
+- Plugin system for third-party views
+
+**Example Output (Markdown):**
+
+```markdown
+## Content
+This is my project description...
+
+## 👥 People
+- [[Alice Smith]]
+- [[Bob Jones]]
+
+## ✅ Next Actions
+- [ ] Complete design mockups (@computer due:tomorrow)
+- [ ] Send proposal to client (@email #urgent)
+
+## 📝 Notes
+- [[Meeting notes 2026-02-11]] — Discussed timeline and budget...
+
+## 📊 Stats
+- Views: 42
+- Last viewed: today
+```
+
 ---
 
 ## Extending Bartleby
