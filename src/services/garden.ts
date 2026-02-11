@@ -13,6 +13,7 @@ import type { SchedulerService } from './scheduler.js';
 import { FactsService } from './facts.js';
 import { EventBus, getEventBus } from '../events/EventBus.js';
 import { QueryBuilder } from '../query/QueryBuilder.js';
+import { GardenGraph } from '../graph/GardenGraph.js';
 
 // === Types ===
 
@@ -162,6 +163,7 @@ export class GardenService {
   private scheduler?: SchedulerService;
   private facts: FactsService;
   private eventBus: EventBus;
+  private _graphInstance?: GardenGraph;
 
   constructor(private config: Config) {
     const dbPath = getDbPath(config, 'garden.sqlite3');
@@ -179,6 +181,19 @@ export class GardenService {
     // Initialize EventBus for loose coupling
     this.eventBus = getEventBus();
     debug('EventBus connected');
+
+    // Listen for relationship changes to invalidate graph cache
+    this.eventBus.on('relationship.created', () => {
+      if (this._graphInstance) {
+        this._graphInstance.invalidate();
+      }
+    });
+
+    this.eventBus.on('relationship.deleted', () => {
+      if (this._graphInstance) {
+        this._graphInstance.invalidate();
+      }
+    });
   }
 
   /**
@@ -718,6 +733,17 @@ export class GardenService {
    */
   query(): QueryBuilder {
     return new QueryBuilder(this.db, this.rowToRecord.bind(this));
+  }
+
+  /**
+   * Get the graph navigator for relationship traversal
+   * Returns cached instance for performance
+   */
+  graph(): GardenGraph {
+    if (!this._graphInstance) {
+      this._graphInstance = new GardenGraph(this.db, this.get.bind(this));
+    }
+    return this._graphInstance;
   }
 
   getTasks(filters: TaskFilters = {}): GardenRecord[] {
