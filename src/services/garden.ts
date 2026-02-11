@@ -12,6 +12,7 @@ import type { CalendarService } from './calendar.js';
 import type { SchedulerService } from './scheduler.js';
 import { FactsService } from './facts.js';
 import { EventBus, getEventBus } from '../events/EventBus.js';
+import { QueryBuilder } from '../query/QueryBuilder.js';
 
 // === Types ===
 
@@ -711,6 +712,13 @@ export class GardenService {
   }
 
   // === Queries ===
+
+  /**
+   * Create a new query builder for complex queries
+   */
+  query(): QueryBuilder {
+    return new QueryBuilder(this.db, this.rowToRecord.bind(this));
+  }
 
   getTasks(filters: TaskFilters = {}): GardenRecord[] {
     let sql = 'SELECT * FROM garden_records WHERE type = ?';
