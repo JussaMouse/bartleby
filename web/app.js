@@ -82,7 +82,7 @@ function connectWebSocket() {
   ws.onmessage = (event) => {
     const msg = JSON.parse(event.data);
     if (msg.type === 'data' && msg.view) {
-      renderPanel(msg.view, msg.data);
+      renderPanel(msg.view, msg.data, msg.pageView);
     }
   };
 }
@@ -191,14 +191,14 @@ function promptProjectPanel() {
 }
 
 // Panel rendering
-function renderPanel(view, data) {
+function renderPanel(view, data, pageView) {
   const panel = panels.get(view);
   if (!panel) return;
 
   const content = panel.querySelector('.panel-content');
-  
+
   // Skip re-render if there's an active edit in this panel (would steal focus)
-  const hasActiveEdit = content.querySelector('.action-edit:not(.hidden)') || 
+  const hasActiveEdit = content.querySelector('.action-edit:not(.hidden)') ||
                         content.querySelector('.item-edit:not(.hidden)') ||
                         content.querySelector('.note-content-edit:not(.hidden)');
   if (hasActiveEdit) {
@@ -216,9 +216,11 @@ function renderPanel(view, data) {
   } else if (view === 'projects') {
     content.innerHTML = renderProjects(data);
   } else if (view.startsWith('project:')) {
-    content.innerHTML = renderProject(data);
+    // Use PageView if available, otherwise fall back to old rendering
+    content.innerHTML = pageView ? renderPageView(pageView) : renderProject(data);
   } else if (view.startsWith('note:')) {
-    content.innerHTML = renderNote(data);
+    // Use PageView if available, otherwise fall back to old rendering
+    content.innerHTML = pageView ? renderPageView(pageView) : renderNote(data);
   } else if (view === 'calendar') {
     content.innerHTML = renderCalendar(data);
   } else if (view === 'today') {
@@ -230,6 +232,30 @@ function renderPanel(view, data) {
   } else {
     content.innerHTML = `<div class="empty">Unknown view: ${view}</div>`;
   }
+}
+
+// PageView rendering - structured sections
+function renderPageView(pageView) {
+  if (!pageView || !pageView.sections) {
+    return '<div class="empty">No view data</div>';
+  }
+
+  let html = '';
+
+  for (const section of pageView.sections) {
+    // Skip empty sections
+    if (!section.content || section.content.trim() === '') {
+      continue;
+    }
+
+    // Render section header
+    html += `<div class="section-header">${esc(section.title)}</div>`;
+
+    // Render section content as markdown
+    html += `<div class="section-content">${renderMarkdown(section.content)}</div>`;
+  }
+
+  return html || '<div class="empty">No content</div>';
 }
 
 function renderInbox(data) {

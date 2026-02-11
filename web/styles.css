@@ -234,6 +234,19 @@ main#panels {
   margin-top: 0;
 }
 
+.section-content {
+  margin-bottom: 12px;
+}
+
+.section-content .md-list {
+  margin-left: 0;
+  padding-left: 20px;
+}
+
+.section-content .md-line {
+  margin-bottom: 4px;
+}
+
 /* Empty state */
 .empty {
   color: var(--text-muted);
