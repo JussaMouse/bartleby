@@ -3,9 +3,13 @@
  *
  * Executes parsed CommandIntent objects using the Garden service.
  * Returns CommandResult indicating success/failure and any created/updated items.
+ *
+ * Integrates with LearningService to record observations and relationships.
  */
 
 import type { GardenService } from '../services/garden.js';
+import type { LearningService } from '../services/learning.js';
+import { debug } from '../utils/logger.js';
 import type {
   CommandIntent,
   CommandResult,
@@ -383,6 +387,110 @@ function executeDeleteItem(cmd: DeleteItemCommand, garden: GardenService): Comma
 }
 
 // ============================================
+// Observation Recording
+// ============================================
+
+/**
+ * Record observations and relationships for a command execution
+ */
+async function recordCommandObservations(
+  intent: CommandIntent,
+  result: CommandResult,
+  learning: LearningService,
+  sessionId?: string
+): Promise<void> {
+  // Create command entity
+  const commandId = learning.createEntity('command', {
+    rawInput: intent.rawInput,
+    intent: intent.type,
+    success: result.success,
+    timestamp: new Date().toISOString()
+  });
+
+  // Record basic observations about the command
+  learning.recordObservation({
+    entityId: commandId,
+    key: 'intent_type',
+    value: intent.type,
+    sourceType: 'computed',
+    sourceId: sessionId,
+    confidence: 1.0
+  });
+
+  learning.recordObservation({
+    entityId: commandId,
+    key: 'success',
+    value: result.success ? 'true' : 'false',
+    valueType: 'boolean',
+    sourceType: 'computed',
+    sourceId: sessionId,
+    confidence: 1.0
+  });
+
+  // If command created a result, record it
+  if (result.success && result.result?.id) {
+    learning.recordObservation({
+      entityId: commandId,
+      key: 'result.record_id',
+      value: result.result.id,
+      sourceType: 'computed',
+      sourceId: sessionId,
+      confidence: 1.0
+    });
+
+    // Create relationship: command created record
+    learning.recordRelationship({
+      fromEntity: commandId,
+      toEntity: result.result.id,
+      relationType: 'created',
+      sourceId: sessionId
+    });
+
+    // Record observations about the created record
+    if (result.result.project) {
+      learning.recordObservation({
+        entityId: result.result.id,
+        key: 'project',
+        value: result.result.project,
+        sourceType: 'extracted',
+        confidence: 1.0
+      });
+    }
+
+    if (result.result.tags) {
+      for (const tag of result.result.tags) {
+        learning.recordObservation({
+          entityId: result.result.id,
+          key: 'topic',
+          value: tag,
+          sourceType: 'extracted',
+          confidence: 0.9
+        });
+      }
+    }
+  }
+
+  // Create relationships
+  learning.recordRelationship({
+    fromEntity: 'user',
+    toEntity: commandId,
+    relationType: 'executed',
+    sourceId: sessionId
+  });
+
+  if (sessionId) {
+    learning.recordRelationship({
+      fromEntity: commandId,
+      toEntity: sessionId,
+      relationType: 'part_of',
+      sourceId: sessionId
+    });
+  }
+
+  debug('Command observations recorded', { commandId, intent: intent.type });
+}
+
+// ============================================
 // Main Executor
 // ============================================
 
@@ -391,9 +499,33 @@ function executeDeleteItem(cmd: DeleteItemCommand, garden: GardenService): Comma
  *
  * @param intent - Parsed command intent
  * @param garden - Garden service instance
+ * @param learning - Learning service instance (optional)
+ * @param sessionId - Current session ID (optional)
  * @returns Command result
  */
-export function executeCommand(intent: CommandIntent, garden: GardenService): CommandResult {
+export function executeCommand(
+  intent: CommandIntent,
+  garden: GardenService,
+  learning?: LearningService,
+  sessionId?: string
+): CommandResult {
+  // Execute the command
+  const result = executeCommandInternal(intent, garden);
+
+  // Record observations if learning service available
+  if (learning) {
+    recordCommandObservations(intent, result, learning, sessionId).catch(err => {
+      debug('Failed to record command observations', { error: String(err) });
+    });
+  }
+
+  return result;
+}
+
+/**
+ * Internal command execution (same logic as before, but without observation recording)
+ */
+function executeCommandInternal(intent: CommandIntent, garden: GardenService): CommandResult {
   switch (intent.type) {
     // Creation
     case 'create_note':

@@ -1131,10 +1131,8 @@ export class DashboardServer {
 
       try {
         const { executeCommand } = await import('./command-executor.js');
-        const result = executeCommand(parsed, this.garden);
-
-        // Store command in history
-        // TODO: Implement command history storage
+        // Pass learning service to record observations automatically
+        const result = executeCommand(parsed, this.garden, this.services.learning, undefined);
 
         res.json(result);
 
