@@ -33,6 +33,7 @@ export class BackgroundAnalysis {
     await this.analyzeWorkflowPatterns();
     await this.analyzeGardenRecordImportance();
     await this.discoverSemanticRelationships();
+    await this.cleanupExpiredData();
 
     info('Background analysis complete');
   }
@@ -48,6 +49,28 @@ export class BackgroundAnalysis {
 
     const relationshipsCreated = await this.embeddingRelationships.discoverRelationships(0.7);
     debug('Semantic relationship discovery complete', { relationshipsCreated });
+  }
+
+  /**
+   * Clean up expired observations and optimize database.
+   * Runs maintenance tasks to keep the learning system healthy.
+   */
+  private async cleanupExpiredData(): Promise<void> {
+    // Clean up expired observations
+    const deletedCount = this.learning.cleanupExpiredObservations();
+    if (deletedCount > 0) {
+      info('Cleaned up expired observations', { count: deletedCount });
+    }
+
+    // Get database stats
+    const stats = this.learning.getStats();
+    debug('Database stats', stats);
+
+    // Optimize database if it's getting large (> 50 MB)
+    if (stats.databaseSizeMB > 50) {
+      const result = this.learning.optimizeDatabase();
+      info('Database optimized', result);
+    }
   }
 
   /**

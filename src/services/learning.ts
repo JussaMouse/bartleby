@@ -327,7 +327,7 @@ export class LearningService {
     }
 
     if (filters?.notExpired) {
-      query += ` AND (expires_at IS NULL OR expires_at > datetime('now'))`;
+      query += ` AND (expires_at IS NULL OR datetime(expires_at) > datetime('now'))`;
     }
 
     if (filters?.sourceType) {
@@ -363,7 +363,7 @@ export class LearningService {
              o.observed_at, o.expires_at, o.supersedes, o.search_text
       FROM observations o
       WHERE o.entity_id = ? AND o.key = ?
-      AND (o.expires_at IS NULL OR o.expires_at > datetime('now'))
+      AND (o.expires_at IS NULL OR datetime(o.expires_at) > datetime('now'))
       AND NOT EXISTS (
         SELECT 1 FROM observations newer
         WHERE newer.supersedes = o.id
@@ -398,7 +398,7 @@ export class LearningService {
       FROM observations_fts fts
       JOIN observations o ON fts.rowid = o.rowid
       WHERE observations_fts MATCH ?
-      AND (o.expires_at IS NULL OR o.expires_at > datetime('now'))
+      AND (o.expires_at IS NULL OR datetime(o.expires_at) > datetime('now'))
       ORDER BY rank
       LIMIT ?
     `).all(query, limit) as any[];
@@ -439,7 +439,7 @@ export class LearningService {
     const params: any[] = [`${keyPrefix}%`];
 
     if (filters?.notExpired) {
-      query += ` AND (expires_at IS NULL OR expires_at > datetime('now'))`;
+      query += ` AND (expires_at IS NULL OR datetime(expires_at) > datetime('now'))`;
     }
 
     if (filters?.minConfidence !== undefined) {
@@ -750,6 +750,95 @@ export class LearningService {
     }
 
     return result.changes;
+  }
+
+  // ==========================================================================
+  // Maintenance and Cleanup
+  // ==========================================================================
+
+  /**
+   * Clean up expired observations to improve performance and reduce database size.
+   * This removes observations where expires_at < now.
+   *
+   * @returns Number of observations deleted
+   */
+  cleanupExpiredObservations(): number {
+    const result = this.db.prepare(`
+      DELETE FROM observations
+      WHERE expires_at IS NOT NULL
+      AND datetime(expires_at) <= datetime('now')
+    `).run();
+
+    if (result.changes > 0) {
+      info('Cleaned up expired observations', { count: result.changes });
+    }
+
+    return result.changes;
+  }
+
+  /**
+   * Get statistics about the learning database for monitoring.
+   */
+  getStats(): {
+    entities: number;
+    observations: number;
+    relationships: number;
+    expiredObservations: number;
+    databaseSizeMB: number;
+  } {
+    const entities = this.db.prepare('SELECT COUNT(*) as count FROM entities').get() as { count: number };
+    const observations = this.db.prepare('SELECT COUNT(*) as count FROM observations').get() as { count: number };
+    const relationships = this.db.prepare('SELECT COUNT(*) as count FROM relationships').get() as { count: number };
+
+    const expired = this.db.prepare(`
+      SELECT COUNT(*) as count FROM observations
+      WHERE expires_at IS NOT NULL AND datetime(expires_at) <= datetime('now')
+    `).get() as { count: number };
+
+    // Get database file size
+    const pragma = this.db.prepare('PRAGMA page_count').get() as { page_count: number };
+    const pageSize = this.db.prepare('PRAGMA page_size').get() as { page_size: number };
+    const sizeBytes = pragma.page_count * pageSize.page_size;
+    const sizeMB = sizeBytes / (1024 * 1024);
+
+    return {
+      entities: entities.count,
+      observations: observations.count,
+      relationships: relationships.count,
+      expiredObservations: expired.count,
+      databaseSizeMB: Math.round(sizeMB * 100) / 100
+    };
+  }
+
+  /**
+   * Optimize the database by running VACUUM and ANALYZE.
+   * This reclaims space and updates query planner statistics.
+   *
+   * @returns Statistics before and after optimization
+   */
+  optimizeDatabase(): { before: number; after: number; reclaimedMB: number } {
+    const before = this.getStats();
+
+    // VACUUM to reclaim space
+    this.db.prepare('VACUUM').run();
+
+    // ANALYZE to update query planner stats
+    this.db.prepare('ANALYZE').run();
+
+    const after = this.getStats();
+    const reclaimedMB = Math.round((before.databaseSizeMB - after.databaseSizeMB) * 100) / 100;
+
+    info('Database optimized', {
+      beforeMB: before.databaseSizeMB,
+      afterMB: after.databaseSizeMB,
+      reclaimedMB
+    });
+
+    return {
+      before: before.databaseSizeMB,
+      after: after.databaseSizeMB,
+      reclaimedMB
+    };
   }
 
   close(): void {
