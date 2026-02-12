@@ -49,7 +49,9 @@ export class SchedulerService {
   private running = false;
   private calendar?: CalendarService;
   private presence?: PresenceService;
+  private backgroundAnalysis?: any; // BackgroundAnalysis service
   private lastMorningSent?: string; // Track which day we last sent morning update
+  private lastAnalysisRun?: string; // Track last analysis date
 
   constructor(
     private config: Config,
@@ -75,6 +77,13 @@ export class SchedulerService {
    */
   setPresence(presence: PresenceService): void {
     this.presence = presence;
+  }
+
+  /**
+   * Set the background analysis service for daily pattern detection.
+   */
+  setBackgroundAnalysis(analysis: any): void {
+    this.backgroundAnalysis = analysis;
   }
 
   async initialize(): Promise<void> {
@@ -114,6 +123,9 @@ export class SchedulerService {
 
     // Check for scheduled presence moments (morning update)
     await this.checkPresenceMoments(now);
+
+    // Run daily background analysis
+    await this.runBackgroundAnalysis(now);
 
     const dueTasks = this.db.prepare(`
       SELECT * FROM tasks
@@ -156,6 +168,27 @@ export class SchedulerService {
         }
       } catch (err) {
         error('Failed to send morning presence', { error: String(err) });
+      }
+    }
+  }
+
+  /**
+   * Run daily background analysis for pattern detection.
+   */
+  private async runBackgroundAnalysis(now: Date): Promise<void> {
+    if (!this.backgroundAnalysis) return;
+
+    const today = now.toISOString().split('T')[0];
+    const currentHour = now.getHours();
+
+    // Run analysis once per day at 1 AM (off-peak)
+    if (currentHour === 1 && this.lastAnalysisRun !== today) {
+      try {
+        await this.backgroundAnalysis.runAll();
+        this.lastAnalysisRun = today;
+        info('Completed daily background analysis');
+      } catch (err) {
+        error('Failed to run background analysis', { error: String(err) });
       }
     }
   }

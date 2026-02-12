@@ -15,6 +15,7 @@ import { OCRService } from './ocr.js';
 import { DataService } from './data.js';
 import { AuditService } from './audit.js';
 import { LearningService } from './learning.js';
+import { BackgroundAnalysis } from './background-analysis.js';
 import { info } from '../utils/logger.js';
 
 export interface ServiceContainer {
@@ -111,8 +112,12 @@ export async function initServices(config: Config): Promise<ServiceContainer> {
   // Create Presence service (depends on context, garden, calendar, weather)
   const presence = new PresenceService(config, context, garden, calendar, weather);
 
+  // Create Background Analysis service for daily pattern detection
+  const backgroundAnalysis = new BackgroundAnalysis(learning, garden);
+
   // Wire up scheduler to presence for scheduled moments
   scheduler.setPresence(presence);
+  scheduler.setBackgroundAnalysis(backgroundAnalysis);
 
   // Start scheduler background loop
   scheduler.start();
