@@ -4,7 +4,9 @@
 import fs from 'fs';
 import path from 'path';
 import { Config, resolvePath, ensureDir } from '../config.js';
-import { info, debug } from '../utils/logger.js';
+import { info, debug, warn } from '../utils/logger.js';
+import type { LearningService } from './learning.js';
+import type { LLMService } from './llm.js';
 
 export interface Episode {
   id: string;
@@ -29,10 +31,18 @@ export class ContextService {
   private storagePath: string;
   private episodes: Episode[] = [];
   private facts = new Map<string, UserFact>();
-  private currentSession: { messages: string[]; startTime: Date } | null = null;
+  private currentSession: { id: string; messages: string[]; startTime: Date } | null = null;
+  private learning?: LearningService;
+  private llm?: LLMService;
 
   constructor(private config: Config) {
     this.storagePath = path.join(resolvePath(config, 'database'), 'memory');
+  }
+
+  setServices(learning: LearningService, llm: LLMService): void {
+    this.learning = learning;
+    this.llm = llm;
+    debug('ContextService services wired', { hasLearning: !!learning, hasLLM: !!llm });
   }
 
   async initialize(): Promise<void> {
@@ -70,7 +80,22 @@ export class ContextService {
   // === Session Management ===
 
   startSession(): void {
-    this.currentSession = { messages: [], startTime: new Date() };
+    const sessionId = crypto.randomUUID();
+
+    // Create session entity in learning system if available
+    if (this.learning) {
+      this.learning.createEntity('session', {
+        startTime: new Date().toISOString(),
+        messageCount: 0
+      });
+    }
+
+    this.currentSession = { id: sessionId, messages: [], startTime: new Date() };
+    debug('Session started', { sessionId });
+  }
+
+  getCurrentSessionId(): string | undefined {
+    return this.currentSession?.id;
   }
 
   recordMessage(message: string, isUser: boolean): void {
@@ -87,20 +112,39 @@ export class ContextService {
   async endSession(): Promise<void> {
     if (!this.currentSession || this.currentSession.messages.length === 0) return;
 
+    const sessionId = this.currentSession.id;
+    const messages = this.currentSession.messages;
+
+    // Try LLM-powered analysis if services available
+    if (this.learning && this.llm) {
+      try {
+        await this.analyzeSessionWithLLM(sessionId, messages);
+      } catch (err) {
+        warn('LLM session analysis failed, falling back to basic extraction', { error: String(err) });
+        // Fall back to basic extraction
+        await this.basicSessionAnalysis(sessionId, messages);
+      }
+    } else {
+      // No LLM available, use basic extraction
+      await this.basicSessionAnalysis(sessionId, messages);
+    }
+
+    // Still save episode for backwards compatibility
     const episode: Episode = {
-      id: crypto.randomUUID(),
+      id: sessionId,
       timestamp: new Date().toISOString(),
-      summary: this.summarizeSession(this.currentSession.messages),
-      topics: this.extractTopics(this.currentSession.messages),
-      actionsTaken: this.extractActions(this.currentSession.messages),
-      pendingFollowups: this.extractFollowups(this.currentSession.messages),
-      messageCount: this.currentSession.messages.length,
+      summary: await this.getSummaryFromLearning(sessionId) || this.summarizeSession(messages),
+      topics: await this.getTopicsFromLearning(sessionId) || this.extractTopics(messages),
+      actionsTaken: this.extractActions(messages),
+      pendingFollowups: await this.getUnresolvedFromLearning(sessionId) || this.extractFollowups(messages),
+      messageCount: messages.length,
     };
 
     this.episodes.push(episode);
     this.currentSession = null;
 
     await this.save();
+    debug('Session ended', { sessionId, messageCount: messages.length });
   }
 
   // === Episodic Memory ===
@@ -341,6 +385,140 @@ export class ContextService {
       profile[k] = v;
     }
     fs.writeFileSync(profileFile, JSON.stringify(profile, null, 2));
+  }
+
+  // === LLM-Powered Analysis ===
+
+  private async analyzeSessionWithLLM(sessionId: string, messages: string[]): Promise<void> {
+    if (!this.learning || !this.llm) return;
+
+    const conversationText = messages.join('\n');
+
+    const prompt = `Analyze this conversation between a user and Bartleby assistant.
+
+CONVERSATION:
+${conversationText}
+
+Extract and categorize observations:
+
+1. ABOUT THE USER:
+   - Stated preferences or requirements (high confidence)
+   - Inferred working patterns or style (medium confidence)
+   - Current goals or priorities mentioned
+   - Technical context (languages, frameworks, tools used)
+
+2. ABOUT THE CONVERSATION:
+   - One-sentence summary of what was accomplished
+   - Key topics discussed (technical concepts, not just keywords)
+   - Important decisions made
+   - Unresolved questions or follow-ups needed
+   - Artifacts created (files, code, configs)
+
+For each observation, provide:
+- entity_id: "user" for user observations, "${sessionId}" for session observations
+- key: structured key like "preference.code_style", "goal.current", "summary", "topic", "decision", "unresolved_question", "artifact.created"
+- value: the observed value (be specific and concrete)
+- confidence: 0.0 to 1.0
+
+Return as JSON:
+{
+  "observations": [
+    {"entity_id": "user", "key": "preference.code_style", "value": "tabs", "confidence": 1.0},
+    {"entity_id": "${sessionId}", "key": "summary", "value": "Implemented command history", "confidence": 0.95}
+  ]
+}`;
+
+    try {
+      const response = await this.llm.chat([
+        { role: 'user', content: prompt }
+      ], {
+        tier: 'router',
+        maxTokens: 1500
+      });
+
+      // Parse LLM response
+      const jsonMatch = response.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) {
+        warn('Failed to parse LLM analysis response');
+        return;
+      }
+
+      const analysis = JSON.parse(jsonMatch[0]);
+
+      // Store all observations
+      for (const obs of analysis.observations) {
+        this.learning.recordObservation({
+          entityId: obs.entity_id,
+          key: obs.key,
+          value: obs.value,
+          sourceType: 'inferred',
+          sourceId: sessionId,
+          confidence: obs.confidence || 0.8
+        });
+      }
+
+      // Create relationship: user participated in session
+      this.learning.recordRelationship({
+        fromEntity: 'user',
+        toEntity: sessionId,
+        relationType: 'participated_in',
+        sourceId: sessionId
+      });
+
+      info('LLM session analysis complete', {
+        sessionId,
+        observationsExtracted: analysis.observations.length
+      });
+    } catch (err) {
+      warn('LLM analysis error', { error: String(err) });
+      throw err;
+    }
+  }
+
+  private async basicSessionAnalysis(sessionId: string, messages: string[]): Promise<void> {
+    if (!this.learning) return;
+
+    // Basic extraction for fallback
+    const summary = this.summarizeSession(messages);
+    const topics = this.extractTopics(messages);
+
+    this.learning.recordObservation({
+      entityId: sessionId,
+      key: 'summary',
+      value: summary,
+      sourceType: 'extracted',
+      sourceId: sessionId,
+      confidence: 0.6
+    });
+
+    for (const topic of topics) {
+      this.learning.recordObservation({
+        entityId: sessionId,
+        key: 'topic',
+        value: topic,
+        sourceType: 'extracted',
+        sourceId: sessionId,
+        confidence: 0.5
+      });
+    }
+  }
+
+  private async getSummaryFromLearning(sessionId: string): Promise<string | null> {
+    if (!this.learning) return null;
+    const obs = this.learning.getObservation(sessionId, 'summary');
+    return obs?.value || null;
+  }
+
+  private async getTopicsFromLearning(sessionId: string): Promise<string[]> {
+    if (!this.learning) return [];
+    const observations = this.learning.getObservations(sessionId, { keyPrefix: 'topic' });
+    return observations.map(o => o.value);
+  }
+
+  private async getUnresolvedFromLearning(sessionId: string): Promise<string[]> {
+    if (!this.learning) return [];
+    const observations = this.learning.getObservations(sessionId, { keyPrefix: 'unresolved_question' });
+    return observations.map(o => o.value);
   }
 
   close(): void {

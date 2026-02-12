@@ -86,6 +86,9 @@ export async function initServices(config: Config): Promise<ServiceContainer> {
   // Create learning service (shares garden database)
   const learning = new LearningService(garden.getDatabase());
 
+  // Wire up learning and LLM to context service for automatic session analysis
+  context.setServices(learning, llm);
+
   // Wire up calendar to services that need temporal index
   garden.setCalendar(calendar);
   scheduler.setCalendar(calendar);
