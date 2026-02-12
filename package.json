@@ -10,7 +10,9 @@
     "dashboard": "node dist/dashboard.js",
     "dev": "tsx src/index.ts",
     "typecheck": "tsc --noEmit",
-    "profile": "tsx scripts/export-import-profile.ts"
+    "profile": "tsx scripts/export-import-profile.ts",
+    "monitor": "tsx scripts/monitor-memory.ts",
+    "optimize": "tsx scripts/optimize-database.ts"
   },
   "dependencies": {
     "better-sqlite3": "^11.7.0",
