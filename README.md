@@ -292,18 +292,22 @@ Location: `./shed/`
 
 ### About You
 
-What Bartleby learns about you over time.
+What Bartleby learns about you over time using the **unified learning system** — an Entity-Observation-Relationship (EOR) architecture that captures knowledge across all interactions.
 
 **Automatically collected from conversation:**
 - Your name, preferences, habits
 - Relationships ("my wife Sarah")
 - Goals and interests
-- Conversation history
+- Conversation history and session summaries
+- Work patterns and primary projects
+- Record importance and AI insights
 
 **How Bartleby uses it:**
 - Startup message surfaces relevant follow-ups
 - Responses adapt to your preferences
 - Can recall past conversations
+- Automatically discovers semantic relationships between notes
+- Tracks observation confidence and supersedes outdated facts
 
 **Teach Bartleby naturally:**
 ```
@@ -316,10 +320,19 @@ What Bartleby learns about you over time.
 **Commands:**
 ```
 what do you know about me    Show stored facts
-show profile                 Same
+show profile                 Same thing
+pnpm monitor                 Database stats and health
+pnpm optimize                Clean expired data and optimize
+pnpm profile export          Backup learning data
+pnpm profile import <file>   Restore from backup
 ```
 
-Location: `./database/memory/`
+**Data location:** `./database/bartleby.db` (unified SQLite database)
+
+**Migration:** If you have legacy memory data in `./database/memory/`, run:
+```bash
+npx tsx scripts/migrate-memory-to-learning.ts
+```
 
 ---
 
