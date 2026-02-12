@@ -129,7 +129,8 @@ export class ContextService {
       await this.basicSessionAnalysis(sessionId, messages);
     }
 
-    // Still save episode for backwards compatibility
+    // Legacy: Still save to episodes array for backward compatibility during migration
+    // This will be removed once full migration is complete
     const episode: Episode = {
       id: sessionId,
       timestamp: new Date().toISOString(),
@@ -143,74 +144,200 @@ export class ContextService {
     this.episodes.push(episode);
     this.currentSession = null;
 
-    await this.save();
+    // Note: No longer saving to JSON file - data persists in learning system
     debug('Session ended', { sessionId, messageCount: messages.length });
   }
 
   // === Episodic Memory ===
 
   getLastSession(): Episode | null {
-    return this.episodes[this.episodes.length - 1] || null;
+    if (!this.learning) {
+      // Fallback to legacy in-memory episodes
+      return this.episodes[this.episodes.length - 1] || null;
+    }
+
+    // Query most recent session from learning system
+    const sessions = this.learning['db'].prepare(`
+      SELECT id, data, created_at
+      FROM entities
+      WHERE type = 'session'
+      ORDER BY created_at DESC
+      LIMIT 1
+    `).all() as Array<{ id: string; data: string; created_at: string }>;
+
+    if (sessions.length === 0) {
+      return this.episodes[this.episodes.length - 1] || null;
+    }
+
+    return this.sessionEntityToEpisode(sessions[0]);
   }
 
   getTodayEpisodes(): Episode[] {
+    if (!this.learning) {
+      // Fallback to legacy in-memory episodes
+      const today = new Date().toISOString().split('T')[0];
+      return this.episodes.filter(e => e.timestamp.startsWith(today));
+    }
+
+    // Query today's sessions from learning system
     const today = new Date().toISOString().split('T')[0];
-    return this.episodes.filter(e => e.timestamp.startsWith(today));
+    const sessions = this.learning['db'].prepare(`
+      SELECT id, data, created_at
+      FROM entities
+      WHERE type = 'session'
+      AND created_at >= ?
+      ORDER BY created_at DESC
+    `).all(`${today}T00:00:00Z`) as Array<{ id: string; data: string; created_at: string }>;
+
+    return sessions.map(s => this.sessionEntityToEpisode(s));
   }
 
   getPendingFollowups(): Array<{ episodeId: string; text: string }> {
-    const results: Array<{ episodeId: string; text: string }> = [];
-    for (const ep of this.episodes) {
-      for (const followup of ep.pendingFollowups) {
-        results.push({ episodeId: ep.id, text: followup });
+    if (!this.learning) {
+      // Fallback to legacy in-memory episodes
+      const results: Array<{ episodeId: string; text: string }> = [];
+      for (const ep of this.episodes) {
+        for (const followup of ep.pendingFollowups) {
+          results.push({ episodeId: ep.id, text: followup });
+        }
       }
+      return results;
     }
-    return results;
+
+    // Query all unresolved questions from learning system
+    const unresolved = this.learning.queryObservationsByKey('unresolved_question', {
+      notExpired: true
+    });
+
+    return unresolved.map(obs => ({
+      episodeId: obs.entityId,
+      text: obs.value
+    }));
   }
 
   clearFollowup(episodeId: string, text: string): boolean {
-    const episode = this.episodes.find(e => e.id === episodeId);
-    if (!episode) return false;
+    if (!this.learning) {
+      // Fallback to legacy in-memory episodes
+      const episode = this.episodes.find(e => e.id === episodeId);
+      if (!episode) return false;
 
-    const idx = episode.pendingFollowups.indexOf(text);
-    if (idx === -1) return false;
+      const idx = episode.pendingFollowups.indexOf(text);
+      if (idx === -1) return false;
 
-    episode.pendingFollowups.splice(idx, 1);
-    this.save();
-    return true;
+      episode.pendingFollowups.splice(idx, 1);
+      this.save();
+      return true;
+    }
+
+    // Find and expire the unresolved observation
+    const observations = this.learning.getObservations(episodeId, {
+      keyPrefix: 'unresolved_question'
+    });
+
+    for (const obs of observations) {
+      if (obs.value === text) {
+        // Mark as resolved by expiring it
+        this.learning.recordObservation({
+          entityId: episodeId,
+          key: obs.key,
+          value: obs.value,
+          sourceType: 'inferred',
+          confidence: 1.0,
+          expiresAt: new Date(0).toISOString(), // Expire immediately
+          supersedes: obs.id
+        });
+        return true;
+      }
+    }
+
+    return false;
   }
 
   clearMatchingFollowup(description: string): string | null {
-    const lower = description.toLowerCase();
-    for (const ep of this.episodes) {
-      for (let i = 0; i < ep.pendingFollowups.length; i++) {
-        if (ep.pendingFollowups[i].toLowerCase().includes(lower)) {
-          const cleared = ep.pendingFollowups[i];
-          ep.pendingFollowups.splice(i, 1);
-          this.save();
-          return cleared;
+    if (!this.learning) {
+      // Fallback to legacy in-memory episodes
+      const lower = description.toLowerCase();
+      for (const ep of this.episodes) {
+        for (let i = 0; i < ep.pendingFollowups.length; i++) {
+          if (ep.pendingFollowups[i].toLowerCase().includes(lower)) {
+            const cleared = ep.pendingFollowups[i];
+            ep.pendingFollowups.splice(i, 1);
+            this.save();
+            return cleared;
+          }
         }
       }
+      return null;
     }
+
+    // Search for matching unresolved question
+    const lower = description.toLowerCase();
+    const unresolved = this.learning.queryObservationsByKey('unresolved_question', {
+      notExpired: true
+    });
+
+    for (const obs of unresolved) {
+      if (obs.value.toLowerCase().includes(lower)) {
+        // Mark as resolved
+        this.learning.recordObservation({
+          entityId: obs.entityId,
+          key: obs.key,
+          value: obs.value,
+          sourceType: 'inferred',
+          confidence: 1.0,
+          expiresAt: new Date(0).toISOString(),
+          supersedes: obs.id
+        });
+        return obs.value;
+      }
+    }
+
     return null;
   }
 
   recallRelevant(query: string, limit = 5): Episode[] {
-    const words = query.toLowerCase().split(/\s+/);
-    const scored = this.episodes.map(ep => {
-      let score = 0;
-      for (const word of words) {
-        if (ep.summary.toLowerCase().includes(word)) score += 2;
-        if (ep.topics.some(t => t.includes(word))) score += 1;
-      }
-      return { ep, score };
-    });
+    if (!this.learning) {
+      // Fallback to legacy in-memory scoring
+      const words = query.toLowerCase().split(/\s+/);
+      const scored = this.episodes.map(ep => {
+        let score = 0;
+        for (const word of words) {
+          if (ep.summary.toLowerCase().includes(word)) score += 2;
+          if (ep.topics.some(t => t.includes(word))) score += 1;
+        }
+        return { ep, score };
+      });
 
-    return scored
-      .filter(s => s.score > 0)
-      .sort((a, b) => b.score - a.score)
-      .slice(0, limit)
-      .map(s => s.ep);
+      return scored
+        .filter(s => s.score > 0)
+        .sort((a, b) => b.score - a.score)
+        .slice(0, limit)
+        .map(s => s.ep);
+    }
+
+    // Use full-text search on observations
+    const relevantObs = this.learning.searchObservations(query, limit * 3);
+
+    // Get unique session IDs
+    const sessionIds = new Set<string>();
+    for (const obs of relevantObs) {
+      // Check if this is a session entity
+      const entity = this.learning.getEntity(obs.entityId);
+      if (entity && entity.type === 'session') {
+        sessionIds.add(obs.entityId);
+      }
+    }
+
+    // Convert to Episodes
+    const sessions = this.learning['db'].prepare(`
+      SELECT id, data, created_at
+      FROM entities
+      WHERE id IN (${Array.from(sessionIds).map(() => '?').join(',')})
+      ORDER BY created_at DESC
+      LIMIT ?
+    `).all(...Array.from(sessionIds), limit) as Array<{ id: string; data: string; created_at: string }>;
+
+    return sessions.map(s => this.sessionEntityToEpisode(s));
   }
 
   // === Semantic Profile ===
@@ -273,7 +400,18 @@ export class ContextService {
   }
 
   getEpisodeCount(): number {
-    return this.episodes.length;
+    if (!this.learning) {
+      return this.episodes.length;
+    }
+
+    // Count session entities in learning system
+    const result = this.learning['db'].prepare(`
+      SELECT COUNT(*) as count
+      FROM entities
+      WHERE type = 'session'
+    `).get() as { count: number };
+
+    return result.count + this.episodes.length; // Include legacy episodes
   }
 
   // === Fact Extraction ===
@@ -519,6 +657,33 @@ Return as JSON:
     if (!this.learning) return [];
     const observations = this.learning.getObservations(sessionId, { keyPrefix: 'unresolved_question' });
     return observations.map(o => o.value);
+  }
+
+  /**
+   * Convert a session entity from learning system to Episode format
+   */
+  private sessionEntityToEpisode(session: { id: string; data: string; created_at: string }): Episode {
+    if (!this.learning) {
+      throw new Error('LearningService not available');
+    }
+
+    const data = session.data ? JSON.parse(session.data) : {};
+
+    // Get observations for this session
+    const summary = this.learning.getObservation(session.id, 'summary');
+    const topics = this.learning.getObservations(session.id, { keyPrefix: 'topic' });
+    const actions = this.learning.getObservations(session.id, { keyPrefix: 'action' });
+    const unresolved = this.learning.getObservations(session.id, { keyPrefix: 'unresolved_question' });
+
+    return {
+      id: session.id,
+      timestamp: session.created_at,
+      summary: summary?.value || 'Session summary not available',
+      topics: topics.map(o => o.value),
+      actionsTaken: actions.map(o => o.value),
+      pendingFollowups: unresolved.map(o => o.value),
+      messageCount: data.messageCount || 0
+    };
   }
 
   close(): void {
