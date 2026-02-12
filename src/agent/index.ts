@@ -21,12 +21,92 @@ export class Agent {
   }
 
   /**
+   * Build rich context from learning system for LLM prompts
+   */
+  private async buildRichContext(input: string): Promise<{ profile: string; context: string }> {
+    // Get traditional context (for backwards compatibility)
+    const oldProfile = this.services.context.getProfileSummary();
+    const lastSession = this.services.context.getLastSession();
+
+    // Get learning system context
+    if (!this.services.learning) {
+      // Fallback to old system
+      return {
+        profile: oldProfile,
+        context: lastSession ? `Last conversation: ${lastSession.summary}` : 'First interaction'
+      };
+    }
+
+    try {
+      const userProfile = this.services.learning.getUserProfile();
+      const recentWork = this.services.learning.getRecentWorkContext(7);
+      const relevantObs = this.services.learning.searchObservations(input, 5);
+
+      // Build profile section
+      const profileParts: string[] = [];
+
+      if (Object.keys(userProfile.preferences).length > 0) {
+        profileParts.push('**Preferences:**');
+        for (const [key, value] of Object.entries(userProfile.preferences)) {
+          profileParts.push(`- ${key}: ${value}`);
+        }
+      }
+
+      if (Object.keys(userProfile.patterns).length > 0) {
+        profileParts.push('\n**Patterns:**');
+        for (const [key, value] of Object.entries(userProfile.patterns)) {
+          profileParts.push(`- ${key}: ${JSON.stringify(value)}`);
+        }
+      }
+
+      if (userProfile.goals.length > 0) {
+        profileParts.push(`\n**Current Goal:** ${userProfile.goals[0]}`);
+      }
+
+      // Build context section
+      const contextParts: string[] = [];
+
+      if (recentWork.records.length > 0) {
+        contextParts.push(`**Recent Work (last 7 days):**`);
+        contextParts.push(`- ${recentWork.records.length} records worked on`);
+        if (recentWork.topics.length > 0) {
+          contextParts.push(`- Topics: ${recentWork.topics.slice(0, 5).join(', ')}`);
+        }
+        if (recentWork.projects.length > 0) {
+          contextParts.push(`- Projects: ${recentWork.projects.slice(0, 3).join(', ')}`);
+        }
+      }
+
+      if (lastSession) {
+        contextParts.push(`\n**Last Conversation:** ${lastSession.summary}`);
+      }
+
+      if (relevantObs.length > 0) {
+        contextParts.push(`\n**Relevant Context:**`);
+        for (const obs of relevantObs) {
+          contextParts.push(`- ${obs.key}: ${obs.value.slice(0, 60)}`);
+        }
+      }
+
+      const profile = profileParts.length > 0 ? profileParts.join('\n') : oldProfile || 'No profile yet';
+      const context = contextParts.length > 0 ? contextParts.join('\n') : 'First interaction';
+
+      return { profile, context };
+    } catch (err) {
+      warn('Failed to build rich context from learning system', { error: String(err) });
+      // Fallback to old system
+      return {
+        profile: oldProfile,
+        context: lastSession ? `Last conversation: ${lastSession.summary}` : 'First interaction'
+      };
+    }
+  }
+
+  /**
    * Handle a simple request using Fast model with single tool call
    */
   async handleSimple(input: string): Promise<string> {
-    const profile = this.services.context.getProfileSummary();
-    const lastSession = this.services.context.getLastSession();
-    const contextStr = lastSession ? `Last conversation: ${lastSession.summary}` : undefined;
+    const { profile, context: contextStr } = await this.buildRichContext(input);
 
     const tools = getToolDescriptions();
     const systemPrompt = buildSimplePrompt(tools, profile, contextStr);
@@ -84,9 +164,7 @@ export class Agent {
    * Uses OpenAI function calling for structured tool invocation
    */
   async handleComplex(input: string): Promise<string> {
-    const profile = this.services.context.getProfileSummary();
-    const lastSession = this.services.context.getLastSession();
-    const contextStr = lastSession ? `Last conversation: ${lastSession.summary}` : undefined;
+    const { profile, context: contextStr } = await this.buildRichContext(input);
 
     const systemPrompt = buildComplexPrompt(profile, contextStr);
     const maxIterations = this.services.llm.getMaxIterations();

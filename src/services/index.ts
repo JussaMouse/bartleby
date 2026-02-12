@@ -155,19 +155,33 @@ export function closeServices(services: ServiceContainer): void {
   services.signal.close();
 }
 
-// Re-export types
-export { GardenService, GardenRecord, RecordType, RecordStatus, TaskFilters } from './garden.js';
-export { CalendarService, CalendarEntry, CalendarEvent, EntryType, SourceType } from './calendar.js';
-export { ContextService, Episode, UserFact } from './context.js';
-export { LearningService, Entity, Observation, Relationship, UserProfile, WorkContext, SessionSummary } from './learning.js';
-export { PresenceService, PresenceConfig, MomentType } from './presence.js';
-export { LLMService, Tier, Complexity } from './llm.js';
+// Re-export services
+export { GardenService } from './garden.js';
+export { CalendarService } from './calendar.js';
+export { ContextService } from './context.js';
+export { LearningService } from './learning.js';
+export { PresenceService } from './presence.js';
+export { LLMService } from './llm.js';
 export { EmbeddingService } from './embeddings.js';
-export { VectorService, VectorMetadata } from './vectors.js';
-export { ShedService, ShedSource, ShedChunk } from './shed.js';
-export { SchedulerService, ScheduledTask } from './scheduler.js';
-export { WeatherService, WeatherData, ForecastDay } from './weather.js';
+export { VectorService } from './vectors.js';
+export { ShedService } from './shed.js';
+export { SchedulerService } from './scheduler.js';
+export { WeatherService } from './weather.js';
 export { SignalService } from './signal.js';
 export { OCRService } from './ocr.js';
-export { DataService, ImportResult, QueryResult, ExportResult, TableInfo, ColumnInfo } from './data.js';
-export { AuditService, AuditEvent } from './audit.js';
+export { DataService } from './data.js';
+export { AuditService } from './audit.js';
+
+// Re-export types
+export type { GardenRecord, RecordType, RecordStatus, TaskFilters } from './garden.js';
+export type { CalendarEntry, CalendarEvent, EntryType, SourceType } from './calendar.js';
+export type { Episode, UserFact } from './context.js';
+export type { Entity, Observation, Relationship, UserProfile, WorkContext, SessionSummary } from './learning.js';
+export type { PresenceConfig, MomentType } from './presence.js';
+export type { Tier, Complexity } from './llm.js';
+export type { VectorMetadata } from './vectors.js';
+export type { ShedSource, ShedChunk } from './shed.js';
+export type { ScheduledTask } from './scheduler.js';
+export type { WeatherData, ForecastDay } from './weather.js';
+export type { ImportResult, QueryResult, ExportResult, TableInfo, ColumnInfo } from './data.js';
+export type { AuditEvent } from './audit.js';
