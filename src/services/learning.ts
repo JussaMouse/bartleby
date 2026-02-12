@@ -222,17 +222,17 @@ export class LearningService {
   // Entity Management
   // ==========================================================================
 
-  createEntity(type: EntityType, data?: any): string {
-    const id = uuidv4();
+  createEntity(type: EntityType, data?: any, id?: string): string {
+    const entityId = id || uuidv4();
     const dataJson = data ? JSON.stringify(data) : null;
 
     this.db.prepare(`
       INSERT INTO entities (id, type, created_at, data)
       VALUES (?, ?, datetime('now'), ?)
-    `).run(id, type, dataJson);
+    `).run(entityId, type, dataJson);
 
-    debug('Entity created', { id, type });
-    return id;
+    debug('Entity created', { id: entityId, type });
+    return entityId;
   }
 
   getEntity(id: string): Entity | null {
