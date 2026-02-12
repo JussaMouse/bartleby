@@ -254,6 +254,7 @@ main#panels {
 
 .form-group {
   margin-bottom: 16px;
+  position: relative;
 }
 
 .form-group label {

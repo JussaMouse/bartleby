@@ -742,9 +742,10 @@ function renderNoteEdit(view, data) {
   html += '</div>';
 
   // Tags field
-  html += '<div class="form-group">';
+  html += '<div class="form-group" style="position: relative;">';
   html += '<label>Tags</label>';
-  html += `<input type="text" id="note-tags" class="form-input" value="${esc(tagsStr)}" placeholder="+project #tags @context with person">`;
+  html += `<input type="text" id="note-tags" class="form-input" value="${esc(tagsStr)}" placeholder="+project #tags @context with person" onkeydown="handleNoteTagsKey(event)">`;
+  html += '<div id="note-tags-autocomplete" class="autocomplete-menu hidden"></div>';
   html += '</div>';
 
   // Content field
@@ -791,6 +792,161 @@ function createNewNote() {
 function openNoteEdit(noteId) {
   // Open note edit panel for existing note
   addPanel('note-edit:' + noteId);
+}
+
+// Autocomplete for note tags field
+let noteTagsAutocompleteItems = [];
+let noteTagsAutocompleteIndex = -1;
+
+function handleNoteTagsKey(event) {
+  const input = document.getElementById('note-tags');
+  const menu = document.getElementById('note-tags-autocomplete');
+  if (!input || !menu) return;
+
+  // Tab - trigger autocomplete
+  if (event.key === 'Tab') {
+    event.preventDefault();
+
+    if (!menu.classList.contains('hidden')) {
+      // Apply selected item
+      if (noteTagsAutocompleteIndex >= 0 && noteTagsAutocompleteItems[noteTagsAutocompleteIndex]) {
+        applyNoteTagsAutocomplete(noteTagsAutocompleteItems[noteTagsAutocompleteIndex]);
+      }
+      hideNoteTagsAutocomplete();
+      return;
+    }
+
+    // Trigger autocomplete based on cursor position
+    const cursorPos = input.selectionStart;
+    const text = input.value;
+    const beforeCursor = text.slice(0, cursorPos);
+
+    const contextMatch = beforeCursor.match(/@(\w*)$/);
+    const projectMatch = beforeCursor.match(/\+([^\s]*)$/);
+    const tagMatch = beforeCursor.match(/#(\w*)$/);
+    const withMatch = beforeCursor.match(/\bwith\s+(\w*)$/i);
+
+    if (contextMatch) {
+      const partial = contextMatch[1].toLowerCase();
+      const matches = autocompleteData.contexts.filter(c =>
+        c.toLowerCase().startsWith('@' + partial) || c.toLowerCase().startsWith(partial)
+      );
+      showNoteTagsAutocomplete(matches);
+    } else if (projectMatch) {
+      const partial = projectMatch[1].toLowerCase();
+      const matches = autocompleteData.projects.filter(p =>
+        p.toLowerCase().startsWith(partial) ||
+        p.toLowerCase().replace(/\s+/g, '-').startsWith(partial)
+      );
+      showNoteTagsAutocomplete(matches.map(p => '+' + p.toLowerCase().replace(/\s+/g, '-')));
+    } else if (tagMatch) {
+      const partial = tagMatch[1].toLowerCase();
+      const matches = autocompleteData.tags.filter(t =>
+        t.toLowerCase().startsWith(partial)
+      );
+      showNoteTagsAutocomplete(matches.map(t => '#' + t));
+    } else if (withMatch) {
+      const partial = withMatch[1].toLowerCase();
+      const contacts = autocompleteData.contacts || [];
+      const matches = contacts.filter(c =>
+        c.toLowerCase().startsWith(partial)
+      );
+      showNoteTagsAutocomplete(matches);
+    }
+    return;
+  }
+
+  // Enter - apply autocomplete if menu is open
+  if (event.key === 'Enter' && !menu.classList.contains('hidden')) {
+    event.preventDefault();
+    if (noteTagsAutocompleteIndex >= 0 && noteTagsAutocompleteItems[noteTagsAutocompleteIndex]) {
+      applyNoteTagsAutocomplete(noteTagsAutocompleteItems[noteTagsAutocompleteIndex]);
+    }
+    hideNoteTagsAutocomplete();
+    return;
+  }
+
+  // Arrow keys for menu navigation
+  if (!menu.classList.contains('hidden')) {
+    if (event.key === 'ArrowDown') {
+      event.preventDefault();
+      noteTagsAutocompleteIndex = Math.min(noteTagsAutocompleteIndex + 1, noteTagsAutocompleteItems.length - 1);
+      updateNoteTagsAutocompleteSelection();
+    } else if (event.key === 'ArrowUp') {
+      event.preventDefault();
+      noteTagsAutocompleteIndex = Math.max(noteTagsAutocompleteIndex - 1, 0);
+      updateNoteTagsAutocompleteSelection();
+    } else if (event.key === 'Escape') {
+      hideNoteTagsAutocomplete();
+    }
+  }
+}
+
+function showNoteTagsAutocomplete(items) {
+  const menu = document.getElementById('note-tags-autocomplete');
+  if (!menu || !items.length) return;
+
+  noteTagsAutocompleteItems = items;
+  noteTagsAutocompleteIndex = 0;
+
+  menu.innerHTML = items.map((item, i) =>
+    `<div class="autocomplete-item${i === 0 ? ' selected' : ''}" onclick="clickNoteTagsAutocomplete('${esc(item)}')">${esc(item)}</div>`
+  ).join('');
+  menu.classList.remove('hidden');
+}
+
+function hideNoteTagsAutocomplete() {
+  const menu = document.getElementById('note-tags-autocomplete');
+  if (menu) {
+    menu.classList.add('hidden');
+    menu.innerHTML = '';
+  }
+  noteTagsAutocompleteItems = [];
+  noteTagsAutocompleteIndex = -1;
+}
+
+function updateNoteTagsAutocompleteSelection() {
+  const menu = document.getElementById('note-tags-autocomplete');
+  if (!menu) return;
+
+  const items = menu.querySelectorAll('.autocomplete-item');
+  items.forEach((el, i) => {
+    el.classList.toggle('selected', i === noteTagsAutocompleteIndex);
+  });
+}
+
+function clickNoteTagsAutocomplete(value) {
+  applyNoteTagsAutocomplete(value);
+  hideNoteTagsAutocomplete();
+  document.getElementById('note-tags')?.focus();
+}
+
+function applyNoteTagsAutocomplete(value) {
+  const input = document.getElementById('note-tags');
+  if (!input) return;
+
+  const cursorPos = input.selectionStart;
+  const text = input.value;
+  const beforeCursor = text.slice(0, cursorPos);
+  const afterCursor = text.slice(cursorPos);
+
+  let newBefore = beforeCursor;
+
+  if (value.startsWith('@')) {
+    newBefore = beforeCursor.replace(/@\w*$/, value + ' ');
+  } else if (value.startsWith('+')) {
+    newBefore = beforeCursor.replace(/\+[^\s]*$/, value + ' ');
+  } else if (value.startsWith('#')) {
+    newBefore = beforeCursor.replace(/#\w*$/, value + ' ');
+  } else if (beforeCursor.match(/\bwith\s+\w*$/i)) {
+    // Contact name completion
+    newBefore = beforeCursor.replace(/(\bwith\s+)\w*$/i, '$1' + value + ' ');
+  } else {
+    newBefore = beforeCursor + value + ' ';
+  }
+
+  input.value = newBefore + afterCursor;
+  input.selectionStart = input.selectionEnd = newBefore.length;
 }
 
 async function saveNewNote() {
