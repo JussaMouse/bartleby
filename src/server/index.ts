@@ -1208,6 +1208,17 @@ export class DashboardServer {
           debug(`Failed to generate PageView for project: ${err?.message || err}`);
         }
       }
+    } else if (view.startsWith('note-edit:')) {
+      const noteId = view.slice(10); // Remove 'note-edit:'
+      if (noteId !== 'new') {
+        const note = this.garden.get(noteId);
+        if (note) {
+          data = { note };
+        }
+      } else {
+        // New note - send empty data
+        data = { note: null };
+      }
     } else if (view.startsWith('note:')) {
       const noteId = view.slice(5);
       const note = this.garden.get(noteId);

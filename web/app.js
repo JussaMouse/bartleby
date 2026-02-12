@@ -218,6 +218,9 @@ function renderPanel(view, data, pageView) {
   } else if (view.startsWith('project:')) {
     // Use PageView if available, otherwise fall back to old rendering
     content.innerHTML = pageView ? renderPageView(pageView) : renderProject(data);
+  } else if (view.startsWith('note-edit:')) {
+    // Note editing panel (creation or edit)
+    content.innerHTML = renderNoteEdit(view, data);
   } else if (view.startsWith('note:')) {
     // Use PageView if available, otherwise fall back to old rendering
     content.innerHTML = pageView ? renderPageView(pageView) : renderNote(data);
@@ -348,20 +351,12 @@ function renderEditableItem(item, itemType) {
   }
   
   if (itemType === 'note') {
-    // Build display value including project for editing
-    const editValue = item.project ? `${title} +${item.project}` : title;
     return `
       <li class="item generic-item" data-id="${id}" data-type="${itemType}" data-title="${esc(title)}" data-project="${esc(item.project || '')}">
         <div class="item-display">
           <span class="item-title" onclick="addPanel('note:${id}')">${esc(title)}</span>
           ${metaHtml}
-          <span class="edit-link" onclick="event.stopPropagation(); startGenericEdit(this.closest('.generic-item'))">edit</span>
-        </div>
-        <div class="item-edit hidden">
-          <input type="text" class="inline-input" value="${esc(editValue)}"
-                 onkeydown="handleGenericEditKey(event, this)"
-                 onblur="handleGenericEditBlur(event, this)">
-          <div class="autocomplete-menu hidden"></div>
+          <span class="edit-link" onclick="event.stopPropagation(); openNoteEdit('${id}')">edit</span>
         </div>
       </li>
     `;
@@ -711,6 +706,70 @@ function renderRecent(data) {
   return `<ul>${items}</ul>`;
 }
 
+function renderNoteEdit(view, data) {
+  const isNew = view === 'note-edit:new';
+  const noteId = isNew ? null : view.slice(10); // Remove 'note-edit:'
+
+  let note = null;
+  if (!isNew && data?.note) {
+    note = data.note;
+  }
+
+  const title = note?.title || '';
+  const content = note?.content || '';
+
+  // Build tags string from note metadata
+  let tagsStr = '';
+  const tagParts = [];
+  if (note?.project) {
+    const projectName = note.project; // TODO: resolve project ID to name
+    tagParts.push('+' + projectName);
+  }
+  if (note?.tags && note.tags.length > 0) {
+    tagParts.push(...note.tags.map(t => '#' + t));
+  }
+  if (note?.context) {
+    tagParts.push(note.context);
+  }
+  tagsStr = tagParts.join(' ');
+
+  let html = '<div class="note-edit-form">';
+
+  // Title field
+  html += '<div class="form-group">';
+  html += '<label>Title</label>';
+  html += `<input type="text" id="note-title" class="form-input" value="${esc(title)}" placeholder="Note title" autofocus>`;
+  html += '</div>';
+
+  // Tags field
+  html += '<div class="form-group">';
+  html += '<label>Tags</label>';
+  html += `<input type="text" id="note-tags" class="form-input" value="${esc(tagsStr)}" placeholder="+project #tags @context with person">`;
+  html += '</div>';
+
+  // Content field
+  html += '<div class="form-group">';
+  html += '<label>Content</label>';
+  html += `<textarea id="note-content" class="form-textarea" rows="12" placeholder="Note content...">${esc(content)}</textarea>`;
+  html += '</div>';
+
+  // Buttons
+  html += '<div class="form-actions">';
+  if (isNew) {
+    html += `<button class="btn-primary" onclick="saveNewNote()">Save</button>`;
+    html += `<button class="btn-secondary" onclick="removePanel('note-edit:new')">Cancel</button>`;
+  } else {
+    html += `<button class="btn-primary" onclick="saveNoteEdit('${noteId}')">Save</button>`;
+    html += `<button class="btn-secondary" onclick="removePanel('note-edit:${noteId}')">Cancel</button>`;
+    html += `<button class="btn-danger" onclick="deleteNoteFromEdit('${noteId}')">Delete</button>`;
+  }
+  html += '</div>';
+
+  html += '</div>';
+
+  return html;
+}
+
 function renderNotes(data) {
   let html = '<div class="panel-toolbar"><button class="btn-inline" onclick="createNewNote()">+ New Note</button></div>';
   
@@ -724,21 +783,125 @@ function renderNotes(data) {
   return html;
 }
 
-async function createNewNote() {
-  const title = prompt('Note title:');
-  if (!title?.trim()) return;
-  
+function createNewNote() {
+  // Open note edit panel for new note
+  addPanel('note-edit:new');
+}
+
+function openNoteEdit(noteId) {
+  // Open note edit panel for existing note
+  addPanel('note-edit:' + noteId);
+}
+
+async function saveNewNote() {
+  const title = document.getElementById('note-title')?.value.trim();
+  const tags = document.getElementById('note-tags')?.value.trim();
+  const content = document.getElementById('note-content')?.value.trim();
+
+  if (!title) {
+    showToast('Title is required', true);
+    return;
+  }
+
   try {
-    const res = await apiFetch('/api/note', {
+    // Parse tags field for +project #tags @context with person
+    let fullTitle = title;
+    if (tags) {
+      fullTitle += ' ' + tags;
+    }
+
+    // Create note via chat API which handles metadata parsing
+    const res = await apiFetch('/api/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ title: title.trim() }),
+      body: JSON.stringify({ text: `new note ${fullTitle}` }),
     });
+
     if (!res.ok) throw new Error('Failed to create note');
+
+    const data = await res.json();
+
+    // If note was created, append content if provided
+    if (content && data.noteId) {
+      // TODO: Add content to note via update API
+      // For now, content needs to be added separately
+    }
+
     showToast('Note created');
+    removePanel('note-edit:new');
   } catch (e) {
     console.error('Create note failed:', e);
     showToast('Failed to create note', true);
+  }
+}
+
+async function saveNoteEdit(noteId) {
+  const title = document.getElementById('note-title')?.value.trim();
+  const tags = document.getElementById('note-tags')?.value.trim();
+  const content = document.getElementById('note-content')?.value;
+
+  if (!title) {
+    showToast('Title is required', true);
+    return;
+  }
+
+  try {
+    // Parse tags: +project #tag1 #tag2 @context
+    const updates = { title };
+
+    const projectMatch = tags.match(/\+([^@#\s]+)/);
+    const tagMatches = tags.match(/#(\w+)/g);
+    const contextMatch = tags.match(/@(\w+)/);
+
+    if (projectMatch) {
+      updates.project = projectMatch[1];
+    }
+    if (tagMatches) {
+      updates.tags = tagMatches.map(t => t.slice(1));
+    }
+    if (contextMatch) {
+      updates.context = '@' + contextMatch[1];
+    }
+
+    // Update note
+    const res = await apiFetch(`/api/note/${noteId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updates),
+    });
+
+    if (!res.ok) throw new Error('Failed to update note');
+
+    // Update content separately if changed
+    if (content !== undefined) {
+      const contentRes = await apiFetch(`/api/page/${noteId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content }),
+      });
+      if (!contentRes.ok) throw new Error('Failed to update content');
+    }
+
+    showToast('Note saved');
+    removePanel(`note-edit:${noteId}`);
+  } catch (e) {
+    console.error('Save note failed:', e);
+    showToast('Failed to save note', true);
+  }
+}
+
+async function deleteNoteFromEdit(noteId) {
+  if (!confirm('Delete this note?')) return;
+
+  try {
+    const res = await apiFetch(`/api/page/${noteId}`, { method: 'DELETE' });
+    if (!res.ok) throw new Error('Delete failed');
+
+    removePanel(`note-edit:${noteId}`);
+    showToast('Note deleted');
+  } catch (e) {
+    console.error('Delete failed:', e);
+    showToast('Failed to delete note', true);
   }
 }
 
