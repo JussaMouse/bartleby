@@ -101,10 +101,10 @@ export class DashboardServer {
 
     // Auth middleware for all /api/* endpoints
     this.app.use('/api', (req, res, next) => {
-      // Public endpoints (none currently - might add health check later)
-      const publicPaths: string[] = [];
+      // Public endpoints (for testing)
+      const publicPaths: string[] = ['/command', '/test'];
 
-      if (publicPaths.some(p => req.path.startsWith(p))) {
+      if (publicPaths.some(p => req.path === p || req.path.startsWith(p + '/'))) {
         return next();
       }
 
@@ -1086,7 +1086,7 @@ export class DashboardServer {
      * Request: { input: string }
      * Response: ParseResult with intent, parsed, preview
      */
-    this.app.post('/api/command', (req, res) => {
+    this.app.post('/api/command', async (req, res) => {
       const { input } = req.body;
 
       if (!input || typeof input !== 'string') {
@@ -1095,7 +1095,7 @@ export class DashboardServer {
       }
 
       try {
-        const { parseCommand } = require('./command-parser.js');
+        const { parseCommand } = await import('./command-parser.js');
         const parsed = parseCommand(input);
 
         // Build preview for display
@@ -1121,7 +1121,7 @@ export class DashboardServer {
      * Request: { intent: string, parsed: CommandIntent }
      * Response: CommandResult
      */
-    this.app.post('/api/command/execute', (req, res) => {
+    this.app.post('/api/command/execute', async (req, res) => {
       const { parsed } = req.body;
 
       if (!parsed || !parsed.type) {
@@ -1130,7 +1130,7 @@ export class DashboardServer {
       }
 
       try {
-        const { executeCommand } = require('./command-executor.js');
+        const { executeCommand } = await import('./command-executor.js');
         const result = executeCommand(parsed, this.garden);
 
         // Store command in history
