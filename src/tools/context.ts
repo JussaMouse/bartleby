@@ -154,25 +154,102 @@ export const viewProfile: Tool = {
       /^what do you know about me/i,
       /^show (my )?profile/i,
       /^(my )?preferences/i,
+      /^\/memory$/i,
     ],
     keywords: {
       verbs: ['show', 'view', 'what'],
-      nouns: ['profile', 'preferences', 'about me', 'know'],
+      nouns: ['profile', 'preferences', 'about me', 'know', 'memory'],
     },
     priority: 80,
   },
 
   execute: async (args, context) => {
-    const summary = context.services.context.getProfileSummary();
-    const episodeCount = context.services.context.getEpisodeCount();
+    const learning = context.services.learning;
+    if (!learning) {
+      // Fallback to old system if learning not available
+      const summary = context.services.context.getProfileSummary();
+      const episodeCount = context.services.context.getEpisodeCount();
 
-    if (!summary && episodeCount === 0) {
+      if (!summary && episodeCount === 0) {
+        return "I don't know much about you yet. As we chat, I'll learn your preferences and remember our conversations.";
+      }
+
+      let response = '## What I Know About You\n\n';
+      if (summary) response += summary;
+      response += `\n\n*Based on ${episodeCount} conversation(s).*`;
+      return response;
+    }
+
+    // Get all user observations from learning system
+    const preferences = learning.getObservations('user', { keyPrefix: 'preference.' });
+    const patterns = learning.getObservations('user', { keyPrefix: 'pattern.' });
+    const contextObs = learning.getObservations('user', { keyPrefix: 'context.' });
+    const goals = learning.getObservations('user', { keyPrefix: 'goal.' });
+
+    // Get session count
+    const db = learning['db'];
+    const sessionCount = db.prepare('SELECT COUNT(*) as count FROM entities WHERE type = ?').get('session') as { count: number };
+
+    if (preferences.length === 0 && patterns.length === 0 && contextObs.length === 0 && goals.length === 0) {
       return "I don't know much about you yet. As we chat, I'll learn your preferences and remember our conversations.";
     }
 
     let response = '## What I Know About You\n\n';
-    if (summary) response += summary;
-    response += `\n\n*Based on ${episodeCount} conversation(s).*`;
+
+    // Preferences
+    if (preferences.length > 0) {
+      response += '### Preferences\n\n';
+      for (const obs of preferences) {
+        const key = obs.key.replace('preference.', '');
+        const confidence = obs.confidence >= 0.9 ? '✓' : obs.confidence >= 0.7 ? '~' : '?';
+        response += `${confidence} **${key}**: ${obs.value}\n`;
+      }
+      response += '\n';
+    }
+
+    // Patterns
+    if (patterns.length > 0) {
+      response += '### Patterns\n\n';
+      for (const obs of patterns) {
+        const key = obs.key.replace('pattern.', '');
+        let value = obs.value;
+        // Parse JSON values
+        try {
+          const parsed = JSON.parse(obs.value);
+          if (key === 'work_hours') {
+            value = `${parsed.start} - ${parsed.end} (${parsed.timezone})`;
+          } else {
+            value = JSON.stringify(parsed, null, 2);
+          }
+        } catch (e) {
+          // Use as-is if not JSON
+        }
+        response += `📊 **${key}**: ${value}\n`;
+      }
+      response += '\n';
+    }
+
+    // Current Context
+    if (contextObs.length > 0) {
+      response += '### Current Context\n\n';
+      for (const obs of contextObs) {
+        const key = obs.key.replace('context.', '');
+        response += `📍 **${key}**: ${obs.value}\n`;
+      }
+      response += '\n';
+    }
+
+    // Goals
+    if (goals.length > 0) {
+      response += '### Goals\n\n';
+      for (const obs of goals) {
+        const key = obs.key.replace('goal.', '');
+        response += `🎯 **${key}**: ${obs.value}\n`;
+      }
+      response += '\n';
+    }
+
+    response += `\n*Based on ${sessionCount.count} conversation(s) and ${preferences.length + patterns.length + contextObs.length + goals.length} observations.*`;
 
     return response;
   },
