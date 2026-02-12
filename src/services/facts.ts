@@ -261,8 +261,10 @@ export class FactsService {
    * @param recordId - The garden record ID
    */
   deleteAllFacts(recordId: string): void {
+    // Only get active (non-expired) facts to delete
     const facts = this.learning.getObservations(recordId, {
-      keyPrefix: 'fact.'
+      keyPrefix: 'fact.',
+      notExpired: true
     });
 
     for (const obs of facts) {
