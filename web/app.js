@@ -235,6 +235,10 @@ function renderPanel(view, data, pageView) {
     content.innerHTML = renderToday(data);
   } else if (view === 'recent') {
     content.innerHTML = renderRecent(data);
+  } else if (view === 'memory') {
+    content.innerHTML = renderMemory(data);
+  } else if (view === 'graph') {
+    content.innerHTML = renderGraph(data);
   } else if (view === 'notes') {
     content.innerHTML = renderNotes(data);
   } else {
@@ -709,6 +713,198 @@ function renderRecent(data) {
   }).join('');
 
   return `<ul>${items}</ul>`;
+}
+
+function renderMemory(data) {
+  if (!data) {
+    return '<div class="empty">Loading memory...</div>';
+  }
+
+  if (data.message) {
+    return `<div class="empty">${data.message}</div>`;
+  }
+
+  let html = '';
+
+  // Preferences section
+  if (data.preferences?.length) {
+    html += '<div class="section-header">Preferences</div>';
+    html += '<ul class="memory-list">';
+    for (const pref of data.preferences) {
+      const confidence = pref.confidence >= 0.9 ? '✓' : pref.confidence >= 0.7 ? '~' : '?';
+      html += `<li><strong>${confidence} ${escapeHtml(pref.key)}</strong>: ${escapeHtml(pref.value)}</li>`;
+    }
+    html += '</ul>';
+  }
+
+  // Patterns section
+  if (data.patterns?.length) {
+    html += '<div class="section-header">Patterns</div>';
+    html += '<ul class="memory-list">';
+    for (const pattern of data.patterns) {
+      let value = pattern.value;
+      // Try to parse JSON values for better display
+      try {
+        const parsed = JSON.parse(pattern.value);
+        if (pattern.key === 'work_hours') {
+          value = `${parsed.start} - ${parsed.end} (${parsed.timezone})`;
+        } else {
+          value = JSON.stringify(parsed, null, 2);
+        }
+      } catch (e) {
+        // Use as-is if not JSON
+      }
+      html += `<li><strong>📊 ${escapeHtml(pattern.key)}</strong>: ${escapeHtml(value)}</li>`;
+    }
+    html += '</ul>';
+  }
+
+  // Current context section
+  if (data.context?.length) {
+    html += '<div class="section-header">Current Context</div>';
+    html += '<ul class="memory-list">';
+    for (const ctx of data.context) {
+      html += `<li><strong>📍 ${escapeHtml(ctx.key)}</strong>: ${escapeHtml(ctx.value)}</li>`;
+    }
+    html += '</ul>';
+  }
+
+  // Goals section
+  if (data.goals?.length) {
+    html += '<div class="section-header">Goals</div>';
+    html += '<ul class="memory-list">';
+    for (const goal of data.goals) {
+      html += `<li><strong>🎯 ${escapeHtml(goal.key)}</strong>: ${escapeHtml(goal.value)}</li>`;
+    }
+    html += '</ul>';
+  }
+
+  // Footer with session count
+  if (data.sessionCount > 0) {
+    const totalObs = (data.preferences?.length || 0) + (data.patterns?.length || 0) +
+                     (data.context?.length || 0) + (data.goals?.length || 0);
+    html += `<div class="memory-footer">Based on ${data.sessionCount} session(s) and ${totalObs} observation(s)</div>`;
+  }
+
+  if (!html) {
+    return '<div class="empty">No memory data yet. As you use Bartleby, I\'ll learn your preferences and patterns.</div>';
+  }
+
+  return html;
+}
+
+function renderGraph(data) {
+  if (!data) {
+    return '<div class="empty">Loading graph...</div>';
+  }
+
+  if (data.message) {
+    return `<div class="empty">${data.message}</div>`;
+  }
+
+  if (!data.nodes || data.nodes.length === 0) {
+    return '<div class="empty">No records with relationships yet. Create records and link them together to see the relationship graph.</div>';
+  }
+
+  // Create a unique ID for this graph instance
+  const graphId = 'graph-' + Date.now();
+
+  // Build simple network visualization
+  let html = `<div class="graph-container" id="${graphId}">`;
+  html += '<div class="graph-info">';
+  html += `<span>${data.nodes.length} node(s), ${data.edges?.length || 0} relationship(s)</span>`;
+  html += '</div>';
+  html += '<svg class="graph-svg" width="100%" height="400"></svg>';
+  html += '</div>';
+
+  // Schedule rendering after DOM update
+  setTimeout(() => {
+    const container = document.getElementById(graphId);
+    if (!container) return;
+
+    const svg = container.querySelector('.graph-svg');
+    const width = svg.clientWidth;
+    const height = 400;
+
+    // Simple force-directed layout
+    const nodes = data.nodes.map(n => ({
+      ...n,
+      x: Math.random() * width,
+      y: Math.random() * height,
+      vx: 0,
+      vy: 0
+    }));
+
+    const edges = data.edges || [];
+
+    // Run simple physics simulation
+    for (let i = 0; i < 100; i++) {
+      // Repulsion between all nodes
+      for (let j = 0; j < nodes.length; j++) {
+        for (let k = j + 1; k < nodes.length; k++) {
+          const dx = nodes[k].x - nodes[j].x;
+          const dy = nodes[k].y - nodes[j].y;
+          const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+          const force = 500 / (dist * dist);
+          nodes[j].vx -= (dx / dist) * force;
+          nodes[j].vy -= (dy / dist) * force;
+          nodes[k].vx += (dx / dist) * force;
+          nodes[k].vy += (dy / dist) * force;
+        }
+      }
+
+      // Attraction along edges
+      for (const edge of edges) {
+        const source = nodes.find(n => n.id === edge.from);
+        const target = nodes.find(n => n.id === edge.to);
+        if (!source || !target) continue;
+
+        const dx = target.x - source.x;
+        const dy = target.y - source.y;
+        const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+        const force = (dist - 80) * 0.01;
+
+        source.vx += (dx / dist) * force;
+        source.vy += (dy / dist) * force;
+        target.vx -= (dx / dist) * force;
+        target.vy -= (dy / dist) * force;
+      }
+
+      // Apply velocity and damping
+      for (const node of nodes) {
+        node.x += node.vx;
+        node.y += node.vy;
+        node.vx *= 0.8;
+        node.vy *= 0.8;
+
+        // Keep in bounds
+        node.x = Math.max(30, Math.min(width - 30, node.x));
+        node.y = Math.max(30, Math.min(height - 30, node.y));
+      }
+    }
+
+    // Render edges
+    let svgContent = '';
+    for (const edge of edges) {
+      const source = nodes.find(n => n.id === edge.from);
+      const target = nodes.find(n => n.id === edge.to);
+      if (!source || !target) continue;
+
+      const opacity = 0.3 + (edge.strength || 0.5) * 0.5;
+      svgContent += `<line x1="${source.x}" y1="${source.y}" x2="${target.x}" y2="${target.y}" stroke="rgba(100,150,200,${opacity})" stroke-width="1.5"/>`;
+    }
+
+    // Render nodes
+    for (const node of nodes) {
+      const color = node.type === 'note' ? '#4a9eff' : node.type === 'project' ? '#9f7aea' : '#48bb78';
+      svgContent += `<circle cx="${node.x}" cy="${node.y}" r="6" fill="${color}"/>`;
+      svgContent += `<text x="${node.x}" y="${node.y - 10}" text-anchor="middle" font-size="10" fill="#a0aec0">${escapeHtml(node.label)}</text>`;
+    }
+
+    svg.innerHTML = svgContent;
+  }, 10);
+
+  return html;
 }
 
 function renderNoteEdit(view, data) {

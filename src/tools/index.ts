@@ -12,6 +12,7 @@ import { ocrTools } from './ocr.js';
 import { dataTools } from './data.js';
 import { mediaTools } from './media.js';
 import { insightsTools } from './insights.js';
+import { relatedTools } from './related.js';
 
 // Aggregate all tools
 export const allTools: Tool[] = [
@@ -20,6 +21,7 @@ export const allTools: Tool[] = [
   ...contactTools,
   ...contextTools,
   ...insightsTools,
+  ...relatedTools,
   ...shedTools,
   ...mediaTools,
   ...schedulerTools,

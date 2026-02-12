@@ -1,5 +1,6 @@
 // src/tools/context.ts
 import { Tool } from './types.js';
+import * as fmt from '../utils/format.js';
 
 export const recallConversation: Tool = {
   name: 'recallConversation',
@@ -191,25 +192,25 @@ export const viewProfile: Tool = {
     const sessionCount = db.prepare('SELECT COUNT(*) as count FROM entities WHERE type = ?').get('session') as { count: number };
 
     if (preferences.length === 0 && patterns.length === 0 && contextObs.length === 0 && goals.length === 0) {
-      return "I don't know much about you yet. As we chat, I'll learn your preferences and remember our conversations.";
+      return fmt.info("I don't know much about you yet. As we chat, I'll learn your preferences and remember our conversations.");
     }
 
-    let response = '## What I Know About You\n\n';
+    let response = fmt.header('What I Know About You', '🧠');
 
     // Preferences
     if (preferences.length > 0) {
-      response += '### Preferences\n\n';
+      response += fmt.section('Preferences') + '\n';
       for (const obs of preferences) {
         const key = obs.key.replace('preference.', '');
-        const confidence = obs.confidence >= 0.9 ? '✓' : obs.confidence >= 0.7 ? '~' : '?';
-        response += `${confidence} **${key}**: ${obs.value}\n`;
+        const conf = fmt.confidence(obs.confidence);
+        response += fmt.bullet(`${conf} ${fmt.bold(key)}: ${obs.value}`) + '\n';
       }
       response += '\n';
     }
 
     // Patterns
     if (patterns.length > 0) {
-      response += '### Patterns\n\n';
+      response += fmt.section('Patterns') + '\n';
       for (const obs of patterns) {
         const key = obs.key.replace('pattern.', '');
         let value = obs.value;
@@ -224,32 +225,33 @@ export const viewProfile: Tool = {
         } catch (e) {
           // Use as-is if not JSON
         }
-        response += `📊 **${key}**: ${value}\n`;
+        response += fmt.bullet(`📊 ${fmt.bold(key)}: ${value}`) + '\n';
       }
       response += '\n';
     }
 
     // Current Context
     if (contextObs.length > 0) {
-      response += '### Current Context\n\n';
+      response += fmt.section('Current Context') + '\n';
       for (const obs of contextObs) {
         const key = obs.key.replace('context.', '');
-        response += `📍 **${key}**: ${obs.value}\n`;
+        response += fmt.bullet(`📍 ${fmt.bold(key)}: ${obs.value}`) + '\n';
       }
       response += '\n';
     }
 
     // Goals
     if (goals.length > 0) {
-      response += '### Goals\n\n';
+      response += fmt.section('Goals') + '\n';
       for (const obs of goals) {
         const key = obs.key.replace('goal.', '');
-        response += `🎯 **${key}**: ${obs.value}\n`;
+        response += fmt.bullet(`🎯 ${fmt.bold(key)}: ${obs.value}`) + '\n';
       }
       response += '\n';
     }
 
-    response += `\n*Based on ${sessionCount.count} conversation(s) and ${preferences.length + patterns.length + contextObs.length + goals.length} observations.*`;
+    const totalObs = preferences.length + patterns.length + contextObs.length + goals.length;
+    response += fmt.footer(`Based on ${sessionCount.count} conversation(s) and ${totalObs} observations.`);
 
     return response;
   },

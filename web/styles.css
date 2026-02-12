@@ -953,3 +953,61 @@ footer button:hover {
 .repl-input button:hover {
   opacity: 0.9;
 }
+
+/* Memory Panel */
+.memory-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.memory-list li {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--text);
+  padding: 6px 0;
+  border-bottom: 1px solid var(--bg-hover);
+}
+
+.memory-list li:last-child {
+  border-bottom: none;
+}
+
+.memory-list li strong {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.memory-footer {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-style: italic;
+  text-align: center;
+  padding: 16px 8px 8px;
+  border-top: 1px solid var(--border);
+  margin-top: 16px;
+}
+
+/* Graph Panel */
+.graph-container {
+  padding: 8px 0;
+}
+
+.graph-info {
+  font-size: 11px;
+  color: var(--text-muted);
+  padding: 8px 0;
+  text-align: center;
+}
+
+.graph-svg {
+  background: var(--bg-tertiary);
+  border-radius: 6px;
+  border: 1px solid var(--border);
+}
+
+.graph-svg text {
+  font-family: var(--font-mono);
+  font-size: 10px;
+}

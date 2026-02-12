@@ -319,13 +319,20 @@ What Bartleby learns about you over time using the **unified learning system** â
 
 **Commands:**
 ```
-what do you know about me    Show stored facts
-show profile                 Same thing
+/memory                      Show what Bartleby knows about you
+what do you know about me    (alternative to /memory)
+show profile                 (alternative to /memory)
+/insights                    AI insights about your garden
+/related <record>            Find records related to a given record
 pnpm monitor                 Database stats and health
 pnpm optimize                Clean expired data and optimize
 pnpm profile export          Backup learning data
 pnpm profile import <file>   Restore from backup
 ```
+
+**Dashboard panels:**
+- **+ Memory** button - View preferences, patterns, context, and goals
+- **+ Graph** button - Visualize relationship graph between records
 
 **Data location:** `./database/bartleby.db` (unified SQLite database)
 

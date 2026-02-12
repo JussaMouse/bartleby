@@ -1,5 +1,6 @@
 // src/tools/insights.ts
 import { Tool } from './types.js';
+import * as fmt from '../utils/format.js';
 
 export const showInsights: Tool = {
   name: 'showInsights',
@@ -26,7 +27,7 @@ export const showInsights: Tool = {
       return 'Insights require the learning system to be enabled.';
     }
 
-    let response = '## 🔍 Insights\n\n';
+    let response = fmt.header('Insights', '🔍');
     let hasInsights = false;
 
     // 1. High-importance records with AI insights
@@ -37,7 +38,7 @@ export const showInsights: Tool = {
 
     const highImportance = importantRecords.filter(obs => obs.value === 'high');
     if (highImportance.length > 0) {
-      response += '### High-Priority Records\n\n';
+      response += fmt.section('High-Priority Records') + '\n';
       hasInsights = true;
 
       for (const obs of highImportance.slice(0, 5)) {
@@ -45,18 +46,18 @@ export const showInsights: Tool = {
         const record = garden.get(obs.entityId);
         if (!record) continue;
 
-        response += `📌 **${record.title}**\n`;
+        response += fmt.bullet(`📌 ${fmt.bold(record.title)}`) + '\n';
 
         // Get AI insight for this record
         const insight = learning.getObservation(obs.entityId, 'ai_insight.importance');
         if (insight) {
-          response += `   ${insight.value}\n`;
+          response += fmt.indent(fmt.dim(insight.value)) + '\n';
         }
 
         // Get next action suggestion if any
         const nextAction = learning.getObservation(obs.entityId, 'ai_insight.next_action');
         if (nextAction) {
-          response += `   💡 ${nextAction.value}\n`;
+          response += fmt.indent(`💡 ${nextAction.value}`) + '\n';
         }
 
         response += '\n';
@@ -69,14 +70,14 @@ export const showInsights: Tool = {
     });
 
     if (semanticRels.length > 0) {
-      response += '### Discovered Patterns\n\n';
+      response += fmt.section('Discovered Patterns') + '\n';
       hasInsights = true;
 
       for (const rel of semanticRels.slice(0, 3)) {
         const context = typeof rel.context === 'string' ? JSON.parse(rel.context) : (rel.context || {});
-        response += `🔗 ${context.description || 'Pattern detected'}\n`;
+        response += fmt.bullet(`🔗 ${context.description || 'Pattern detected'}`) + '\n';
         if (rel.strength) {
-          response += `   Confidence: ${(rel.strength * 100).toFixed(0)}%\n`;
+          response += fmt.indent(`Confidence: ${fmt.percentage(rel.strength)}`) + '\n';
         }
         response += '\n';
       }
@@ -89,7 +90,7 @@ export const showInsights: Tool = {
     });
 
     if (unresolvedQuestions.length > 0) {
-      response += '### Unresolved from Past Sessions\n\n';
+      response += fmt.section('Unresolved from Past Sessions') + '\n';
       hasInsights = true;
 
       for (const obs of unresolvedQuestions) {
@@ -101,8 +102,8 @@ export const showInsights: Tool = {
         const sessionDate = new Date(sessionEntity.createdAt);
         const relativeDate = formatRelativeDate(sessionDate);
 
-        response += `❓ ${obs.value}\n`;
-        response += `   From ${relativeDate}\n\n`;
+        response += fmt.bullet(`❓ ${obs.value}`) + '\n';
+        response += fmt.indent(fmt.dim(`From ${relativeDate}`)) + '\n\n';
       }
     }
 
@@ -123,8 +124,8 @@ export const showInsights: Tool = {
     `).all() as Array<{ entity_id: string }>;
 
     if (staleRecords.length > 0) {
-      response += '### May Need Attention\n\n';
-      response += '*Important records you haven\'t viewed recently:*\n\n';
+      response += fmt.section('May Need Attention') + '\n';
+      response += fmt.dim('Important records you haven\'t viewed recently:') + '\n\n';
       hasInsights = true;
 
       for (const row of staleRecords) {
@@ -135,7 +136,7 @@ export const showInsights: Tool = {
         if (lastViewed) {
           const lastDate = new Date(lastViewed.value);
           const relativeDate = formatRelativeDate(lastDate);
-          response += `⏰ **${record.title}** (last viewed ${relativeDate})\n`;
+          response += fmt.bullet(`⏰ ${fmt.bold(record.title)} ${fmt.dim(`(last viewed ${relativeDate})`)}`) + '\n';
         }
       }
       response += '\n';
@@ -144,13 +145,13 @@ export const showInsights: Tool = {
     // 5. Current work context
     const primaryProject = learning.getObservation('user', 'context.primary_project');
     if (primaryProject) {
-      response += '### Current Focus\n\n';
-      response += `🎯 **Primary project**: ${primaryProject.value}\n\n`;
+      response += fmt.section('Current Focus') + '\n';
+      response += fmt.bullet(`🎯 ${fmt.bold('Primary project')}: ${primaryProject.value}`) + '\n\n';
       hasInsights = true;
     }
 
     if (!hasInsights) {
-      return "I don't have enough insights yet. As you use Bartleby more, I'll learn patterns and surface relevant information here.";
+      return fmt.info("I don't have enough insights yet. As you use Bartleby more, I'll learn patterns and surface relevant information here.");
     }
 
     return response;

@@ -279,6 +279,116 @@ export class DashboardServer {
       res.json(recent);
     });
 
+    // Memory/learning insights endpoint
+    this.app.get('/api/memory', (req, res) => {
+      const learning = this.services.learning;
+
+      if (!learning) {
+        res.json({
+          preferences: [],
+          patterns: [],
+          context: [],
+          goals: [],
+          sessionCount: 0,
+          message: 'Learning system not enabled'
+        });
+        return;
+      }
+
+      // Get user observations
+      const preferences = learning.getObservations('user', { keyPrefix: 'preference.' });
+      const patterns = learning.getObservations('user', { keyPrefix: 'pattern.' });
+      const contextObs = learning.getObservations('user', { keyPrefix: 'context.' });
+      const goals = learning.getObservations('user', { keyPrefix: 'goal.' });
+
+      // Get session count
+      const db = learning['db'];
+      const sessionCount = db.prepare('SELECT COUNT(*) as count FROM entities WHERE type = ?').get('session') as { count: number };
+
+      // Format observations for display
+      const formatObs = (obs: any) => ({
+        key: obs.key.replace(/^(preference|pattern|context|goal)\./, ''),
+        value: obs.value,
+        confidence: obs.confidence,
+      });
+
+      res.json({
+        preferences: preferences.map(formatObs),
+        patterns: patterns.map(formatObs),
+        context: contextObs.map(formatObs),
+        goals: goals.map(formatObs),
+        sessionCount: sessionCount.count,
+      });
+    });
+
+    // Relationship graph endpoint
+    this.app.get('/api/graph', (req, res) => {
+      const learning = this.services.learning;
+
+      if (!learning) {
+        res.json({
+          nodes: [],
+          edges: [],
+          message: 'Learning system not enabled'
+        });
+        return;
+      }
+
+      // Get all record entities
+      const db = learning['db'];
+      const records = db.prepare(`
+        SELECT entity_id, type, data, created_at
+        FROM entities
+        WHERE type = 'record'
+        ORDER BY created_at DESC
+        LIMIT 50
+      `).all() as Array<{ entity_id: string, type: string, data: string, created_at: string }>;
+
+      // Build nodes
+      const nodes = records.map(rec => {
+        const data = rec.data ? JSON.parse(rec.data) : {};
+        return {
+          id: rec.entity_id,
+          label: data.title || rec.entity_id.slice(0, 8),
+          type: data.type || 'unknown'
+        };
+      });
+
+      // Get all relationships between these records
+      const recordIds = records.map(r => r.entity_id);
+      if (recordIds.length === 0) {
+        res.json({ nodes: [], edges: [] });
+        return;
+      }
+
+      const placeholders = recordIds.map(() => '?').join(',');
+      const edges = db.prepare(`
+        SELECT from_entity, to_entity, relation_type, strength
+        FROM relationships
+        WHERE from_entity IN (${placeholders})
+        AND to_entity IN (${placeholders})
+        AND relation_type != 'discussed_in'
+      `).all(...recordIds, ...recordIds) as Array<{
+        from_entity: string,
+        to_entity: string,
+        relation_type: string,
+        strength: number | null
+      }>;
+
+      // Format edges
+      const formattedEdges = edges.map(edge => ({
+        from: edge.from_entity,
+        to: edge.to_entity,
+        type: edge.relation_type,
+        strength: edge.strength || 0.5
+      }));
+
+      res.json({
+        nodes,
+        edges: formattedEdges
+      });
+    });
+
     // Fast capture endpoint for voice - skips routing overhead
     this.app.post('/api/capture', async (req, res) => {
       info('/api/capture request received', {
@@ -1501,6 +1611,107 @@ export class DashboardServer {
       };
     } else if (view === 'recent') {
       data = this.garden.getRecent(10);
+    } else if (view === 'memory') {
+      const learning = this.services.learning;
+
+      if (!learning) {
+        data = {
+          preferences: [],
+          patterns: [],
+          context: [],
+          goals: [],
+          sessionCount: 0,
+          message: 'Learning system not enabled'
+        };
+      } else {
+        // Get user observations
+        const preferences = learning.getObservations('user', { keyPrefix: 'preference.' });
+        const patterns = learning.getObservations('user', { keyPrefix: 'pattern.' });
+        const contextObs = learning.getObservations('user', { keyPrefix: 'context.' });
+        const goals = learning.getObservations('user', { keyPrefix: 'goal.' });
+
+        // Get session count
+        const db = learning['db'];
+        const sessionCount = db.prepare('SELECT COUNT(*) as count FROM entities WHERE type = ?').get('session') as { count: number };
+
+        // Format observations for display
+        const formatObs = (obs: any) => ({
+          key: obs.key.replace(/^(preference|pattern|context|goal)\./, ''),
+          value: obs.value,
+          confidence: obs.confidence,
+        });
+
+        data = {
+          preferences: preferences.map(formatObs),
+          patterns: patterns.map(formatObs),
+          context: contextObs.map(formatObs),
+          goals: goals.map(formatObs),
+          sessionCount: sessionCount.count,
+        };
+      }
+    } else if (view === 'graph') {
+      const learning = this.services.learning;
+
+      if (!learning) {
+        data = {
+          nodes: [],
+          edges: [],
+          message: 'Learning system not enabled'
+        };
+      } else {
+        // Get all record entities
+        const db = learning['db'];
+        const records = db.prepare(`
+          SELECT entity_id, type, data, created_at
+          FROM entities
+          WHERE type = 'record'
+          ORDER BY created_at DESC
+          LIMIT 50
+        `).all() as Array<{ entity_id: string, type: string, data: string, created_at: string }>;
+
+        // Build nodes
+        const nodes = records.map(rec => {
+          const recData = rec.data ? JSON.parse(rec.data) : {};
+          return {
+            id: rec.entity_id,
+            label: recData.title || rec.entity_id.slice(0, 8),
+            type: recData.type || 'unknown'
+          };
+        });
+
+        // Get all relationships between these records
+        const recordIds = records.map(r => r.entity_id);
+        let edges: any[] = [];
+
+        if (recordIds.length > 0) {
+          const placeholders = recordIds.map(() => '?').join(',');
+          edges = db.prepare(`
+            SELECT from_entity, to_entity, relation_type, strength
+            FROM relationships
+            WHERE from_entity IN (${placeholders})
+            AND to_entity IN (${placeholders})
+            AND relation_type != 'discussed_in'
+          `).all(...recordIds, ...recordIds) as Array<{
+            from_entity: string,
+            to_entity: string,
+            relation_type: string,
+            strength: number | null
+          }>;
+        }
+
+        // Format edges
+        const formattedEdges = edges.map(edge => ({
+          from: edge.from_entity,
+          to: edge.to_entity,
+          type: edge.relation_type,
+          strength: edge.strength || 0.5
+        }));
+
+        data = {
+          nodes,
+          edges: formattedEdges
+        };
+      }
     } else if (view === 'notes') {
       data = this.garden.getByType('note').filter(n => n.status === 'active');
     }

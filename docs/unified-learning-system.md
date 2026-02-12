@@ -1,12 +1,12 @@
 # Unified Learning System for Bartleby
 
-**Date**: 2026-02-12
-**Status**: ✅ **PHASES 1-3 COMPLETE** - Unified System Fully Operational! (~31 hours)
+**Date**: 2026-02-13
+**Status**: ✅ **PHASES 1-5 COMPLETE** - Unified System Fully Operational! (~52 hours)
 **Goal**: Build Bartleby's memory/learning from the ground up
 
 ---
 
-## 🎯 Current Status (Updated 2026-02-12)
+## 🎯 Current Status (Updated 2026-02-13)
 
 **What's Working:**
 - ✅ Entity-Observation-Relationship (EOR) architecture fully implemented
@@ -22,6 +22,12 @@
 - ✅ **Episodes migrated from JSON to SQLite**
 - ✅ **Data migration script created**
 - ✅ Comprehensive end-to-end integration testing
+- ✅ **Observation cleanup with TTL support**
+- ✅ **Query optimization and database indexes**
+- ✅ **Memory monitoring and profile export/import**
+- ✅ **/memory, /insights, /related commands**
+- ✅ **Dashboard memory and graph panels**
+- ✅ **Enhanced CLI output formatting with colors**
 
 **What Bartleby Does NOW:**
 - **Remembers** your preferences (code style, verbosity, communication style)
@@ -34,20 +40,21 @@
 - **Maintains** continuity across sessions
 - **Unified storage** - all memory in one SQLite database
 - **Full history tracking** - see how facts evolve over time
+- **Shows insights** via `/memory`, `/insights`, `/related` commands
+- **Visualizes relationships** in dashboard graph
+- **Beautiful CLI output** with colors and structure
 - **No longer stateless - has persistent, learning memory!**
 
 **Test Results:**
-- All integration tests passing
-- FactsService fully migrated and tested
-- Episodes query from unified system
-- Backward compatibility maintained
-- Migration script ready for existing users
+- ✅ All integration tests passing
+- ✅ FactsService fully migrated and tested
+- ✅ Episodes query from unified system
+- ✅ Backward compatibility maintained
+- ✅ Migration script ready for existing users
+- ✅ All Phase 5 commands tested and working
+- ✅ Dashboard panels functional
 
-**Remaining Work:**
-- Polish & Performance (~4-6 hours)
-- UI enhancements (~10-15 hours)
-
-**Total Progress**: 31/61 hours (~51% complete)
+**Total Progress**: ~52/52 hours (**100% complete!** 🎉)
 
 ---
 
@@ -1126,33 +1133,79 @@ there?"
 
 ---
 
-### Phase 5: Features & UI (10-15 hours)
+### Phase 5: Features & UI (10-15 hours) ✅ **COMPLETE**
 
 **Deliverables:**
-- [ ] Command: `/memory` - show what Bartleby knows
-- [ ] Command: `/insights` - AI insights about garden
-- [ ] Command: `/related <id>` - find related records
-- [ ] Dashboard: Memory panel showing observations
-- [ ] Dashboard: Relationship graph visualization
-- [ ] CLI output enhancements
+- [x] Command: `/memory` - show what Bartleby knows
+- [x] Command: `/insights` - AI insights about garden
+- [x] Command: `/related <id>` - find related records
+- [x] Dashboard: Memory panel showing observations
+- [x] Dashboard: Relationship graph visualization
+- [x] CLI output enhancements
+
+**Implementation:**
+1. **/memory Command**: Enhanced `viewProfile` tool to query LearningService for user preferences, patterns, context, and goals. Shows confidence indicators (✓/~/?) with color-coded output. Displays total session and observation counts.
+
+2. **/insights Command**: Created `showInsights` tool that surfaces:
+   - High-priority records with AI-generated importance insights
+   - Discovered patterns with confidence scores
+   - Unresolved questions from past sessions
+   - Stale important records needing attention
+   - Current work focus (primary project)
+
+3. **/related Command**: Built `showRelated` tool that finds and displays:
+   - Outgoing relationships (depends_on, references, etc.)
+   - Incoming relationships (backlinks)
+   - Semantic similarity via embeddings
+   - Sessions where record was discussed
+   - Supports fuzzy matching on record titles
+
+4. **Dashboard Memory Panel**: Added `/api/memory` endpoint and dashboard panel showing user observations organized by type (preferences, patterns, context, goals) with live WebSocket updates.
+
+5. **Dashboard Relationship Graph**: Created `/api/graph` endpoint and graph visualization panel with:
+   - Force-directed layout algorithm for node positioning
+   - Color-coded nodes by type (note=blue, project=purple)
+   - Edge opacity based on relationship strength
+   - Interactive SVG rendering
+
+6. **CLI Output Formatting**: Built comprehensive `src/utils/format.ts` module with:
+   - ANSI color codes (8 colors + bright variants)
+   - Text styling (bold, dim, colorize)
+   - Structured output (header, section, bullet, table, box)
+   - Status messages (success, error, warning, info)
+   - Special formatting (percentage, confidence, highlight)
+   - Terminal detection (respects NO_COLOR)
+   - Applied to all Phase 5 commands for beautiful, readable output
+
+**Commands:**
+- `/memory` or `show my profile` - View what Bartleby has learned about you
+- `/insights` - See AI insights about your garden
+- `/related <record-id-or-title>` - Find records related to a given record
+- Dashboard "+ Memory" button - Add memory panel to dashboard
+- Dashboard "+ Graph" button - Add relationship graph visualization
+
+**Features:**
+- Color-coded CLI output with proper visual hierarchy
+- Confidence indicators (✓ high, ~ medium, ? low)
+- Percentage-based similarity scores
+- Relationship strength visualization
+- Fuzzy search for record titles
+- Live dashboard updates via WebSocket
 
 ---
 
 ### Updated Total Estimates
 
-**✅ Completed**: ~37 hours (Phases 1-4 complete!)
+**✅ Completed**: ~52 hours (All Phases Complete! 🎉)
 - Phase 1: Core EOR System - 8 hours
 - Phase 2: Automatic Learning - 20 hours
 - Phase 3: System Migration - 3 hours
 - Phase 4: Polish & Performance - 6 hours
+- Phase 5: Features & UI - 15 hours
 
-**Remaining**:
-- Phase 5 UI: 10-15 hours
+**Grand Total**: 52 hours (within original 50-63 hour estimate)
 
-**Total Remaining**: ~10-15 hours
-**Grand Total**: ~47-52 hours (under original 50-63 hour estimate)
-
-**Progress**: 75% complete (37/52 hours)
+**Progress**: 100% complete ✅
 
 ### Quick Win Path
 
