@@ -14,6 +14,7 @@ import { SignalService } from './signal.js';
 import { OCRService } from './ocr.js';
 import { DataService } from './data.js';
 import { AuditService } from './audit.js';
+import { LearningService } from './learning.js';
 import { info } from '../utils/logger.js';
 
 export interface ServiceContainer {
@@ -28,6 +29,7 @@ export interface ServiceContainer {
 
   // Context - Bartleby's memory of you
   context: ContextService;
+  learning: LearningService; // Unified entity-observation-relationship system
 
   // Presence - Bartleby's initiative layer (decides when to speak unprompted)
   presence: PresenceService;
@@ -81,6 +83,9 @@ export async function initServices(config: Config): Promise<ServiceContainer> {
   await shed.initialize();
   await scheduler.initialize();
 
+  // Create learning service (shares garden database)
+  const learning = new LearningService(garden.getDatabase());
+
   // Wire up calendar to services that need temporal index
   garden.setCalendar(calendar);
   scheduler.setCalendar(calendar);
@@ -118,6 +123,7 @@ export async function initServices(config: Config): Promise<ServiceContainer> {
     calendar,
     data,
     context,
+    learning,
     presence,
     llm,
     embeddings,
@@ -135,6 +141,7 @@ export function closeServices(services: ServiceContainer): void {
   services.scheduler.close();
   services.shed.close();
   services.vectors.close();
+  services.learning.close();
   services.garden.close();
   services.calendar.close();
   services.context.close();
@@ -149,6 +156,7 @@ export function closeServices(services: ServiceContainer): void {
 export { GardenService, GardenRecord, RecordType, RecordStatus, TaskFilters } from './garden.js';
 export { CalendarService, CalendarEntry, CalendarEvent, EntryType, SourceType } from './calendar.js';
 export { ContextService, Episode, UserFact } from './context.js';
+export { LearningService, Entity, Observation, Relationship, UserProfile, WorkContext, SessionSummary } from './learning.js';
 export { PresenceService, PresenceConfig, MomentType } from './presence.js';
 export { LLMService, Tier, Complexity } from './llm.js';
 export { EmbeddingService } from './embeddings.js';

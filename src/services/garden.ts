@@ -167,6 +167,10 @@ export class GardenService {
   private _graphInstance?: GardenGraph;
   private _viewCacheInstance?: ViewCache;
 
+  getDatabase(): Database.Database {
+    return this.db;
+  }
+
   constructor(private config: Config) {
     const dbPath = getDbPath(config, 'garden.sqlite3');
     ensureDir(path.dirname(dbPath));
