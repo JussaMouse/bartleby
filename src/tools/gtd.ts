@@ -1049,17 +1049,50 @@ export const createNote: Tool = {
   },
 
   parseArgs: (input, match) => {
-    let title = '';
+    let rawTitle = '';
     if (match) {
-      title = match[match.length - 1] || '';
+      rawTitle = match[match.length - 1] || '';
     } else {
-      title = input.replace(/^(new|create|add)\s+note\s*:?\s*/i, '').trim();
+      rawTitle = input.replace(/^(new|create|add)\s+note\s*:?\s*/i, '').trim();
     }
-    return { title };
+
+    // Parse metadata from title (same as actions)
+    // Extract +project, #tags, @context, with person
+    const projectMatch = rawTitle.match(/\+([^@#]+?)(?=\s*(?:@|#|with\s|$))/i);
+    const contextMatch = rawTitle.match(/@(\w+)/);
+    const tagMatches = rawTitle.match(/#(\w+)/g);
+    const withMatch = rawTitle.match(/\bwith\s+([^@#+]+?)(?=\s*(?:@|#|\+|$))/i);
+
+    // Remove metadata from title
+    let cleanTitle = rawTitle
+      .replace(/\+[^@#\s]+/g, '')
+      .replace(/@\w+/g, '')
+      .replace(/#\w+/g, '')
+      .replace(/\bwith\s+[^@#+]+/gi, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+    return {
+      title: cleanTitle,
+      rawTitle,
+      projectName: projectMatch ? projectMatch[1].trim() : null,
+      context: contextMatch ? '@' + contextMatch[1] : null,
+      tags: tagMatches ? tagMatches.map((t: string) => t.slice(1)) : null,
+      contactName: withMatch ? withMatch[1].trim() : null,
+      hasMetadata: !!(projectMatch || contextMatch || tagMatches || withMatch),
+    };
   },
 
   execute: async (args, context) => {
-    const { title } = args as { title: string };
+    const { title, projectName, context: noteContext, tags, contactName, hasMetadata } = args as {
+      title: string;
+      rawTitle: string;
+      projectName: string | null;
+      context: string | null;
+      tags: string[] | null;
+      contactName: string | null;
+      hasMetadata: boolean;
+    };
 
     if (!title) {
       // Set pending state so next input becomes the title
@@ -1067,21 +1100,66 @@ export const createNote: Tool = {
       return 'What would you like to call this note?';
     }
 
-    // Create note with just the title
-    const note = context.services.garden.create({
+    // Build note data
+    const noteData: any = {
       type: 'note',
       title,
       status: 'active',
       content: '',
-    });
+    };
+
+    // Handle project
+    if (projectName) {
+      const projects = context.services.garden.getByType('project');
+      let project = projects.find(p => p.title.toLowerCase() === projectName.toLowerCase());
+      if (!project) {
+        project = context.services.garden.create({
+          type: 'project',
+          title: projectName,
+          status: 'active',
+        });
+      }
+      noteData.project = project.id;
+    }
+
+    // Handle context
+    if (noteContext) {
+      noteData.context = noteContext;
+    }
+
+    // Handle tags
+    if (tags) {
+      noteData.tags = tags;
+    }
+
+    // Handle contact
+    if (contactName) {
+      const contacts = context.services.garden.getByType('contact');
+      let contact = contacts.find(c => c.title.toLowerCase().includes(contactName.toLowerCase()));
+      if (!contact) {
+        contact = context.services.garden.create({
+          type: 'contact',
+          title: contactName,
+          status: 'active',
+        });
+      }
+      noteData.contacts = [contact.id];
+    }
+
+    // Create note
+    const note = context.services.garden.create(noteData);
 
     // Set pending note in session for follow-up content
     await context.services.context.setFact('system', 'pending_note_id', note.id);
+    await context.services.context.setFact('system', 'pending_note_has_metadata', hasMetadata);
 
-    return `📝 **Note: ${note.title}**
+    let response = `📝 **Note: ${note.title}**`;
+    if (projectName) {
+      response += ` +${projectName}`;
+    }
+    response += '\n\nWhat would you like to add to this note?\n(Type your content, or "done" to finish)';
 
-What would you like to add to this note?
-(Type your content, or "done" to finish)`;
+    return response;
   },
 };
 
@@ -1122,6 +1200,7 @@ export const provideNoteTitle: Tool = {
 
     // Set pending note in session for follow-up content
     await context.services.context.setFact('system', 'pending_note_id', note.id);
+    await context.services.context.setFact('system', 'pending_note_has_metadata', false);
 
     return `📝 **Note: ${note.title}**
 
@@ -1163,19 +1242,35 @@ export const appendToNote: Tool = {
       return '';  // Shouldn't happen, but safety check
     }
 
-    // "done" or empty input finishes the note - ask for project/tags
+    // "done" or empty input finishes the note
     if (input.toLowerCase().trim() === 'done' || input.trim() === '') {
       const note = context.services.garden.get(pendingNoteId);
       if (!note) {
         await context.services.context.setFact('system', 'pending_note_id', null);
+        await context.services.context.setFact('system', 'pending_note_has_metadata', null);
         return 'Note not found.';
       }
-      
-      // Move to tagging step
+
+      // Check if metadata was already provided
+      const hasMetadataFact = context.services.context.getFact('system', 'pending_note_has_metadata');
+      const hasMetadata = !!hasMetadataFact?.value;
+
       await context.services.context.setFact('system', 'pending_note_id', null);
-      await context.services.context.setFact('system', 'pending_note_tagging', note.id);
-      
-      return `📝 **${note.title}**\n\nAny metadata? (e.g., +project @context #tag with person, or ENTER to skip)`;
+      await context.services.context.setFact('system', 'pending_note_has_metadata', null);
+
+      if (hasMetadata) {
+        // Metadata was provided in original command, just confirm
+        const project = note.project ? context.services.garden.get(note.project) : null;
+        let response = `✓ Note created: "${note.title}"`;
+        if (project) {
+          response += ` in project ${project.title}`;
+        }
+        return response;
+      } else {
+        // No metadata provided, ask for it
+        await context.services.context.setFact('system', 'pending_note_tagging', note.id);
+        return `📝 **${note.title}**\n\nAny metadata? (e.g., +project @context #tag with person, or ENTER to skip)`;
+      }
     }
 
     // Append content to note
