@@ -1,11 +1,13 @@
 // src/services/facts.ts
-import Database from 'better-sqlite3';
 import { debug, warn } from '../utils/logger.js';
+import type { LearningService } from './learning.js';
 
 /**
- * Facts Service (aka Context/Facts)
+ * Facts Service (Record Metadata)
  *
  * Tracks evolving metadata about garden records without writing to markdown files.
+ * Now backed by the unified LearningService for correlation with other learning data.
+ *
  * Use cases:
  * - Usage statistics (view counts, last accessed)
  * - Behavioral patterns (edit frequency, session times)
@@ -16,6 +18,7 @@ import { debug, warn } from '../utils/logger.js';
  * - Facts are NOT essential data (can be lost/regenerated)
  * - Frontmatter stores static metadata, facts store dynamic metadata
  * - High-frequency updates without file I/O
+ * - Stored as observations in unified learning system with 'fact.' prefix
  */
 
 export interface Facts {
@@ -31,10 +34,10 @@ export interface FactEntry {
 }
 
 export class FactsService {
-  private db: Database.Database;
+  private learning: LearningService;
 
-  constructor(db: Database.Database) {
-    this.db = db;
+  constructor(learning: LearningService) {
+    this.learning = learning;
   }
 
   /**
@@ -43,33 +46,26 @@ export class FactsService {
    * @returns Object with all facts, or null if no facts exist
    */
   getFacts(recordId: string): Facts | null {
-    const stmt = this.db.prepare(`
-      SELECT key, value, updated_at, expires_at
-      FROM context_facts
-      WHERE record_id = ?
-        AND (expires_at IS NULL OR expires_at > datetime('now'))
-    `);
+    const observations = this.learning.getObservations(recordId, {
+      keyPrefix: 'fact.',
+      notExpired: true
+    });
 
-    const rows = stmt.all(recordId) as Array<{
-      key: string;
-      value: string;
-      updated_at: string;
-      expires_at: string | null;
-    }>;
-
-    if (rows.length === 0) return null;
+    if (observations.length === 0) return null;
 
     const facts: Facts = {};
-    for (const row of rows) {
+    for (const obs of observations) {
+      // Remove 'fact.' prefix from key
+      const key = obs.key.substring(5);
       try {
-        facts[row.key] = JSON.parse(row.value);
+        facts[key] = JSON.parse(obs.value);
       } catch (err) {
         warn('Failed to parse fact value', {
           recordId,
-          key: row.key,
+          key,
           error: String(err)
         });
-        facts[row.key] = row.value; // Store as-is if parse fails
+        facts[key] = obs.value; // Store as-is if parse fails
       }
     }
 
@@ -83,26 +79,23 @@ export class FactsService {
    * @returns The fact value, or null if not found/expired
    */
   getFact(recordId: string, key: string): any | null {
-    const stmt = this.db.prepare(`
-      SELECT value
-      FROM context_facts
-      WHERE record_id = ?
-        AND key = ?
-        AND (expires_at IS NULL OR expires_at > datetime('now'))
-    `);
+    const obs = this.learning.getObservation(recordId, `fact.${key}`);
+    if (!obs) return null;
 
-    const row = stmt.get(recordId, key) as { value: string } | undefined;
-    if (!row) return null;
+    // Check if expired
+    if (obs.expiresAt && new Date(obs.expiresAt) <= new Date()) {
+      return null;
+    }
 
     try {
-      return JSON.parse(row.value);
+      return JSON.parse(obs.value);
     } catch (err) {
       warn('Failed to parse fact value', {
         recordId,
         key,
         error: String(err)
       });
-      return row.value;
+      return obs.value;
     }
   }
 
@@ -122,19 +115,22 @@ export class FactsService {
     const valueStr = JSON.stringify(value);
     const expiresAt = ttlSeconds
       ? new Date(Date.now() + ttlSeconds * 1000).toISOString()
-      : null;
+      : undefined;
 
-    const stmt = this.db.prepare(`
-      INSERT INTO context_facts (record_id, key, value, updated_at, expires_at)
-      VALUES (?, ?, ?, datetime('now'), ?)
-      ON CONFLICT(record_id, key)
-      DO UPDATE SET
-        value = excluded.value,
-        updated_at = excluded.updated_at,
-        expires_at = excluded.expires_at
-    `);
+    // Get existing observation to supersede it
+    const existing = this.learning.getObservation(recordId, `fact.${key}`);
 
-    stmt.run(recordId, key, valueStr, expiresAt);
+    this.learning.recordObservation({
+      entityId: recordId,
+      key: `fact.${key}`,
+      value: valueStr,
+      valueType: 'json',
+      sourceType: 'computed',
+      confidence: 1.0,
+      expiresAt,
+      supersedes: existing?.id
+    });
+
     debug('Fact set', { recordId, key, hasExpiry: !!ttlSeconds });
   }
 
@@ -193,19 +189,48 @@ export class FactsService {
     operator: '=' | '!=' | '>' | '<' | '>=' | '<=',
     value: any
   ): string[] {
-    const valueStr = JSON.stringify(value);
+    // Get all observations with this fact key across all entities
+    const observations = this.learning.queryObservationsByKey(`fact.${key}`, {
+      notExpired: true
+    });
 
-    // SQLite JSON comparison for simple cases
-    const stmt = this.db.prepare(`
-      SELECT DISTINCT record_id
-      FROM context_facts
-      WHERE key = ?
-        AND (expires_at IS NULL OR expires_at > datetime('now'))
-        AND json_extract(value, '$') ${operator} json_extract(?, '$')
-    `);
+    // Filter by value comparison
+    const results: string[] = [];
+    for (const obs of observations) {
+      try {
+        const obsValue = JSON.parse(obs.value);
+        let matches = false;
 
-    const rows = stmt.all(key, valueStr) as Array<{ record_id: string }>;
-    return rows.map(r => r.record_id);
+        switch (operator) {
+          case '=':
+            matches = obsValue === value;
+            break;
+          case '!=':
+            matches = obsValue !== value;
+            break;
+          case '>':
+            matches = obsValue > value;
+            break;
+          case '<':
+            matches = obsValue < value;
+            break;
+          case '>=':
+            matches = obsValue >= value;
+            break;
+          case '<=':
+            matches = obsValue <= value;
+            break;
+        }
+
+        if (matches && !results.includes(obs.entityId)) {
+          results.push(obs.entityId);
+        }
+      } catch (err) {
+        // Skip unparseable values
+      }
+    }
+
+    return results;
   }
 
   /**
@@ -214,12 +239,21 @@ export class FactsService {
    * @param key - The fact key to delete
    */
   deleteFact(recordId: string, key: string): void {
-    const stmt = this.db.prepare(`
-      DELETE FROM context_facts
-      WHERE record_id = ? AND key = ?
-    `);
-    stmt.run(recordId, key);
-    debug('Fact deleted', { recordId, key });
+    // Supersede with an immediately expired observation to "delete"
+    const existing = this.learning.getObservation(recordId, `fact.${key}`);
+    if (existing) {
+      this.learning.recordObservation({
+        entityId: recordId,
+        key: `fact.${key}`,
+        value: 'null',
+        valueType: 'json',
+        sourceType: 'computed',
+        confidence: 1.0,
+        expiresAt: new Date(0).toISOString(), // Expired immediately
+        supersedes: existing.id
+      });
+      debug('Fact deleted', { recordId, key });
+    }
   }
 
   /**
@@ -227,29 +261,35 @@ export class FactsService {
    * @param recordId - The garden record ID
    */
   deleteAllFacts(recordId: string): void {
-    const stmt = this.db.prepare(`
-      DELETE FROM context_facts
-      WHERE record_id = ?
-    `);
-    const result = stmt.run(recordId);
-    debug('All facts deleted', { recordId, count: result.changes });
+    const facts = this.learning.getObservations(recordId, {
+      keyPrefix: 'fact.'
+    });
+
+    for (const obs of facts) {
+      this.learning.recordObservation({
+        entityId: recordId,
+        key: obs.key,
+        value: 'null',
+        valueType: 'json',
+        sourceType: 'computed',
+        confidence: 1.0,
+        expiresAt: new Date(0).toISOString(), // Expired immediately
+        supersedes: obs.id
+      });
+    }
+
+    debug('All facts deleted', { recordId, count: facts.length });
   }
 
   /**
    * Delete expired facts (cleanup)
-   * @returns Number of facts deleted
+   * Note: In the new system, expired observations are filtered at query time.
+   * This method is a no-op but kept for API compatibility.
+   * @returns Number of facts deleted (always 0 in new system)
    */
   deleteExpired(): number {
-    const stmt = this.db.prepare(`
-      DELETE FROM context_facts
-      WHERE expires_at IS NOT NULL
-        AND expires_at <= datetime('now')
-    `);
-    const result = stmt.run();
-    if (result.changes > 0) {
-      debug('Expired facts deleted', { count: result.changes });
-    }
-    return result.changes;
+    debug('Expired facts cleanup (no-op in unified system - handled by query filters)');
+    return 0;
   }
 
   /**
@@ -258,14 +298,17 @@ export class FactsService {
    * @returns Array of record IDs
    */
   getRecordsWith(key: string): string[] {
-    const stmt = this.db.prepare(`
-      SELECT DISTINCT record_id
-      FROM context_facts
-      WHERE key = ?
-        AND (expires_at IS NULL OR expires_at > datetime('now'))
-    `);
-    const rows = stmt.all(key) as Array<{ record_id: string }>;
-    return rows.map(r => r.record_id);
+    const observations = this.learning.queryObservationsByKey(`fact.${key}`, {
+      notExpired: true
+    });
+
+    // Get unique entity IDs
+    const recordIds = new Set<string>();
+    for (const obs of observations) {
+      recordIds.add(obs.entityId);
+    }
+
+    return Array.from(recordIds);
   }
 
   /**
@@ -277,25 +320,23 @@ export class FactsService {
     totalFacts: number;
     expiredFacts: number;
   } {
-    const total = this.db.prepare(`
-      SELECT COUNT(*) as count FROM context_facts
-    `).get() as { count: number };
+    // Get all fact observations
+    const allFacts = this.learning.queryObservationsByKey('fact.');
 
-    const uniqueRecords = this.db.prepare(`
-      SELECT COUNT(DISTINCT record_id) as count FROM context_facts
-    `).get() as { count: number };
+    const activeFacts = this.learning.queryObservationsByKey('fact.', {
+      notExpired: true
+    });
 
-    const expired = this.db.prepare(`
-      SELECT COUNT(*) as count
-      FROM context_facts
-      WHERE expires_at IS NOT NULL
-        AND expires_at <= datetime('now')
-    `).get() as { count: number };
+    // Count unique records
+    const uniqueRecords = new Set<string>();
+    for (const obs of activeFacts) {
+      uniqueRecords.add(obs.entityId);
+    }
 
     return {
-      totalRecords: uniqueRecords.count,
-      totalFacts: total.count,
-      expiredFacts: expired.count
+      totalRecords: uniqueRecords.size,
+      totalFacts: activeFacts.length,
+      expiredFacts: allFacts.length - activeFacts.length
     };
   }
 }

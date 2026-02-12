@@ -162,7 +162,8 @@ export class GardenService {
   private syncing = false;
   private calendar?: CalendarService;
   private scheduler?: SchedulerService;
-  private facts: FactsService;
+  private facts?: FactsService;
+  private learning?: import('./learning.js').LearningService;
   private eventBus: EventBus;
   private _graphInstance?: GardenGraph;
   private _viewCacheInstance?: ViewCache;
@@ -180,9 +181,8 @@ export class GardenService {
     this.gardenPath = resolvePath(config, 'garden');
     this.archivePath = path.join(this.gardenPath, 'archive.log');
 
-    // Initialize FactsService for tracking record metadata
-    this.facts = new FactsService(this.db);
-    debug('FactsService initialized');
+    // FactsService will be initialized after LearningService is available
+    // via setLearningService()
 
     // Initialize EventBus for loose coupling
     this.eventBus = getEventBus();
@@ -244,9 +244,23 @@ export class GardenService {
   }
 
   /**
+   * Set the learning service for unified memory integration.
+   * Called after learning service is initialized.
+   * This initializes the FactsService with LearningService backend.
+   */
+  setLearningService(learning: import('./learning.js').LearningService): void {
+    this.learning = learning;
+    this.facts = new FactsService(learning);
+    debug('FactsService initialized with unified learning backend');
+  }
+
+  /**
    * Get the FactsService instance for tracking record metadata.
    */
   getFactsService(): FactsService {
+    if (!this.facts) {
+      throw new Error('FactsService not initialized - call setLearningService first');
+    }
     return this.facts;
   }
 
@@ -368,7 +382,7 @@ export class GardenService {
     const record = this.rowToRecord(row);
 
     // Track view in facts (unless syncing to avoid noise)
-    if (!this.syncing) {
+    if (!this.syncing && this.facts) {
       this.facts.increment(id, 'viewCount');
       this.facts.setFact(id, 'lastViewed', new Date().toISOString());
     }
@@ -455,7 +469,7 @@ export class GardenService {
     this.syncToCalendar(updated, existing);
 
     // Track edit in facts (unless syncing to avoid noise)
-    if (!this.syncing) {
+    if (!this.syncing && this.facts) {
       this.facts.increment(id, 'editCount');
       this.facts.setFact(id, 'lastEdited', new Date().toISOString());
     }

@@ -419,6 +419,59 @@ export class LearningService {
     }));
   }
 
+  /**
+   * Query observations across all entities by key prefix.
+   * Useful for finding all observations of a certain type (e.g., all 'fact.view_count' observations).
+   */
+  queryObservationsByKey(keyPrefix: string, filters?: {
+    notExpired?: boolean;
+    minConfidence?: number;
+    limit?: number;
+  }): Observation[] {
+    let query = `
+      SELECT id, entity_id, key, value, value_type,
+             source_type, source_id, confidence,
+             observed_at, expires_at, supersedes, search_text
+      FROM observations
+      WHERE key LIKE ?
+    `;
+
+    const params: any[] = [`${keyPrefix}%`];
+
+    if (filters?.notExpired) {
+      query += ` AND (expires_at IS NULL OR expires_at > datetime('now'))`;
+    }
+
+    if (filters?.minConfidence !== undefined) {
+      query += ` AND confidence >= ?`;
+      params.push(filters.minConfidence);
+    }
+
+    query += ` ORDER BY observed_at DESC`;
+
+    if (filters?.limit) {
+      query += ` LIMIT ?`;
+      params.push(filters.limit);
+    }
+
+    const rows = this.db.prepare(query).all(...params) as any[];
+
+    return rows.map(row => ({
+      id: row.id,
+      entityId: row.entity_id,
+      key: row.key,
+      value: row.value,
+      valueType: row.value_type,
+      sourceType: row.source_type,
+      sourceId: row.source_id,
+      confidence: row.confidence,
+      observedAt: row.observed_at,
+      expiresAt: row.expires_at,
+      supersedes: row.supersedes,
+      searchText: row.search_text
+    }));
+  }
+
   getObservationHistory(entityId: string, key: string): Observation[] {
     // Get the latest observation
     const latest = this.getObservation(entityId, key);
