@@ -73,7 +73,7 @@ export const showInsights: Tool = {
       hasInsights = true;
 
       for (const rel of semanticRels.slice(0, 3)) {
-        const context = rel.context ? JSON.parse(rel.context) : {};
+        const context = typeof rel.context === 'string' ? JSON.parse(rel.context) : (rel.context || {});
         response += `🔗 ${context.description || 'Pattern detected'}\n`;
         if (rel.strength) {
           response += `   Confidence: ${(rel.strength * 100).toFixed(0)}%\n`;
@@ -97,7 +97,7 @@ export const showInsights: Tool = {
         const sessionEntity = learning.getEntity(obs.entityId);
         if (!sessionEntity) continue;
 
-        const sessionData = sessionEntity.data ? JSON.parse(sessionEntity.data) : {};
+        const sessionData = sessionEntity.data || {};
         const sessionDate = new Date(sessionEntity.createdAt);
         const relativeDate = formatRelativeDate(sessionDate);
 
