@@ -316,7 +316,7 @@ if (command === 'export') {
 } else if (command === 'import') {
   const inputFile = process.argv[3];
   if (!inputFile) {
-    console.error('Usage: npm run profile import <file> [--dry-run] [--skip-existing]');
+    console.error('Usage: pnpm profile import <file> [--dry-run] [--skip-existing]');
     process.exit(1);
   }
 
@@ -330,23 +330,23 @@ if (command === 'export') {
 User Profile Export/Import Tool
 
 Usage:
-  Export: npm run profile export [--output <file>] [--include user,sessions,commands]
-  Import: npm run profile import <file> [--dry-run] [--skip-existing]
+  Export: pnpm profile export [--output <file>] [--include user,sessions,commands]
+  Import: pnpm profile import <file> [--dry-run] [--skip-existing]
 
 Examples:
   # Export full profile
-  npm run profile export
+  pnpm profile export
 
   # Export only user preferences and sessions
-  npm run profile export --include user,sessions
+  pnpm profile export --include user,sessions
 
   # Export to specific file
-  npm run profile export --output /path/to/backup.json
+  pnpm profile export --output /path/to/backup.json
 
   # Import from backup (dry run first)
-  npm run profile import backup.json --dry-run
+  pnpm profile import backup.json --dry-run
 
   # Import, skipping records that already exist
-  npm run profile import backup.json --skip-existing
+  pnpm profile import backup.json --skip-existing
   `);
 }

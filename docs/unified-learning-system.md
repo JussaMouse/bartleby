@@ -1112,17 +1112,17 @@ there?"
 
 2. **Query Optimization**: Added 7 new database indexes (supersedes, confidence, key, observed_at, entity_time, strength, entities_created). Average query time: 2ms with 1100+ records. All indexes verified working via EXPLAIN QUERY PLAN.
 
-3. **Memory Monitoring**: Created `npm run monitor` tool showing database stats, memory efficiency, health checks, and process memory usage. Provides recommendations for cleanup and optimization.
+3. **Memory Monitoring**: Created `pnpm monitor` tool showing database stats, memory efficiency, health checks, and process memory usage. Provides recommendations for cleanup and optimization.
 
-4. **Export/Import**: Built `npm run profile` tool for backing up and restoring user learning data. Supports selective export, dry-run mode, skip-existing on import. Batch processing for large datasets.
+4. **Export/Import**: Built `pnpm profile` tool for backing up and restoring user learning data. Supports selective export, dry-run mode, skip-existing on import. Batch processing for large datasets.
 
 5. **Documentation**: Updated unified-learning-system.md with Phase 4 completion status and implementation details.
 
 **Commands:**
-- `npm run monitor` - View memory usage and database statistics
-- `npm run optimize` - Clean expired data and optimize database
-- `npm run profile export` - Backup user learning data
-- `npm run profile import <file>` - Restore from backup
+- `pnpm monitor` - View memory usage and database statistics
+- `pnpm optimize` - Clean expired data and optimize database
+- `pnpm profile export` - Backup user learning data
+- `pnpm profile import <file>` - Restore from backup
 
 ---
 

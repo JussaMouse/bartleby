@@ -43,14 +43,14 @@ async function monitorMemory() {
   console.log('Health Check:');
   if (stats.expiredObservations > 100) {
     console.log(`  ⚠️  ${stats.expiredObservations} expired observations - recommend running cleanup`);
-    console.log('     Run: npm run profile cleanup\n');
+    console.log('     Run: pnpm profile cleanup\n');
   } else {
     console.log(`  ✓ Expired observations: ${stats.expiredObservations} (${expirationRate.toFixed(1)}%)\n`);
   }
 
   if (stats.databaseSizeMB > 100) {
     console.log(`  ⚠️  Database size ${stats.databaseSizeMB.toFixed(2)} MB - recommend optimization`);
-    console.log('     Run: npm run profile optimize\n');
+    console.log('     Run: pnpm profile optimize\n');
   } else {
     console.log(`  ✓ Database size healthy: ${stats.databaseSizeMB.toFixed(2)} MB\n`);
   }
