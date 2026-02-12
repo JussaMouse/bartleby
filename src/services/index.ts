@@ -16,6 +16,7 @@ import { DataService } from './data.js';
 import { AuditService } from './audit.js';
 import { LearningService } from './learning.js';
 import { BackgroundAnalysis } from './background-analysis.js';
+import { EmbeddingRelationships } from './embedding-relationships.js';
 import { info } from '../utils/logger.js';
 
 export interface ServiceContainer {
@@ -115,6 +116,12 @@ export async function initServices(config: Config): Promise<ServiceContainer> {
   // Create Background Analysis service for daily pattern detection
   const backgroundAnalysis = new BackgroundAnalysis(learning, garden);
 
+  // Create Embedding Relationships service for semantic similarity discovery
+  const embeddingRelationships = new EmbeddingRelationships(learning, garden, embeddings);
+
+  // Wire up embedding relationships to background analysis
+  backgroundAnalysis.setEmbeddingRelationships(embeddingRelationships);
+
   // Wire up scheduler to presence for scheduled moments
   scheduler.setPresence(presence);
   scheduler.setBackgroundAnalysis(backgroundAnalysis);
@@ -176,6 +183,8 @@ export { SignalService } from './signal.js';
 export { OCRService } from './ocr.js';
 export { DataService } from './data.js';
 export { AuditService } from './audit.js';
+export { BackgroundAnalysis } from './background-analysis.js';
+export { EmbeddingRelationships } from './embedding-relationships.js';
 
 // Re-export types
 export type { GardenRecord, RecordType, RecordStatus, TaskFilters } from './garden.js';

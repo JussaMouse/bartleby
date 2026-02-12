@@ -3,13 +3,23 @@
 
 import { LearningService } from './learning.js';
 import { GardenService } from './garden.js';
+import { EmbeddingRelationships } from './embedding-relationships.js';
 import { info, debug } from '../utils/logger.js';
 
 export class BackgroundAnalysis {
+  private embeddingRelationships?: EmbeddingRelationships;
+
   constructor(
     private learning: LearningService,
     private garden: GardenService
   ) {}
+
+  /**
+   * Wire up embedding relationships service for semantic analysis.
+   */
+  setEmbeddingRelationships(embeddingRelationships: EmbeddingRelationships): void {
+    this.embeddingRelationships = embeddingRelationships;
+  }
 
   /**
    * Run all background analysis jobs
@@ -22,8 +32,22 @@ export class BackgroundAnalysis {
     await this.analyzePrimaryProject();
     await this.analyzeWorkflowPatterns();
     await this.analyzeGardenRecordImportance();
+    await this.discoverSemanticRelationships();
 
     info('Background analysis complete');
+  }
+
+  /**
+   * Discover semantic relationships between garden records using embeddings.
+   */
+  private async discoverSemanticRelationships(): Promise<void> {
+    if (!this.embeddingRelationships) {
+      debug('Embedding relationships service not available');
+      return;
+    }
+
+    const relationshipsCreated = await this.embeddingRelationships.discoverRelationships(0.7);
+    debug('Semantic relationship discovery complete', { relationshipsCreated });
   }
 
   /**
