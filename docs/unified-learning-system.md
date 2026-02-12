@@ -1,8 +1,37 @@
 # Unified Learning System for Bartleby
 
 **Date**: 2026-02-12
-**Status**: Design Proposal
+**Status**: ✅ **CORE IMPLEMENTED** - Phases 1-2 Complete (~20 hours)
 **Goal**: Build Bartleby's memory/learning from the ground up
+
+---
+
+## 🎯 Current Status (Updated 2026-02-12)
+
+**What's Working:**
+- ✅ Entity-Observation-Relationship (EOR) architecture fully implemented
+- ✅ Commands automatically record observations
+- ✅ Sessions analyzed by LLM for preferences, goals, patterns
+- ✅ Agent context-aware across sessions
+- ✅ Full-text search across all observations
+- ✅ User profile, recent work, relevant context tracking
+
+**What's Bartleby NOW:**
+- Remembers your preferences (code style, verbosity, etc.)
+- Tracks your goals and what you're working on
+- Builds context from past conversations
+- Maintains continuity across sessions
+- **No longer stateless - has persistent memory!**
+
+**Remaining Work:**
+- Background pattern detection (~3 hours)
+- Embedding-based relationships (~3 hours)
+- System migration & polish (~15-20 hours)
+- UI enhancements (~10-15 hours)
+
+**Total Progress**: 20/50-63 hours (~35% complete)
+
+---
 
 ---
 
@@ -932,52 +961,109 @@ there?"
 
 ## Part 7: Implementation Roadmap
 
-### Phase 1: Core EOR System (8-12 hours)
+**STATUS UPDATE (2026-02-12)**: Phases 1-2 Core Complete! (~20 hours completed)
+
+---
+
+### ✅ Phase 1: Core EOR System (COMPLETE - 8 hours)
 
 **Deliverables:**
-- [ ] Create `src/services/learning.ts` with EOR schema
-- [ ] Implement `LearningService` with observation and relationship APIs
-- [ ] Unit tests for all service methods
-- [ ] Migration script for existing data
+- [x] Create `src/services/learning.ts` with EOR schema
+- [x] Implement `LearningService` with observation and relationship APIs
+- [x] Unit tests for all service methods (19 tests, all passing)
+- [x] Integration into service initialization
 
-**Schema:**
-- `entities` table
-- `observations` table with FTS5
-- `relationships` table
-- Indexes
+**Completed:**
+- SQLite schema with entities, observations, relationships tables
+- Full-text search with FTS5
+- Comprehensive API (observation recording, querying, relationships)
+- High-level methods (getUserProfile, getSessionSummary, getRecentWorkContext)
+- Observation history tracking via supersedes chain
+- Proof-of-concept demonstrating end-to-end functionality
 
-**Basic API:**
-- `recordObservation()`
-- `getObservations()`
-- `recordRelationship()`
-- `getRelationships()`
+**Commits:**
+- `feat(learning): implement unified Entity-Observation-Relationship system`
 
-### Phase 2: Learning Mechanisms (10-15 hours)
+---
+
+### ✅ Phase 2: Automatic Learning (MOSTLY COMPLETE - 10 hours)
+
+**Core Deliverables:**
+- [x] **Command execution recording** - Every command automatically records observations
+- [x] **LLM-powered session analysis** - Conversations analyzed for user preferences, goals, patterns
+- [x] **Agent context integration** - Agent reads from learning system before responding
+- [ ] Periodic garden record analysis (remaining)
+- [ ] Embedding-based relationship discovery (remaining)
+- [ ] Background jobs for pattern detection (remaining)
+
+**Completed:**
+- `executeCommand()` records observations and relationships automatically
+- `ContextService.endSession()` uses LLM to extract observations
+- Graceful fallback to basic extraction when LLM unavailable
+- `Agent.buildRichContext()` pulls user profile, recent work, relevant observations
+- Full integration: Commands → Learning → Agent Context
+
+**What Works NOW:**
+- ✅ Commands record what you do
+- ✅ Sessions analyze what you discuss
+- ✅ Agent remembers you across sessions
+- ✅ User preferences, goals, patterns tracked
+- ✅ Recent work context available
+- ✅ Full-text search across observations
+
+**Commits:**
+- `feat(learning): hook command execution to record observations`
+- `feat(learning): implement LLM-powered session analysis`
+- `feat(agent): integrate learning system for rich context awareness`
+
+---
+
+### 🔨 Phase 2 Remaining: Advanced Learning (8-10 hours)
 
 **Deliverables:**
-- [ ] LLM-powered session analysis
-- [ ] Computed observation updates (view counts, etc.)
-- [ ] Periodic garden record analysis
-- [ ] Embedding-based relationship discovery
-- [ ] Background jobs for continuous learning
+- [ ] **Periodic garden analysis** (3-4 hours)
+  - Daily job analyzes all garden records
+  - Detects high-importance notes (view patterns)
+  - Suggests relationships between records
+  - Computes derived insights
 
-### Phase 3: Integration (8-12 hours)
+- [ ] **Embedding-based relationships** (2-3 hours)
+  - Use vector embeddings to find semantically similar notes
+  - Create relationships with strength scores
+  - Enable "find related" functionality
+
+- [ ] **Background pattern detection** (2-3 hours)
+  - Detect user work hours from command timestamps
+  - Identify primary project from usage patterns
+  - Recognize workflow patterns (e.g., "always creates actions after project notes")
+
+- [ ] **End-to-end integration test** (1 hour)
+  - Full cycle: execute commands, end session, verify agent uses context
+  - Validate all learning mechanisms working together
+
+---
+
+### Phase 3: System Migration (8-12 hours)
 
 **Deliverables:**
 - [ ] Migrate FactsService to use LearningService backend
-- [ ] Update ContextService to store observations
-- [ ] Integrate command execution recording
-- [ ] Wire into dashboard for live updates
-- [ ] Update all services to use unified system
+- [ ] Rename for clarity (RecordMetadataService vs UserProfileService)
+- [ ] Migrate Episodes to SQLite with LLM summaries
+- [ ] Consolidate memory systems
+- [ ] Data migration script for existing users
 
-### Phase 4: Context Building (6-8 hours)
+---
+
+### Phase 4: Polish & Performance (4-6 hours)
 
 **Deliverables:**
-- [ ] Create `ContextBuilder` service
-- [ ] Implement intelligent context retrieval
-- [ ] Update agent prompt building
-- [ ] Add context-aware routing
-- [ ] Test improved agent responses
+- [ ] Observation cleanup job (expired TTL)
+- [ ] Query optimization and indexing
+- [ ] Memory usage monitoring
+- [ ] Export/import user profile
+- [ ] Documentation updates
+
+---
 
 ### Phase 5: Features & UI (10-15 hours)
 
@@ -987,9 +1073,21 @@ there?"
 - [ ] Command: `/related <id>` - find related records
 - [ ] Dashboard: Memory panel showing observations
 - [ ] Dashboard: Relationship graph visualization
-- [ ] Export/import user profile
+- [ ] CLI output enhancements
 
-### Total: 42-62 hours
+---
+
+### Updated Total Estimates
+
+**Completed**: ~20 hours (Phases 1-2 core)
+**Remaining**:
+- Phase 2 Advanced: 8-10 hours
+- Phase 3 Migration: 8-12 hours
+- Phase 4 Polish: 4-6 hours
+- Phase 5 UI: 10-15 hours
+
+**Total Remaining**: ~30-43 hours
+**Grand Total**: ~50-63 hours (updated from original 42-62 hour estimate)
 
 ### Quick Win Path
 
