@@ -221,6 +221,11 @@ function renderPanel(view, data, pageView) {
   } else if (view.startsWith('note-edit:')) {
     // Note editing panel (creation or edit)
     content.innerHTML = renderNoteEdit(view, data);
+    // Focus title field after rendering
+    setTimeout(() => {
+      const titleField = document.getElementById('note-title');
+      if (titleField) titleField.focus();
+    }, 0);
   } else if (view.startsWith('note:')) {
     // Use PageView if available, otherwise fall back to old rendering
     content.innerHTML = pageView ? renderPageView(pageView) : renderNote(data);
@@ -738,13 +743,13 @@ function renderNoteEdit(view, data) {
   // Title field
   html += '<div class="form-group">';
   html += '<label>Title</label>';
-  html += `<input type="text" id="note-title" class="form-input" value="${esc(title)}" placeholder="Note title" autofocus>`;
+  html += `<input type="text" id="note-title" class="form-input" value="${esc(title)}" placeholder="Note title" autocomplete="off">`;
   html += '</div>';
 
   // Tags field
   html += '<div class="form-group" style="position: relative;">';
   html += '<label>Tags</label>';
-  html += `<input type="text" id="note-tags" class="form-input" value="${esc(tagsStr)}" placeholder="+project #tags @context with person" onkeydown="handleNoteTagsKey(event)">`;
+  html += `<input type="text" id="note-tags" class="form-input" value="${esc(tagsStr)}" placeholder="+project #tags @context with person" autocomplete="off" onkeydown="handleNoteTagsKey(event)">`;
   html += '<div id="note-tags-autocomplete" class="autocomplete-menu hidden"></div>';
   html += '</div>';
 
@@ -842,11 +847,9 @@ function handleNoteTagsKey(event) {
     }
   }
 
-  // Tab when menu is closed - trigger autocomplete
+  // Tab when menu is closed - trigger autocomplete (only if in autocomplete context)
   if (event.key === 'Tab' && !menuVisible) {
-    event.preventDefault();
-
-    // Trigger autocomplete based on cursor position
+    // Check if we're in an autocomplete context
     const cursorPos = input.selectionStart;
     const text = input.value;
     const beforeCursor = text.slice(0, cursorPos);
@@ -856,33 +859,41 @@ function handleNoteTagsKey(event) {
     const tagMatch = beforeCursor.match(/#(\w*)$/);
     const withMatch = beforeCursor.match(/\bwith\s+(\w*)$/i);
 
-    if (contextMatch) {
-      const partial = contextMatch[1].toLowerCase();
-      const matches = autocompleteData.contexts.filter(c =>
-        c.toLowerCase().startsWith('@' + partial) || c.toLowerCase().startsWith(partial)
-      );
-      showNoteTagsAutocomplete(matches);
-    } else if (projectMatch) {
-      const partial = projectMatch[1].toLowerCase();
-      const matches = autocompleteData.projects.filter(p =>
-        p.toLowerCase().startsWith(partial) ||
-        p.toLowerCase().replace(/\s+/g, '-').startsWith(partial)
-      );
-      showNoteTagsAutocomplete(matches.map(p => '+' + p.toLowerCase().replace(/\s+/g, '-')));
-    } else if (tagMatch) {
-      const partial = tagMatch[1].toLowerCase();
-      const matches = autocompleteData.tags.filter(t =>
-        t.toLowerCase().startsWith(partial)
-      );
-      showNoteTagsAutocomplete(matches.map(t => '#' + t));
-    } else if (withMatch) {
-      const partial = withMatch[1].toLowerCase();
-      const contacts = autocompleteData.contacts || [];
-      const matches = contacts.filter(c =>
-        c.toLowerCase().startsWith(partial)
-      );
-      showNoteTagsAutocomplete(matches);
+    // Only preventDefault if we're in an autocomplete context
+    if (contextMatch || projectMatch || tagMatch || withMatch) {
+      event.preventDefault();
+
+      if (contextMatch) {
+        const partial = contextMatch[1].toLowerCase();
+        const matches = autocompleteData.contexts.filter(c =>
+          c.toLowerCase().startsWith('@' + partial) || c.toLowerCase().startsWith(partial)
+        );
+        if (matches.length > 0) showNoteTagsAutocomplete(matches);
+      } else if (projectMatch) {
+        const partial = projectMatch[1].toLowerCase();
+        const matches = autocompleteData.projects.filter(p =>
+          p.toLowerCase().startsWith(partial) ||
+          p.toLowerCase().replace(/\s+/g, '-').startsWith(partial)
+        );
+        if (matches.length > 0) {
+          showNoteTagsAutocomplete(matches.map(p => '+' + p.toLowerCase().replace(/\s+/g, '-')));
+        }
+      } else if (tagMatch) {
+        const partial = tagMatch[1].toLowerCase();
+        const matches = autocompleteData.tags.filter(t =>
+          t.toLowerCase().startsWith(partial)
+        );
+        if (matches.length > 0) showNoteTagsAutocomplete(matches.map(t => '#' + t));
+      } else if (withMatch) {
+        const partial = withMatch[1].toLowerCase();
+        const contacts = autocompleteData.contacts || [];
+        const matches = contacts.filter(c =>
+          c.toLowerCase().startsWith(partial)
+        );
+        if (matches.length > 0) showNoteTagsAutocomplete(matches);
+      }
     }
+    // If not in autocomplete context, Tab works normally (focus next field)
   }
 }
 
@@ -917,6 +928,15 @@ function updateNoteTagsAutocompleteSelection() {
   items.forEach((el, i) => {
     el.classList.toggle('selected', i === noteTagsAutocompleteIndex);
   });
+
+  // Scroll selected item into view
+  const selectedItem = items[noteTagsAutocompleteIndex];
+  if (selectedItem) {
+    selectedItem.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  }
+
+  // Debug log
+  console.log('Selected index:', noteTagsAutocompleteIndex, 'of', items.length, 'items:', noteTagsAutocompleteItems);
 }
 
 function clickNoteTagsAutocomplete(value) {
