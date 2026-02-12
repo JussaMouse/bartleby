@@ -984,31 +984,35 @@ async function saveNewNote() {
   }
 
   try {
-    // Parse tags field for +project #tags @context with person
-    let fullTitle = title;
-    if (tags) {
-      fullTitle += ' ' + tags;
-    }
+    // Parse tags field for +project #tags
+    const projectMatch = tags.match(/\+([^@#\s]+)/);
+    const tagMatches = tags.match(/#(\w+)/g);
 
-    // Create note via chat API which handles metadata parsing
-    const res = await apiFetch('/api/chat', {
+    const body = {
+      title,
+      content: content || '',
+      project: projectMatch ? projectMatch[1] : undefined,
+      tags: tagMatches ? tagMatches.map(t => t.slice(1)) : [],
+    };
+
+    // Create note via /api/note endpoint
+    const res = await apiFetch('/api/note', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text: `new note ${fullTitle}` }),
+      body: JSON.stringify(body),
     });
 
     if (!res.ok) throw new Error('Failed to create note');
 
     const data = await res.json();
 
-    // If note was created, append content if provided
-    if (content && data.noteId) {
-      // TODO: Add content to note via update API
-      // For now, content needs to be added separately
-    }
-
     showToast('Note created');
     removePanel('note-edit:new');
+
+    // Open the newly created note in a panel if we have the ID
+    if (data.note?.id) {
+      addPanel(`note:${data.note.id}`);
+    }
   } catch (e) {
     console.error('Create note failed:', e);
     showToast('Failed to create note', true);

@@ -230,7 +230,7 @@ function executeShowNote(cmd: ShowNoteCommand, garden: GardenService): CommandRe
 
 function executeListItems(cmd: ListItemsCommand, garden: GardenService): CommandResult {
   // Determine panel view based on item type and filters
-  let view = cmd.itemType;  // 'notes', 'actions', 'projects', 'events'
+  let view: string = cmd.itemType;  // 'notes', 'actions', 'projects', 'events'
 
   if (cmd.filters?.project) {
     // List items in a specific project
@@ -246,7 +246,7 @@ function executeListItems(cmd: ListItemsCommand, garden: GardenService): Command
   }
 
   if (cmd.filters?.status === 'overdue') {
-    view = 'overdue';
+    view = 'overdue' as string;
   }
 
   return {
@@ -280,7 +280,7 @@ function executeSearch(cmd: SearchCommand): CommandResult {
 function executeMarkDone(cmd: MarkDoneCommand, garden: GardenService): CommandResult {
   try {
     // If actionId looks like an ID, get it directly
-    let action = garden.get(cmd.actionId);
+    let action = garden.get(cmd.actionId) || null;
 
     // If not found, try to find by title
     if (!action) {
@@ -288,7 +288,7 @@ function executeMarkDone(cmd: MarkDoneCommand, garden: GardenService): CommandRe
       action = actions.find(a =>
         a.title.toLowerCase() === cmd.actionId.toLowerCase() ||
         a.title.toLowerCase().includes(cmd.actionId.toLowerCase())
-      );
+      ) || null;
     }
 
     if (!action) {
@@ -336,11 +336,14 @@ function executeDeleteItem(cmd: DeleteItemCommand, garden: GardenService): Comma
 
     // If not found by ID, try to find by title
     if (!item && cmd.itemTitle && cmd.itemType) {
-      const items = garden.getByType(cmd.itemType);
+      // Map command item types to RecordType
+      const recordType = cmd.itemType as any;  // Type assertion needed
+      const items = garden.getByType(recordType);
+      const titleLower = cmd.itemTitle.toLowerCase();
       item = items.find(i =>
-        i.title.toLowerCase() === cmd.itemTitle?.toLowerCase() ||
-        i.title.toLowerCase().includes(cmd.itemTitle?.toLowerCase())
-      );
+        i.title.toLowerCase() === titleLower ||
+        i.title.toLowerCase().includes(titleLower)
+      ) || null;
     }
 
     if (!item) {

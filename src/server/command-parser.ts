@@ -15,6 +15,7 @@ import type {
   ShowPanelCommand,
   ShowProjectCommand,
   ShowNoteCommand,
+  ShowActionCommand,
   ListItemsCommand,
   SearchCommand,
   MarkDoneCommand,
@@ -289,7 +290,7 @@ function parseContactCommand(
 function parseShowCommand(
   input: string,
   rawInput: string,
-): ShowPanelCommand | ShowProjectCommand | ShowNoteCommand | UnknownCommand {
+): ShowPanelCommand | ShowProjectCommand | ShowNoteCommand | ShowActionCommand | UnknownCommand {
   // Remove command prefix
   let text = input.replace(/^show\s+/i, '').trim();
 

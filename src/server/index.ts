@@ -1076,6 +1076,112 @@ export class DashboardServer {
         res.status(500).json({ error: 'OCR failed' });
       }
     });
+
+    // ============================================
+    // Command API - Unified command interface
+    // ============================================
+
+    /**
+     * POST /api/command - Parse and preview a command
+     * Request: { input: string }
+     * Response: ParseResult with intent, parsed, preview
+     */
+    this.app.post('/api/command', (req, res) => {
+      const { input } = req.body;
+
+      if (!input || typeof input !== 'string') {
+        res.status(400).json({ error: 'Input required' });
+        return;
+      }
+
+      try {
+        const { parseCommand } = require('./command-parser.js');
+        const parsed = parseCommand(input);
+
+        // Build preview for display
+        const preview = this.buildCommandPreview(parsed);
+
+        res.json({
+          intent: parsed.type,
+          confidence: parsed.confidence,
+          parsed,
+          preview,
+          error: parsed.type === 'unknown' ? parsed.reason : undefined,
+          hint: parsed.type === 'unknown' ? parsed.suggestions?.[0] : undefined,
+          suggestions: parsed.type === 'unknown' ? parsed.suggestions : undefined,
+        });
+      } catch (err) {
+        error('Command parsing failed', { input, error: String(err) });
+        res.status(500).json({ error: 'Failed to parse command' });
+      }
+    });
+
+    /**
+     * POST /api/command/execute - Execute a parsed command
+     * Request: { intent: string, parsed: CommandIntent }
+     * Response: CommandResult
+     */
+    this.app.post('/api/command/execute', (req, res) => {
+      const { parsed } = req.body;
+
+      if (!parsed || !parsed.type) {
+        res.status(400).json({ error: 'Parsed command required' });
+        return;
+      }
+
+      try {
+        const { executeCommand } = require('./command-executor.js');
+        const result = executeCommand(parsed, this.garden);
+
+        // Store command in history
+        // TODO: Implement command history storage
+
+        res.json(result);
+
+        // Broadcast updates if successful
+        if (result.success) {
+          this.broadcastAll();
+        }
+      } catch (err) {
+        error('Command execution failed', { parsed, error: String(err) });
+        res.status(500).json({
+          success: false,
+          action: 'error',
+          message: 'Failed to execute command',
+          error: String(err),
+        });
+      }
+    });
+
+    /**
+     * GET /api/command/suggestions?q=<input> - Get autocomplete suggestions
+     * Response: { input, suggestions[] }
+     */
+    this.app.get('/api/command/suggestions', (req, res) => {
+      const q = req.query.q as string;
+
+      if (!q) {
+        res.json({ input: '', suggestions: [] });
+        return;
+      }
+
+      try {
+        const suggestions = this.getCommandSuggestions(q);
+        res.json({ input: q, suggestions });
+      } catch (err) {
+        error('Failed to get suggestions', { query: q, error: String(err) });
+        res.status(500).json({ error: 'Failed to get suggestions' });
+      }
+    });
+
+    /**
+     * GET /api/command/history - Get command history
+     * Response: { commands: CommandRecord[] }
+     */
+    this.app.get('/api/command/history', (req, res) => {
+      // TODO: Implement command history storage and retrieval
+      res.json({ commands: [] });
+    });
   }
 
   private isAuthorized(req: express.Request): boolean {
@@ -1114,6 +1220,156 @@ export class DashboardServer {
       // Collapse multiple newlines
       .replace(/\n{3,}/g, '\n\n')
       .trim();
+  }
+
+  /**
+   * Build command preview for display to user
+   */
+  private buildCommandPreview(parsed: any): any {
+    const fields: any[] = [];
+
+    switch (parsed.type) {
+      case 'create_note':
+        fields.push({ label: 'Title', value: parsed.title });
+        if (parsed.metadata.project) fields.push({ label: 'Project', value: parsed.metadata.project });
+        if (parsed.metadata.tags) fields.push({ label: 'Tags', value: parsed.metadata.tags });
+        if (parsed.metadata.context) fields.push({ label: 'Context', value: parsed.metadata.context });
+        if (parsed.metadata.contact) fields.push({ label: 'With', value: parsed.metadata.contact });
+        return {
+          action: 'Create note',
+          summary: `"${parsed.title}"${parsed.metadata.project ? ' in ' + parsed.metadata.project : ''}`,
+          fields,
+        };
+
+      case 'create_action':
+        fields.push({ label: 'Title', value: parsed.title });
+        if (parsed.metadata.context) fields.push({ label: 'Context', value: parsed.metadata.context });
+        if (parsed.metadata.project) fields.push({ label: 'Project', value: parsed.metadata.project });
+        if (parsed.metadata.dueDate) fields.push({ label: 'Due', value: parsed.metadata.dueDate });
+        return {
+          action: 'Create action',
+          summary: `"${parsed.title}"${parsed.metadata.context || ''}`,
+          fields,
+        };
+
+      case 'create_project':
+        fields.push({ label: 'Name', value: parsed.name });
+        if (parsed.tags) fields.push({ label: 'Tags', value: parsed.tags });
+        return {
+          action: 'Create project',
+          summary: `"${parsed.name}"`,
+          fields,
+        };
+
+      case 'show_panel':
+        return {
+          action: 'Open panel',
+          summary: parsed.panel,
+          fields: [{ label: 'Panel', value: parsed.panel }],
+        };
+
+      case 'show_project':
+        return {
+          action: 'Open project',
+          summary: parsed.projectName,
+          fields: [{ label: 'Project', value: parsed.projectName }],
+        };
+
+      default:
+        return {
+          action: parsed.type,
+          summary: 'Command',
+          fields: [],
+        };
+    }
+  }
+
+  /**
+   * Get autocomplete suggestions for command input
+   */
+  private getCommandSuggestions(query: string): any[] {
+    const lower = query.toLowerCase().trim();
+    const suggestions: any[] = [];
+
+    // Check for entity prefix (+project, #tag, @context)
+    const projectMatch = lower.match(/\+([^\s]*)$/);
+    const tagMatch = lower.match(/#(\w*)$/);
+    const contextMatch = lower.match(/@(\w*)$/);
+
+    if (projectMatch) {
+      // Suggest projects
+      const partial = projectMatch[1];
+      const projects = this.garden.getByType('project');
+      projects
+        .filter(p => p.title.toLowerCase().includes(partial))
+        .slice(0, 5)
+        .forEach(p => {
+          suggestions.push({
+            type: 'entity',
+            text: '+' + p.title.toLowerCase().replace(/\s+/g, '-'),
+            description: `Project (${this.garden.getByType('action').filter(a => a.project === p.title).length} actions)`,
+            category: 'project',
+          });
+        });
+    } else if (tagMatch) {
+      // Suggest tags
+      const partial = tagMatch[1];
+      const allTags = new Set<string>();
+      this.garden.getByType('note').forEach(n => {
+        if (n.tags) n.tags.forEach(t => allTags.add(t));
+      });
+      Array.from(allTags)
+        .filter(t => t.toLowerCase().includes(partial))
+        .slice(0, 5)
+        .forEach(t => {
+          suggestions.push({
+            type: 'entity',
+            text: '#' + t,
+            description: 'Tag',
+            category: 'tag',
+          });
+        });
+    } else if (contextMatch) {
+      // Suggest contexts
+      const partial = contextMatch[1];
+      const contexts = ['@home', '@work', '@phone', '@computer', '@errands', '@waiting'];
+      contexts
+        .filter(c => c.toLowerCase().includes('@' + partial))
+        .forEach(c => {
+          suggestions.push({
+            type: 'entity',
+            text: c,
+            description: 'Context',
+            category: 'context',
+          });
+        });
+    } else {
+      // Suggest commands
+      const commands = [
+        { cmd: 'note', desc: 'Create a note' },
+        { cmd: 'action', desc: 'Create an action' },
+        { cmd: 'project', desc: 'Create a project' },
+        { cmd: 'show inbox', desc: 'Open inbox' },
+        { cmd: 'show notes', desc: 'Open notes list' },
+        { cmd: 'show next actions', desc: 'Open next actions' },
+        { cmd: 'list notes', desc: 'List all notes' },
+        { cmd: 'list actions', desc: 'List all actions' },
+      ];
+
+      commands
+        .filter(c => c.cmd.startsWith(lower))
+        .slice(0, 5)
+        .forEach(c => {
+          suggestions.push({
+            type: 'completion',
+            text: c.cmd,
+            description: c.desc,
+            category: 'command',
+          });
+        });
+    }
+
+    return suggestions;
   }
 
   private setupWebSocket() {
