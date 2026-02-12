@@ -807,8 +807,8 @@ function handleNoteTagsKey(event) {
 
   // Handle navigation and selection when menu is open
   if (menuVisible) {
-    // Tab or Enter - apply selected item
-    if (event.key === 'Tab' || event.key === 'Enter') {
+    // Enter - apply selected item
+    if (event.key === 'Enter') {
       event.preventDefault();
       event.stopPropagation();
       if (noteTagsAutocompleteIndex >= 0 && noteTagsAutocompleteItems[noteTagsAutocompleteIndex]) {
@@ -818,16 +818,18 @@ function handleNoteTagsKey(event) {
       return;
     }
 
-    // Arrow keys - navigate
-    if (event.key === 'ArrowDown') {
+    // Tab or ArrowDown - cycle to next item
+    if (event.key === 'Tab' || event.key === 'ArrowDown') {
       event.preventDefault();
-      noteTagsAutocompleteIndex = Math.min(noteTagsAutocompleteIndex + 1, noteTagsAutocompleteItems.length - 1);
+      noteTagsAutocompleteIndex = (noteTagsAutocompleteIndex + 1) % noteTagsAutocompleteItems.length;
       updateNoteTagsAutocompleteSelection();
       return;
     }
+
+    // ArrowUp - cycle to previous item
     if (event.key === 'ArrowUp') {
       event.preventDefault();
-      noteTagsAutocompleteIndex = Math.max(noteTagsAutocompleteIndex - 1, 0);
+      noteTagsAutocompleteIndex = (noteTagsAutocompleteIndex - 1 + noteTagsAutocompleteItems.length) % noteTagsAutocompleteItems.length;
       updateNoteTagsAutocompleteSelection();
       return;
     }
