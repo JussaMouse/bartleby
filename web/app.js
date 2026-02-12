@@ -803,18 +803,46 @@ function handleNoteTagsKey(event) {
   const menu = document.getElementById('note-tags-autocomplete');
   if (!input || !menu) return;
 
-  // Tab - trigger autocomplete
-  if (event.key === 'Tab') {
-    event.preventDefault();
+  const menuVisible = !menu.classList.contains('hidden');
 
-    if (!menu.classList.contains('hidden')) {
-      // Apply selected item
+  // Handle navigation and selection when menu is open
+  if (menuVisible) {
+    // Tab or Enter - apply selected item
+    if (event.key === 'Tab' || event.key === 'Enter') {
+      event.preventDefault();
+      event.stopPropagation();
       if (noteTagsAutocompleteIndex >= 0 && noteTagsAutocompleteItems[noteTagsAutocompleteIndex]) {
         applyNoteTagsAutocomplete(noteTagsAutocompleteItems[noteTagsAutocompleteIndex]);
       }
       hideNoteTagsAutocomplete();
       return;
     }
+
+    // Arrow keys - navigate
+    if (event.key === 'ArrowDown') {
+      event.preventDefault();
+      noteTagsAutocompleteIndex = Math.min(noteTagsAutocompleteIndex + 1, noteTagsAutocompleteItems.length - 1);
+      updateNoteTagsAutocompleteSelection();
+      return;
+    }
+    if (event.key === 'ArrowUp') {
+      event.preventDefault();
+      noteTagsAutocompleteIndex = Math.max(noteTagsAutocompleteIndex - 1, 0);
+      updateNoteTagsAutocompleteSelection();
+      return;
+    }
+
+    // Escape - close menu
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      hideNoteTagsAutocomplete();
+      return;
+    }
+  }
+
+  // Tab when menu is closed - trigger autocomplete
+  if (event.key === 'Tab' && !menuVisible) {
+    event.preventDefault();
 
     // Trigger autocomplete based on cursor position
     const cursorPos = input.selectionStart;
@@ -852,32 +880,6 @@ function handleNoteTagsKey(event) {
         c.toLowerCase().startsWith(partial)
       );
       showNoteTagsAutocomplete(matches);
-    }
-    return;
-  }
-
-  // Enter - apply autocomplete if menu is open
-  if (event.key === 'Enter' && !menu.classList.contains('hidden')) {
-    event.preventDefault();
-    if (noteTagsAutocompleteIndex >= 0 && noteTagsAutocompleteItems[noteTagsAutocompleteIndex]) {
-      applyNoteTagsAutocomplete(noteTagsAutocompleteItems[noteTagsAutocompleteIndex]);
-    }
-    hideNoteTagsAutocomplete();
-    return;
-  }
-
-  // Arrow keys for menu navigation
-  if (!menu.classList.contains('hidden')) {
-    if (event.key === 'ArrowDown') {
-      event.preventDefault();
-      noteTagsAutocompleteIndex = Math.min(noteTagsAutocompleteIndex + 1, noteTagsAutocompleteItems.length - 1);
-      updateNoteTagsAutocompleteSelection();
-    } else if (event.key === 'ArrowUp') {
-      event.preventDefault();
-      noteTagsAutocompleteIndex = Math.max(noteTagsAutocompleteIndex - 1, 0);
-      updateNoteTagsAutocompleteSelection();
-    } else if (event.key === 'Escape') {
-      hideNoteTagsAutocomplete();
     }
   }
 }
