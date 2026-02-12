@@ -156,11 +156,18 @@ CREATE TABLE IF NOT EXISTS relationships (
 
 -- Indexes for fast queries
 CREATE INDEX IF NOT EXISTS idx_observations_entity ON observations(entity_id, key);
+CREATE INDEX IF NOT EXISTS idx_observations_entity_time ON observations(entity_id, observed_at DESC);
+CREATE INDEX IF NOT EXISTS idx_observations_key ON observations(key);
+CREATE INDEX IF NOT EXISTS idx_observations_supersedes ON observations(supersedes);
+CREATE INDEX IF NOT EXISTS idx_observations_confidence ON observations(confidence);
 CREATE INDEX IF NOT EXISTS idx_observations_source ON observations(source_type, source_id);
 CREATE INDEX IF NOT EXISTS idx_observations_expires ON observations(expires_at);
+CREATE INDEX IF NOT EXISTS idx_observations_observed_at ON observations(observed_at);
 CREATE INDEX IF NOT EXISTS idx_relationships_from ON relationships(from_entity, relation_type);
 CREATE INDEX IF NOT EXISTS idx_relationships_to ON relationships(to_entity, relation_type);
+CREATE INDEX IF NOT EXISTS idx_relationships_strength ON relationships(strength);
 CREATE INDEX IF NOT EXISTS idx_entities_type ON entities(type);
+CREATE INDEX IF NOT EXISTS idx_entities_created ON entities(created_at);
 
 -- Full-text search across observations
 CREATE VIRTUAL TABLE IF NOT EXISTS observations_fts USING fts5(
