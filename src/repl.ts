@@ -650,4 +650,5 @@ async function handleShutdown(
   console.log('\nGoodbye! 👋\n');
   await services.context.endSession();
   rl.close();
+  process.exit(0);
 }
