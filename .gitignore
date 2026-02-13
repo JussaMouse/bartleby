@@ -33,5 +33,6 @@ Thumbs.db
 # garden/
 # shed/
 
-# Developer notes
+# Developer notes and testing
 devs-notes/
+testing/
