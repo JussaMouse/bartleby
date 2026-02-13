@@ -24,17 +24,8 @@ export class Agent {
    * Build rich context from learning system for LLM prompts
    */
   private async buildRichContext(input: string): Promise<{ profile: string; context: string }> {
-    // Get traditional context (for backwards compatibility)
-    const oldProfile = this.services.context.getProfileSummary();
-    const lastSession = this.services.context.getLastSession();
-
-    // Get learning system context
     if (!this.services.learning) {
-      // Fallback to old system
-      return {
-        profile: oldProfile,
-        context: lastSession ? `Last conversation: ${lastSession.summary}` : 'First interaction'
-      };
+      throw new Error('Learning system not available');
     }
 
     try {
@@ -77,6 +68,8 @@ export class Agent {
         }
       }
 
+      // Get last session summary
+      const lastSession = this.services.context.getLastSession();
       if (lastSession) {
         contextParts.push(`\n**Last Conversation:** ${lastSession.summary}`);
       }
@@ -88,16 +81,16 @@ export class Agent {
         }
       }
 
-      const profile = profileParts.length > 0 ? profileParts.join('\n') : oldProfile || 'No profile yet';
+      const profile = profileParts.length > 0 ? profileParts.join('\n') : 'No profile yet';
       const context = contextParts.length > 0 ? contextParts.join('\n') : 'First interaction';
 
       return { profile, context };
     } catch (err) {
       warn('Failed to build rich context from learning system', { error: String(err) });
-      // Fallback to old system
+      // Return minimal context on error
       return {
-        profile: oldProfile,
-        context: lastSession ? `Last conversation: ${lastSession.summary}` : 'First interaction'
+        profile: 'No profile yet',
+        context: 'First interaction'
       };
     }
   }

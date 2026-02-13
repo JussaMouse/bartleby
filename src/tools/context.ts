@@ -167,18 +167,7 @@ export const viewProfile: Tool = {
   execute: async (args, context) => {
     const learning = context.services.learning;
     if (!learning) {
-      // Fallback to old system if learning not available
-      const summary = context.services.context.getProfileSummary();
-      const episodeCount = context.services.context.getEpisodeCount();
-
-      if (!summary && episodeCount === 0) {
-        return "I don't know much about you yet. As we chat, I'll learn your preferences and remember our conversations.";
-      }
-
-      let response = '## What I Know About You\n\n';
-      if (summary) response += summary;
-      response += `\n\n*Based on ${episodeCount} conversation(s).*`;
-      return response;
+      throw new Error('Learning system not available');
     }
 
     // Get all user observations from learning system

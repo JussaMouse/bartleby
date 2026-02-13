@@ -1,10 +1,8 @@
 // src/services/context.ts
 // The Context Service - Bartleby's memory of you and your interactions
 
-import fs from 'fs';
-import path from 'path';
-import { Config, resolvePath, ensureDir } from '../config.js';
 import { info, debug, warn } from '../utils/logger.js';
+import type { Config } from '../config.js';
 import type { LearningService } from './learning.js';
 import type { LLMService } from './llm.js';
 
@@ -18,26 +16,12 @@ export interface Episode {
   messageCount: number;
 }
 
-export interface UserFact {
-  category: 'preference' | 'habit' | 'goal' | 'relationship' | 'schedule' | 'interest' | 'health' | 'system';
-  key: string;
-  value: unknown;
-  confidence: number;
-  lastUpdated: string;
-  source: 'explicit' | 'inferred';
-}
-
 export class ContextService {
-  private storagePath: string;
-  private episodes: Episode[] = [];
-  private facts = new Map<string, UserFact>();
   private currentSession: { id: string; messages: string[]; startTime: Date } | null = null;
-  private learning?: LearningService;
-  private llm?: LLMService;
+  private learning!: LearningService;
+  private llm!: LLMService;
 
-  constructor(private config: Config) {
-    this.storagePath = path.join(resolvePath(config, 'database'), 'memory');
-  }
+  constructor(private config: Config) {}
 
   setServices(learning: LearningService, llm: LLMService): void {
     this.learning = learning;
@@ -46,35 +30,10 @@ export class ContextService {
   }
 
   async initialize(): Promise<void> {
-    ensureDir(this.storagePath);
-
-    // Load episodes
-    const episodesFile = path.join(this.storagePath, 'episodes.json');
-    if (fs.existsSync(episodesFile)) {
-      try {
-        this.episodes = JSON.parse(fs.readFileSync(episodesFile, 'utf-8'));
-      } catch {
-        this.episodes = [];
-      }
+    if (!this.learning) {
+      throw new Error('LearningService must be set before initialize()');
     }
-
-    // Load profile
-    const profileFile = path.join(this.storagePath, 'profile.json');
-    if (fs.existsSync(profileFile)) {
-      try {
-        const data = JSON.parse(fs.readFileSync(profileFile, 'utf-8'));
-        for (const [k, v] of Object.entries(data)) {
-          this.facts.set(k, v as UserFact);
-        }
-      } catch {
-        // Start fresh
-      }
-    }
-
-    info('ContextService initialized', {
-      episodes: this.episodes.length,
-      facts: this.facts.size,
-    });
+    info('ContextService initialized');
   }
 
   // === Session Management ===
@@ -82,13 +41,11 @@ export class ContextService {
   startSession(): void {
     const sessionId = crypto.randomUUID();
 
-    // Create session entity in learning system if available
-    if (this.learning) {
-      this.learning.createEntity('session', {
-        startTime: new Date().toISOString(),
-        messageCount: 0
-      });
-    }
+    // Create session entity in learning system
+    this.learning.createEntity('session', {
+      startTime: new Date().toISOString(),
+      messageCount: 0
+    });
 
     this.currentSession = { id: sessionId, messages: [], startTime: new Date() };
     debug('Session started', { sessionId });
@@ -102,11 +59,6 @@ export class ContextService {
     if (this.currentSession) {
       this.currentSession.messages.push(`${isUser ? 'User' : 'Bartleby'}: ${message}`);
     }
-
-    // Extract facts from user messages
-    if (isUser) {
-      this.extractFacts(message);
-    }
   }
 
   async endSession(): Promise<void> {
@@ -115,47 +67,21 @@ export class ContextService {
     const sessionId = this.currentSession.id;
     const messages = this.currentSession.messages;
 
-    // Try LLM-powered analysis if services available
-    if (this.learning && this.llm) {
-      try {
-        await this.analyzeSessionWithLLM(sessionId, messages);
-      } catch (err) {
-        warn('LLM session analysis failed, falling back to basic extraction', { error: String(err) });
-        // Fall back to basic extraction
-        await this.basicSessionAnalysis(sessionId, messages);
-      }
-    } else {
-      // No LLM available, use basic extraction
+    // Try LLM-powered analysis with fallback to basic extraction
+    try {
+      await this.analyzeSessionWithLLM(sessionId, messages);
+    } catch (err) {
+      warn('LLM session analysis failed, falling back to basic extraction', { error: String(err) });
       await this.basicSessionAnalysis(sessionId, messages);
     }
 
-    // Legacy: Still save to episodes array for backward compatibility during migration
-    // This will be removed once full migration is complete
-    const episode: Episode = {
-      id: sessionId,
-      timestamp: new Date().toISOString(),
-      summary: await this.getSummaryFromLearning(sessionId) || this.summarizeSession(messages),
-      topics: await this.getTopicsFromLearning(sessionId) || this.extractTopics(messages),
-      actionsTaken: this.extractActions(messages),
-      pendingFollowups: await this.getUnresolvedFromLearning(sessionId) || this.extractFollowups(messages),
-      messageCount: messages.length,
-    };
-
-    this.episodes.push(episode);
     this.currentSession = null;
-
-    // Note: No longer saving to JSON file - data persists in learning system
     debug('Session ended', { sessionId, messageCount: messages.length });
   }
 
   // === Episodic Memory ===
 
   getLastSession(): Episode | null {
-    if (!this.learning) {
-      // Fallback to legacy in-memory episodes
-      return this.episodes[this.episodes.length - 1] || null;
-    }
-
     // Query most recent session from learning system
     const sessions = this.learning['db'].prepare(`
       SELECT id, data, created_at
@@ -166,19 +92,13 @@ export class ContextService {
     `).all() as Array<{ id: string; data: string; created_at: string }>;
 
     if (sessions.length === 0) {
-      return this.episodes[this.episodes.length - 1] || null;
+      return null;
     }
 
     return this.sessionEntityToEpisode(sessions[0]);
   }
 
   getTodayEpisodes(): Episode[] {
-    if (!this.learning) {
-      // Fallback to legacy in-memory episodes
-      const today = new Date().toISOString().split('T')[0];
-      return this.episodes.filter(e => e.timestamp.startsWith(today));
-    }
-
     // Query today's sessions from learning system
     const today = new Date().toISOString().split('T')[0];
     const sessions = this.learning['db'].prepare(`
@@ -193,17 +113,6 @@ export class ContextService {
   }
 
   getPendingFollowups(): Array<{ episodeId: string; text: string }> {
-    if (!this.learning) {
-      // Fallback to legacy in-memory episodes
-      const results: Array<{ episodeId: string; text: string }> = [];
-      for (const ep of this.episodes) {
-        for (const followup of ep.pendingFollowups) {
-          results.push({ episodeId: ep.id, text: followup });
-        }
-      }
-      return results;
-    }
-
     // Query all unresolved questions from learning system
     const unresolved = this.learning.queryObservationsByKey('unresolved_question', {
       notExpired: true
@@ -216,19 +125,6 @@ export class ContextService {
   }
 
   clearFollowup(episodeId: string, text: string): boolean {
-    if (!this.learning) {
-      // Fallback to legacy in-memory episodes
-      const episode = this.episodes.find(e => e.id === episodeId);
-      if (!episode) return false;
-
-      const idx = episode.pendingFollowups.indexOf(text);
-      if (idx === -1) return false;
-
-      episode.pendingFollowups.splice(idx, 1);
-      this.save();
-      return true;
-    }
-
     // Find and expire the unresolved observation
     const observations = this.learning.getObservations(episodeId, {
       keyPrefix: 'unresolved_question'
@@ -254,22 +150,6 @@ export class ContextService {
   }
 
   clearMatchingFollowup(description: string): string | null {
-    if (!this.learning) {
-      // Fallback to legacy in-memory episodes
-      const lower = description.toLowerCase();
-      for (const ep of this.episodes) {
-        for (let i = 0; i < ep.pendingFollowups.length; i++) {
-          if (ep.pendingFollowups[i].toLowerCase().includes(lower)) {
-            const cleared = ep.pendingFollowups[i];
-            ep.pendingFollowups.splice(i, 1);
-            this.save();
-            return cleared;
-          }
-        }
-      }
-      return null;
-    }
-
     // Search for matching unresolved question
     const lower = description.toLowerCase();
     const unresolved = this.learning.queryObservationsByKey('unresolved_question', {
@@ -296,25 +176,6 @@ export class ContextService {
   }
 
   recallRelevant(query: string, limit = 5): Episode[] {
-    if (!this.learning) {
-      // Fallback to legacy in-memory scoring
-      const words = query.toLowerCase().split(/\s+/);
-      const scored = this.episodes.map(ep => {
-        let score = 0;
-        for (const word of words) {
-          if (ep.summary.toLowerCase().includes(word)) score += 2;
-          if (ep.topics.some(t => t.includes(word))) score += 1;
-        }
-        return { ep, score };
-      });
-
-      return scored
-        .filter(s => s.score > 0)
-        .sort((a, b) => b.score - a.score)
-        .slice(0, limit)
-        .map(s => s.ep);
-    }
-
     // Use full-text search on observations
     const relevantObs = this.learning.searchObservations(query, limit * 3);
 
@@ -326,6 +187,10 @@ export class ContextService {
       if (entity && entity.type === 'session') {
         sessionIds.add(obs.entityId);
       }
+    }
+
+    if (sessionIds.size === 0) {
+      return [];
     }
 
     // Convert to Episodes
@@ -340,70 +205,7 @@ export class ContextService {
     return sessions.map(s => this.sessionEntityToEpisode(s));
   }
 
-  // === Semantic Profile ===
-
-  getFact(category: string, key: string): UserFact | undefined {
-    return this.facts.get(`${category}:${key}`);
-  }
-
-  setFact(
-    category: UserFact['category'],
-    key: string,
-    value: unknown,
-    options: { source?: 'explicit' | 'inferred'; confidence?: number } = {}
-  ): void {
-    const fullKey = `${category}:${key}`;
-    this.facts.set(fullKey, {
-      category,
-      key,
-      value,
-      confidence: options.confidence ?? 0.7,
-      lastUpdated: new Date().toISOString(),
-      source: options.source ?? 'inferred',
-    });
-    this.save();
-  }
-
-  clearFact(category: UserFact['category'], key: string): boolean {
-    const fullKey = `${category}:${key}`;
-    const existed = this.facts.has(fullKey);
-    this.facts.delete(fullKey);
-    this.save();
-    return existed;
-  }
-
-  getFactsByCategory(category: string): UserFact[] {
-    return Array.from(this.facts.values()).filter(f => f.category === category);
-  }
-
-  getProfileSummary(): string {
-    const sections: string[] = [];
-    
-    // System context goes first (e.g., tax mode instructions)
-    const systemFacts = this.getFactsByCategory('system');
-    if (systemFacts.length > 0) {
-      const items = systemFacts.map(f => `${f.key}: ${f.value}`).join('\n');
-      sections.push(`## Current Context\n${items}`);
-    }
-    
-    const categories = ['preference', 'habit', 'goal', 'relationship', 'schedule', 'interest', 'health'];
-
-    for (const cat of categories) {
-      const facts = this.getFactsByCategory(cat);
-      if (facts.length > 0) {
-        const items = facts.map(f => `${f.key}: ${f.value}`).join(', ');
-        sections.push(`**${cat.charAt(0).toUpperCase() + cat.slice(1)}**: ${items}`);
-      }
-    }
-
-    return sections.join('\n');
-  }
-
   getEpisodeCount(): number {
-    if (!this.learning) {
-      return this.episodes.length;
-    }
-
     // Count session entities in learning system
     const result = this.learning['db'].prepare(`
       SELECT COUNT(*) as count
@@ -411,125 +213,58 @@ export class ContextService {
       WHERE type = 'session'
     `).get() as { count: number };
 
-    return result.count + this.episodes.length; // Include legacy episodes
+    return result.count;
   }
 
-  // === Fact Extraction ===
+  // === Facts API (delegates to LearningService) ===
 
-  private extractFacts(message: string): void {
-    const lower = message.toLowerCase();
+  getFact(category: string, key: string): any | undefined {
+    const obs = this.learning.getObservation('user', `fact.${category}.${key}`);
+    if (!obs) return undefined;
 
-    // Preference patterns
-    const prefPatterns = [
-      /i (prefer|like|love|enjoy)\s+(.+?)(?:\.|,|$)/i,
-      /my favorite\s+(.+?)\s+is\s+(.+?)(?:\.|,|$)/i,
-    ];
-    for (const pattern of prefPatterns) {
-      const match = lower.match(pattern);
-      if (match) {
-        this.setFact('preference', match[match.length - 1].trim(), true);
-      }
-    }
-
-    // Goal patterns
-    const goalMatch = lower.match(/i want to\s+(.+?)(?:\.|,|$)/i);
-    if (goalMatch) {
-      this.setFact('goal', goalMatch[1].trim(), true);
-    }
-
-    // Relationship patterns
-    const relMatch = lower.match(/my (wife|husband|son|daughter|brother|sister|mom|dad|partner|friend)\s+(\w+)?/i);
-    if (relMatch) {
-      const relation = relMatch[1];
-      const name = relMatch[2];
-      if (name) {
-        this.setFact('relationship', relation, name);
-      }
-    }
-
-    // Habit patterns
-    const habitMatch = lower.match(/i (usually|always|every)\s+(.+?)(?:\.|,|$)/i);
-    if (habitMatch) {
-      this.setFact('habit', habitMatch[2].trim(), true);
-    }
-
-    // Health patterns
-    const healthPatterns = [
-      /i('m| am)\s+(trying to|working on)\s+(lose weight|exercise|eat better|sleep more)/i,
-      /my goal is to\s+(run|walk|exercise|meditate)\s+(\d+)/i,
-    ];
-    for (const pattern of healthPatterns) {
-      const match = lower.match(pattern);
-      if (match) {
-        this.setFact('health', match[match.length - 1], true);
-      }
+    try {
+      return JSON.parse(obs.value);
+    } catch {
+      return obs.value;
     }
   }
 
-  // === Session Analysis ===
-
-  private summarizeSession(messages: string[]): string {
-    const firstUser = messages.find(m => m.startsWith('User:'));
-    if (firstUser) {
-      return firstUser.replace('User: ', '').slice(0, 100);
-    }
-    return 'Session with no user messages';
+  setFact(
+    category: string,
+    key: string,
+    value: unknown,
+    options: { source?: 'explicit' | 'inferred'; confidence?: number } = {}
+  ): void {
+    this.learning.recordObservation({
+      entityId: 'user',
+      key: `fact.${category}.${key}`,
+      value: JSON.stringify(value),
+      sourceType: options.source === 'explicit' ? 'stated' : 'inferred',
+      confidence: options.confidence ?? 0.7
+    });
   }
 
-  private extractTopics(messages: string[]): string[] {
-    const text = messages.join(' ').toLowerCase();
-    const topics: string[] = [];
+  clearFact(category: string, key: string): boolean {
+    const obs = this.learning.getObservation('user', `fact.${category}.${key}`);
+    if (!obs) return false;
 
-    const keywords = ['task', 'project', 'calendar', 'meeting', 'email', 'call', 'work', 'home', 'health', 'exercise'];
-    for (const kw of keywords) {
-      if (text.includes(kw)) topics.push(kw);
-    }
+    // Expire the fact
+    this.learning.recordObservation({
+      entityId: 'user',
+      key: `fact.${category}.${key}`,
+      value: obs.value,
+      sourceType: 'inferred',
+      confidence: obs.confidence,
+      expiresAt: new Date(0).toISOString(),
+      supersedes: obs.id
+    });
 
-    return topics.slice(0, 5);
-  }
-
-  private extractActions(messages: string[]): string[] {
-    const actions: string[] = [];
-    for (const msg of messages) {
-      if (msg.startsWith('Bartleby:') && msg.includes('✓')) {
-        actions.push(msg.replace('Bartleby: ', '').slice(0, 50));
-      }
-    }
-    return actions;
-  }
-
-  private extractFollowups(messages: string[]): string[] {
-    const followups: string[] = [];
-    for (const msg of messages) {
-      if (msg.startsWith('User:')) {
-        const lower = msg.toLowerCase();
-        if (lower.includes("i'll") || lower.includes('i will') || lower.includes('remind me')) {
-          followups.push(msg.replace('User: ', '').slice(0, 50));
-        }
-      }
-    }
-    return followups;
-  }
-
-  // === Persistence ===
-
-  private async save(): Promise<void> {
-    const episodesFile = path.join(this.storagePath, 'episodes.json');
-    fs.writeFileSync(episodesFile, JSON.stringify(this.episodes, null, 2));
-
-    const profileFile = path.join(this.storagePath, 'profile.json');
-    const profile: Record<string, UserFact> = {};
-    for (const [k, v] of this.facts) {
-      profile[k] = v;
-    }
-    fs.writeFileSync(profileFile, JSON.stringify(profile, null, 2));
+    return true;
   }
 
   // === LLM-Powered Analysis ===
 
   private async analyzeSessionWithLLM(sessionId: string, messages: string[]): Promise<void> {
-    if (!this.learning || !this.llm) return;
-
     const conversationText = messages.join('\n');
 
     const prompt = `Analyze this conversation between a user and Bartleby assistant.
@@ -614,8 +349,6 @@ Return as JSON:
   }
 
   private async basicSessionAnalysis(sessionId: string, messages: string[]): Promise<void> {
-    if (!this.learning) return;
-
     // Basic extraction for fallback
     const summary = this.summarizeSession(messages);
     const topics = this.extractTopics(messages);
@@ -641,32 +374,32 @@ Return as JSON:
     }
   }
 
-  private async getSummaryFromLearning(sessionId: string): Promise<string | null> {
-    if (!this.learning) return null;
-    const obs = this.learning.getObservation(sessionId, 'summary');
-    return obs?.value || null;
+  // === Helper Methods ===
+
+  private summarizeSession(messages: string[]): string {
+    const firstUser = messages.find(m => m.startsWith('User:'));
+    if (firstUser) {
+      return firstUser.replace('User: ', '').slice(0, 100);
+    }
+    return 'Session with no user messages';
   }
 
-  private async getTopicsFromLearning(sessionId: string): Promise<string[]> {
-    if (!this.learning) return [];
-    const observations = this.learning.getObservations(sessionId, { keyPrefix: 'topic' });
-    return observations.map(o => o.value);
-  }
+  private extractTopics(messages: string[]): string[] {
+    const text = messages.join(' ').toLowerCase();
+    const topics: string[] = [];
 
-  private async getUnresolvedFromLearning(sessionId: string): Promise<string[]> {
-    if (!this.learning) return [];
-    const observations = this.learning.getObservations(sessionId, { keyPrefix: 'unresolved_question' });
-    return observations.map(o => o.value);
+    const keywords = ['task', 'project', 'calendar', 'meeting', 'email', 'call', 'work', 'home', 'health', 'exercise'];
+    for (const kw of keywords) {
+      if (text.includes(kw)) topics.push(kw);
+    }
+
+    return topics.slice(0, 5);
   }
 
   /**
    * Convert a session entity from learning system to Episode format
    */
   private sessionEntityToEpisode(session: { id: string; data: string; created_at: string }): Episode {
-    if (!this.learning) {
-      throw new Error('LearningService not available');
-    }
-
     const data = session.data ? JSON.parse(session.data) : {};
 
     // Get observations for this session
