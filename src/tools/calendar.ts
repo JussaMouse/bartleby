@@ -1503,4 +1503,287 @@ export const clarifyEventTime: Tool = {
   },
 };
 
-export const calendarTools: Tool[] = [showCalendar, showToday, addEvent, eventWizardResponse, calendarSetup, resetCalendar, clarifyEventTime];
+// Edit Event Tool
+export const editEvent: Tool = {
+  name: 'editEvent',
+  description: 'Edit or reschedule an existing event',
+
+  routing: {
+    patterns: [
+      /^(edit|change|update)\s+event\s+(.+)$/i,
+      /^reschedule\s+(.+?)\s+to\s+(.+)$/i,
+    ],
+    keywords: {
+      verbs: ['edit', 'change', 'update', 'reschedule'],
+      nouns: ['event'],
+    },
+    examples: [
+      'reschedule team meeting to tomorrow 3pm',
+      'edit event dentist',
+      'reschedule standup to next Monday 9am',
+    ],
+    priority: 85,
+  },
+
+  execute: async (args, context) => {
+    const input = context.input;
+
+    // Parse: "reschedule team meeting to tomorrow 3pm"
+    const rescheduleMatch = input.match(/^reschedule\s+(.+?)\s+to\s+(.+)$/i);
+    if (rescheduleMatch) {
+      const eventName = rescheduleMatch[1].trim();
+      const newTime = rescheduleMatch[2].trim();
+
+      // Find event by title (fuzzy match)
+      const events = context.services.garden.getByType('event');
+      const event = events.find(e =>
+        e.title.toLowerCase().includes(eventName.toLowerCase())
+      );
+
+      if (!event) {
+        // Try to list similar events
+        const similar = events.filter(e =>
+          eventName.toLowerCase().split(' ').some(word =>
+            e.title.toLowerCase().includes(word)
+          )
+        );
+
+        if (similar.length > 0) {
+          const list = similar.slice(0, 5).map(e => `  • ${e.title}`).join('\n');
+          return `Event not found: "${eventName}"\n\nDid you mean one of these?\n${list}`;
+        }
+
+        return `Event not found: "${eventName}"\n\nUse "show events" to see all events.`;
+      }
+
+      // Parse new time using existing parser
+      const parsed = parseEventInput(`temp event ${newTime}`);
+      if (!parsed || !parsed.startTime) {
+        return `Could not parse time: "${newTime}"\n\nTry formats like:\n  • tomorrow 3pm\n  • next Monday 10am\n  • March 15 at 2pm\n  • in 2 hours`;
+      }
+
+      // Calculate new end time (preserve duration)
+      const oldStart = new Date(event.start_time!);
+      const oldEnd = new Date(event.end_time!);
+      const duration = oldEnd.getTime() - oldStart.getTime();
+      const newEnd = new Date(parsed.startTime.getTime() + duration);
+
+      // Update event
+      const updated = context.services.garden.update(event.id, {
+        start_time: parsed.startTime.toISOString(),
+        end_time: newEnd.toISOString(),
+      });
+
+      if (!updated) {
+        return `Failed to reschedule event.`;
+      }
+
+      // Format response
+      const dateStr = parsed.startTime.toLocaleDateString('en-US', {
+        weekday: 'long', month: 'long', day: 'numeric'
+      });
+      const timeStr = parsed.startTime.toLocaleTimeString('en-US', {
+        hour: 'numeric', minute: '2-digit'
+      });
+
+      return `✓ Rescheduled: "${event.title}"\n  ${dateStr} at ${timeStr}`;
+    }
+
+    // Parse: "edit event team meeting"
+    const editMatch = input.match(/^(edit|change|update)\s+event\s+(.+)$/i);
+    if (editMatch) {
+      const eventName = editMatch[2].trim();
+
+      // Find event
+      const events = context.services.garden.getByType('event');
+      const event = events.find(e =>
+        e.title.toLowerCase().includes(eventName.toLowerCase())
+      );
+
+      if (!event) {
+        // Try to list similar events
+        const similar = events.filter(e =>
+          eventName.toLowerCase().split(' ').some(word =>
+            e.title.toLowerCase().includes(word)
+          )
+        );
+
+        if (similar.length > 0) {
+          const list = similar.slice(0, 5).map(e => `  • ${e.title}`).join('\n');
+          return `Event not found: "${eventName}"\n\nDid you mean one of these?\n${list}`;
+        }
+
+        return `Event not found: "${eventName}"\n\nUse "show events" to see all events.`;
+      }
+
+      // Show current details and prompt for changes
+      const startDate = new Date(event.start_time!);
+      const endDate = new Date(event.end_time!);
+      const dateStr = startDate.toLocaleDateString('en-US', {
+        weekday: 'long', month: 'long', day: 'numeric'
+      });
+      const timeStr = startDate.toLocaleTimeString('en-US', {
+        hour: 'numeric', minute: '2-digit'
+      });
+      const durationMins = Math.round((endDate.getTime() - startDate.getTime()) / 60000);
+
+      let response = `📅 **${event.title}**\n`;
+      response += `  When: ${dateStr} at ${timeStr}\n`;
+      response += `  Duration: ${durationMins} minutes\n`;
+      if (event.metadata?.location) response += `  📍 ${event.metadata.location}\n`;
+      if (event.contacts && event.contacts.length > 0) {
+        const contactNames = event.contacts.map(id => {
+          const contact = context.services.garden.get(id);
+          return contact ? contact.title : id;
+        });
+        response += `  👤 ${contactNames.join(', ')}\n`;
+      }
+      if (event.content) {
+        const preview = event.content.substring(0, 60);
+        const ellipsis = event.content.length > 60 ? '...' : '';
+        response += `  📝 ${preview}${ellipsis}\n`;
+      }
+
+      response += `\n**What would you like to change?**\n`;
+      response += `  • time <new-time> - Reschedule event\n`;
+      response += `  • title <new-title> - Rename event\n`;
+      response += `  • location <place> - Change location\n`;
+      response += `  • description <text> - Update description\n`;
+      response += `  • done - Finish editing\n\n`;
+      response += `Example: time tomorrow 3pm`;
+
+      // Set wizard state for multi-step editing
+      context.services.context.setFact('system', 'event_edit_pending', {
+        eventId: event.id,
+      }, { source: 'explicit' });
+
+      return response;
+    }
+
+    return 'Usage:\n  • reschedule <event> to <new-time>\n  • edit event <name>';
+  },
+};
+
+// Handle event editing wizard responses
+export const eventEditResponse: Tool = {
+  name: 'eventEditResponse',
+  description: 'Handle responses during event editing',
+
+  routing: {
+    patterns: [], // No patterns - uses shouldHandle
+    priority: 100,
+  },
+
+  shouldHandle: async (input, context) => {
+    const pending = context.services.context.getFact('system', 'event_edit_pending');
+    return !!pending?.value;
+  },
+
+  execute: async (args, context) => {
+    const input = context.input.trim();
+    const pendingData = context.services.context.getFact('system', 'event_edit_pending')?.value as { eventId: string };
+
+    if (!pendingData?.eventId) {
+      return 'No event being edited.';
+    }
+
+    const event = context.services.garden.get(pendingData.eventId);
+    if (!event) {
+      context.services.context.setFact('system', 'event_edit_pending', null, { source: 'explicit' });
+      return 'Event not found.';
+    }
+
+    // Handle "done" - finish editing
+    if (/^done$/i.test(input)) {
+      context.services.context.setFact('system', 'event_edit_pending', null, { source: 'explicit' });
+      return `✓ Finished editing "${event.title}"`;
+    }
+
+    // Handle "time <new-time>" - reschedule
+    const timeMatch = input.match(/^time\s+(.+)$/i);
+    if (timeMatch) {
+      const newTime = timeMatch[1].trim();
+
+      // Parse new time
+      const parsed = parseEventInput(`temp event ${newTime}`);
+      if (!parsed || !parsed.startTime) {
+        return `Could not parse time: "${newTime}"\n\nTry again or type "done" to finish.`;
+      }
+
+      // Calculate new end time (preserve duration)
+      const oldStart = new Date(event.start_time!);
+      const oldEnd = new Date(event.end_time!);
+      const duration = oldEnd.getTime() - oldStart.getTime();
+      const newEnd = new Date(parsed.startTime.getTime() + duration);
+
+      // Update event
+      context.services.garden.update(event.id, {
+        start_time: parsed.startTime.toISOString(),
+        end_time: newEnd.toISOString(),
+      });
+
+      const dateStr = parsed.startTime.toLocaleDateString('en-US', {
+        weekday: 'long', month: 'long', day: 'numeric'
+      });
+      const timeStr = parsed.startTime.toLocaleTimeString('en-US', {
+        hour: 'numeric', minute: '2-digit'
+      });
+
+      return `✓ Rescheduled to ${dateStr} at ${timeStr}\n\nWhat else? (or type "done")`;
+    }
+
+    // Handle "title <new-title>" - rename
+    const titleMatch = input.match(/^title\s+(.+)$/i);
+    if (titleMatch) {
+      const newTitle = titleMatch[1].trim();
+
+      context.services.garden.update(event.id, {
+        title: newTitle,
+      });
+
+      return `✓ Renamed to "${newTitle}"\n\nWhat else? (or type "done")`;
+    }
+
+    // Handle "location <place>" - change location
+    const locationMatch = input.match(/^location\s+(.+)$/i);
+    if (locationMatch) {
+      const newLocation = locationMatch[1].trim();
+
+      const metadata = event.metadata || {};
+      metadata.location = newLocation;
+
+      context.services.garden.update(event.id, {
+        metadata,
+      });
+
+      return `✓ Location changed to "${newLocation}"\n\nWhat else? (or type "done")`;
+    }
+
+    // Handle "description <text>" - update description
+    const descMatch = input.match(/^description\s+(.+)$/i);
+    if (descMatch) {
+      const newDesc = descMatch[1].trim();
+
+      context.services.garden.update(event.id, {
+        content: newDesc,
+      });
+
+      return `✓ Description updated\n\nWhat else? (or type "done")`;
+    }
+
+    // Unknown command
+    return `Unknown command: "${input}"\n\nAvailable commands:\n  • time <new-time>\n  • title <new-title>\n  • location <place>\n  • description <text>\n  • done`;
+  },
+};
+
+export const calendarTools: Tool[] = [
+  showCalendar,
+  showToday,
+  addEvent,
+  eventWizardResponse,
+  editEvent,
+  eventEditResponse,
+  calendarSetup,
+  resetCalendar,
+  clarifyEventTime,
+];

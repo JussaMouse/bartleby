@@ -719,13 +719,15 @@ When you create an event, it's stored as a markdown file in your garden AND auto
 ### Commands
 
 ```
-today                        Today's unified view
-calendar                     Upcoming events and deadlines
-new event                    Create event (guided wizard)
-new event <details>          Create event (inline)
-show events                  List all events
-open <event name>            View event details
-remind me <msg> in <time>    Set reminder
+today                              Today's unified view
+calendar                           Upcoming events and deadlines
+new event                          Create event (guided wizard)
+new event <details>                Create event (inline)
+show events                        List all events
+open <event name>                  View event details
+reschedule <event> to <new-time>   Reschedule an event
+edit event <name>                  Edit event interactively
+remind me <msg> in <time>          Set reminder
 ```
 
 ### Timed Actions
@@ -831,6 +833,59 @@ All date parsing is smart:
   14:00  📅 1:1 with Sarah
   17:00  ⚠️ Submit report (due)
 ```
+
+### Editing & Rescheduling Events
+
+**Quick reschedule** — one command to move any event:
+
+```
+> reschedule team meeting to tomorrow 3pm
+✓ Rescheduled: "team meeting"
+  Thursday, February 13 at 3:00 PM
+
+> reschedule dentist to next Monday 10am
+✓ Rescheduled: "dentist appointment"
+  Monday, February 17 at 10:00 AM
+
+> reschedule call to in 2 hours
+✓ Rescheduled: "call"
+  Wednesday, February 12 at 4:30 PM
+```
+
+**Interactive editing** — change multiple properties:
+
+```
+> edit event team meeting
+
+📅 **Team Meeting**
+  When: Friday, February 14 at 10:00 AM
+  Duration: 60 minutes
+  📍 Conference Room A
+  👤 Sarah, Mike
+
+What would you like to change?
+  • time <new-time> - Reschedule event
+  • title <new-title> - Rename event
+  • location <place> - Change location
+  • description <text> - Update description
+  • done - Finish editing
+
+> time next Tuesday 2pm
+✓ Rescheduled to Tuesday, February 18 at 2:00 PM
+
+> location Zoom
+✓ Location changed to "Zoom"
+
+> done
+✓ Finished editing "Team Meeting"
+```
+
+**Smart features:**
+- Fuzzy name matching finds events by partial title
+- Duration preserved when rescheduling (90-minute meeting stays 90 minutes)
+- Uses full natural language date parsing
+- Automatically updates calendar and reminders
+- Suggests similar events if name not found
 
 ### Event Architecture & Persistence
 

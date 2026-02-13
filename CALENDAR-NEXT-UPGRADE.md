@@ -5,8 +5,8 @@
 Based on user value and implementation complexity:
 
 1. ✅ **Natural Language Date Parsing** (COMPLETED)
-2. **Edit Event Tool** (High value, Low complexity) - RECOMMENDED NEXT
-3. **System Views Initialization** (Medium value, Low complexity)
+2. ✅ **Edit Event Tool** (COMPLETED)
+3. **System Views Initialization** (Medium value, Low complexity) - RECOMMENDED NEXT
 4. **All-Day Events Enhancement** (Medium value, Low complexity)
 5. **Enhanced Query Parser** (Low value, High complexity)
 6. **Recurring Events** (High value, Very high complexity)
@@ -331,9 +331,36 @@ export const editEvent: Tool = {
 **Risk:** Low
 **Value:** High (essential UX feature)
 
+### ✅ IMPLEMENTATION COMPLETE
+
+**Completed:** Full edit and reschedule functionality
+
+**Added features:**
+1. ✅ Quick reschedule: `reschedule <event> to <new-time>`
+2. ✅ Interactive editor: `edit event <name>` with multi-step wizard
+3. ✅ Fuzzy name matching with suggestions
+4. ✅ Duration preservation (90-min meeting stays 90-min)
+5. ✅ Full natural language date support
+6. ✅ Edit time, title, location, description
+7. ✅ Automatic calendar/reminder updates
+
+**Files changed:**
+- `src/tools/calendar.ts`: Added editEvent and eventEditResponse tools (~250 lines)
+- `README.md`: Documented editing/rescheduling with examples
+- `EDIT-EVENT-GUIDE.md`: Comprehensive guide with 30+ examples
+
+**Testing results:**
+- ✅ Reschedule works with all natural language dates
+- ✅ Interactive editor handles all edit commands
+- ✅ Fuzzy matching finds events correctly
+- ✅ Duration preserved after rescheduling
+- ✅ Helpful error messages for invalid input
+
+**User value:** HIGH - Essential calendar management feature
+
 ---
 
-## 3. System Views Initialization (GOOD HOUSEKEEPING)
+## 3. System Views Initialization (GOOD HOUSEKEEPING) - RECOMMENDED NEXT
 
 ### Current State
 - System views can be created manually via `create view` command
