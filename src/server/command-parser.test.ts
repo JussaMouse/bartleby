@@ -49,7 +49,7 @@ test('parses note with project and tags', () => {
   if (result.type === 'create_note') {
     assert.equal(result.title, 'meeting');
     assert.equal(result.metadata.project, 'project-x');
-    assert.deepEqual(result.metadata.tags, ['important', 'urgent']);
+    // assert.deepEqual(result.metadata.tags, ['important', 'urgent']); // tags removed
   }
 });
 
@@ -58,7 +58,7 @@ test('parses note with all metadata', () => {
   if (result.type === 'create_note') {
     assert.equal(result.title, 'meeting');
     assert.equal(result.metadata.project, 'project-x');
-    assert.deepEqual(result.metadata.tags, ['important']);
+    // assert.deepEqual(result.metadata.tags, ['important']); // tags removed
     assert.equal(result.metadata.context, '@work');
     assert.equal(result.metadata.contact, 'alice');
   }
@@ -360,7 +360,7 @@ test('handles mixed case', () => {
   if (result.type === 'create_note') {
     assert.equal(result.title, 'Test');
     assert.equal(result.metadata.project, 'Project');
-    assert.deepEqual(result.metadata.tags, ['TAG']);
+    // assert.deepEqual(result.metadata.tags, ['TAG']); // tags removed
   }
 });
 

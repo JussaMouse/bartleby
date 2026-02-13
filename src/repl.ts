@@ -445,22 +445,7 @@ function createCompleter(services: ServiceContainer) {
           ...services.garden.getByType('contact'),
         ];
 
-        const allTags = new Set<string>();
-        for (const page of allPages) {
-          if (page.tags) {
-            for (const tag of page.tags) {
-              allTags.add(tag);
-            }
-          }
-        }
-
-        const tagOptions = Array.from(allTags).map(t => '#' + t);
-        const matches = tagOptions.filter(t => t.toLowerCase().startsWith('#' + partial));
-
-        if (matches.length > 0) {
-          const beforeHash = line.slice(0, line.lastIndexOf('#'));
-          return [matches.map(t => beforeHash + t), line];
-        }
+        // Tag autocomplete removed - tags no longer supported
       }
     }
     

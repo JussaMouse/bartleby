@@ -38,8 +38,8 @@ function extractMetadata(text: string): {
 } {
   const metadata: ParsedMetadata = {};
 
-  // Extract +project (non-greedy, stops at @ # with or end)
-  const projectMatch = text.match(/\+([^@#\s]+?)(?=\s*(?:@|#|with\s|due:|$))/i);
+  // Extract +project (non-greedy, stops at @ with or end)
+  const projectMatch = text.match(/\+([^@\s]+?)(?=\s*(?:@|with\s|due:|$))/i);
   if (projectMatch) {
     metadata.project = projectMatch[1].trim();
   }
@@ -50,14 +50,10 @@ function extractMetadata(text: string): {
     metadata.context = '@' + contextMatch[1];
   }
 
-  // Extract #tags (multiple)
-  const tagMatches = text.match(/#(\w+)/g);
-  if (tagMatches) {
-    metadata.tags = tagMatches.map((t) => t.slice(1));
-  }
+  // #tags removed - words stay in content for search
 
   // Extract "with person"
-  const withMatch = text.match(/\bwith\s+([^@#+]+?)(?=\s*(?:@|#|\+|due:|$))/i);
+  const withMatch = text.match(/\bwith\s+([^@+]+?)(?=\s*(?:@|\+|due:|$))/i);
   if (withMatch) {
     metadata.contact = withMatch[1].trim();
   }
@@ -68,12 +64,12 @@ function extractMetadata(text: string): {
     metadata.dueDate = dueMatch[1];
   }
 
-  // Clean text: remove all metadata
+  // Clean text: remove only metadata sigils, keep all other words
   let cleanText = text
-    .replace(/\+[^@#\s]+/g, '')
+    .replace(/\+[^@\s]+/g, '')
     .replace(/@\w+/g, '')
-    .replace(/#\w+/g, '')
-    .replace(/\bwith\s+[^@#+]+/gi, '')
+    // Don't remove #hashtags - they're just normal words now
+    .replace(/\bwith\s+[^@+]+/gi, '')
     .replace(/due:\S+/gi, '')
     .replace(/\s+/g, ' ')
     .trim();
@@ -174,12 +170,10 @@ function parseProjectCommand(
     .replace(/^(new|create|add)?\s*project\s*:?\s*/i, '')
     .trim();
 
-  // Extract tags
-  const tagMatches = text.match(/#(\w+)/g);
-  const tags = tagMatches ? tagMatches.map((t) => t.slice(1)) : undefined;
+  // Tags removed - project name can include any words
 
-  // Clean name
-  const name = text.replace(/#\w+/g, '').replace(/\s+/g, ' ').trim();
+  // Project name (no cleaning needed, keep all words)
+  const name = text.trim();
 
   if (!name) {
     return {
@@ -187,7 +181,7 @@ function parseProjectCommand(
       confidence: 'low',
       rawInput,
       reason: 'Missing project name',
-      suggestions: ['project <name> #tag', 'project website redesign #client'],
+      suggestions: ['project <name>', 'project website redesign'],
     };
   }
 
@@ -196,7 +190,7 @@ function parseProjectCommand(
     confidence: 'high',
     rawInput,
     name,
-    tags,
+    // tags removed
   };
 }
 
@@ -257,12 +251,10 @@ function parseContactCommand(
     .replace(/^(new|create|add)?\s*contact\s*:?\s*/i, '')
     .trim();
 
-  // Extract tags
-  const tagMatches = text.match(/#(\w+)/g);
-  const tags = tagMatches ? tagMatches.map((t) => t.slice(1)) : undefined;
+  // Tags removed - contact name can include any words
 
-  // Clean name
-  const name = text.replace(/#\w+/g, '').replace(/\s+/g, ' ').trim();
+  // Contact name (no cleaning needed, keep all words)
+  const name = text.trim();
 
   if (!name) {
     return {
@@ -270,7 +262,7 @@ function parseContactCommand(
       confidence: 'low',
       rawInput,
       reason: 'Missing contact name',
-      suggestions: ['contact <name> #tag', 'contact alice #team'],
+      suggestions: ['contact <name>', 'contact alice johnson'],
     };
   }
 
@@ -279,7 +271,7 @@ function parseContactCommand(
     confidence: 'high',
     rawInput,
     name,
-    tags,
+    // tags removed
   };
 }
 

@@ -12,8 +12,8 @@ export interface ParsedPage {
 // Human-first field ordering
 const FIELD_ORDER = [
   // What you care about
-  'tags', 'contacts', 'context', 'project', 'due',
-  // GTD details  
+  'contacts', 'context', 'project', 'due',
+  // GTD details
   'waiting_for', 'energy', 'time_estimate',
   // Contact fields
   'email', 'phone', 'birthday',

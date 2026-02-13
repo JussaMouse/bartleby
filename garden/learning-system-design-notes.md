@@ -2,10 +2,9 @@
 
 EOR model for unified memory
 
+#architecture #memory
+
 ---
-tags:
-  - architecture
-  - memory
 project: bartleby
 type: note
 status: active

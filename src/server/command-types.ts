@@ -64,7 +64,7 @@ export interface ParsedCommand {
  */
 export interface ParsedMetadata {
   project?: string;
-  tags?: string[];
+  // tags removed - use content for all text
   context?: string;
   contact?: string;
   dueDate?: string;

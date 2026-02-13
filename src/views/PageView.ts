@@ -211,10 +211,7 @@ export abstract class PageView {
       parts.push(`due:${this.formatDate(date)}`);
     }
 
-    // Add tags
-    if (action.tags && Array.isArray(action.tags) && action.tags.length > 0) {
-      parts.push(...action.tags.map(t => `#${t}`));
-    }
+    // Tags removed - content only
 
     if (parts.length > 0) {
       line += ` (${parts.join(' ')})`;

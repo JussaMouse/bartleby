@@ -1,8 +1,10 @@
 # API test note
 
+# API test note
+
+#api
+
 ---
-tags:
-  - api
 project: testing
 type: note
 status: active

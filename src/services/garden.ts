@@ -48,7 +48,7 @@ export interface GardenRecord {
   company?: string;    // Company/organization name
   address?: string;    // Physical address
   content?: string;
-  tags?: string[];
+  // tags removed - use content for all text, learning system extracts topics
   contacts?: string[];  // Array of contact record IDs
   metadata?: Record<string, unknown>;
   created_at: string;
@@ -341,20 +341,20 @@ export class GardenService {
       title: record.title,
       contentLength: record.content?.length || 0,
       hasProject: !!record.project,
-      hasTags: (record.tags?.length || 0) > 0,
+      // hasTags removed
     });
 
     this.db.prepare(`
       INSERT INTO garden_records
-      (id, type, title, status, context, project, privacy, due_date, email, phone, birthday, company, address, content, tags, contacts, metadata, created_at, updated_at, completed_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      (id, type, title, status, context, project, privacy, due_date, email, phone, birthday, company, address, content, contacts, metadata, created_at, updated_at, completed_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       record.id, record.type, record.title, record.status,
       record.context, record.project, record.privacy,
       record.due_date,
       record.email, record.phone, record.birthday,
       record.company, record.address,
-      record.content, JSON.stringify(record.tags || []),
+      record.content,
       JSON.stringify(record.contacts || []),
       JSON.stringify(record.metadata || {}),
       record.created_at, record.updated_at, record.completed_at
@@ -456,7 +456,7 @@ export class GardenService {
     this.db.prepare(`
       UPDATE garden_records SET
         type=?, title=?, status=?, context=?, project=?, privacy=?, due_date=?,
-        email=?, phone=?, birthday=?, company=?, address=?, content=?, tags=?, contacts=?, metadata=?,
+        email=?, phone=?, birthday=?, company=?, address=?, content=?, contacts=?, metadata=?,
         updated_at=?, completed_at=?
       WHERE id=?
     `).run(
@@ -465,7 +465,7 @@ export class GardenService {
       updated.due_date,
       updated.email, updated.phone, updated.birthday,
       updated.company, updated.address,
-      updated.content, JSON.stringify(updated.tags || []),
+      updated.content,
       JSON.stringify(updated.contacts || []),
       JSON.stringify(updated.metadata || {}),
       updated.updated_at, updated.completed_at, id
@@ -864,16 +864,7 @@ export class GardenService {
     return rows.map(r => this.rowToRecord(r));
   }
 
-  getByTag(tag: string): GardenRecord[] {
-    const pattern = `%"${tag}"%`;
-    const rows = this.db.prepare(`
-      SELECT * FROM garden_records 
-      WHERE tags LIKE ? 
-      AND status = 'active'
-      ORDER BY updated_at DESC
-    `).all(pattern) as any[];
-    return rows.map(r => this.rowToRecord(r));
-  }
+  // getByTag() removed - use search() or fullTextSearch() instead
 
   search(query: string, limit = 50): GardenRecord[] {
     const pattern = `%${query}%`;
@@ -1075,7 +1066,7 @@ export class GardenService {
       company: data.company,
       address: data.address,
       content: data.content,
-      tags: data.tags,
+      // tags removed
     });
   }
 
@@ -1173,7 +1164,7 @@ export class GardenService {
 
     // Build metadata (backmatter format - human-first ordering handled by toGardenPage)
     const meta: Record<string, unknown> = {
-      tags: record.tags?.length ? record.tags : undefined,
+      // tags removed - content only
       contacts: record.contacts?.length ? record.contacts : undefined,
       context: record.context,
       project: record.project,
@@ -1311,7 +1302,7 @@ export class GardenService {
       company: row.company || undefined,
       address: row.address || undefined,
       content: row.content || undefined,
-      tags: row.tags ? JSON.parse(row.tags) : [],
+      // tags removed - use content for all text
       contacts: row.contacts ? JSON.parse(row.contacts) : [],
       metadata: row.metadata ? JSON.parse(row.metadata) : {},
       created_at: row.created_at,

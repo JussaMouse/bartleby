@@ -41,9 +41,9 @@ export const ingestDocument: Tool = {
       rawInput = input.replace(/^(ingest|add\s+to\s+shed|import\s+(document|file))\s*/i, '').trim();
     }
 
-    // Extract projects (+project-name) and tags (#tag-name)
+    // Extract projects (+project-name) and keywords
     const projects: string[] = [];
-    const tags: string[] = [];
+    const keywords: string[] = [];
 
     // Match all +word patterns
     const projectMatches = rawInput.matchAll(/\+([a-zA-Z0-9_-]+)/g);
@@ -51,26 +51,26 @@ export const ingestDocument: Tool = {
       projects.push(match[1]);
     }
 
-    // Match all #word patterns
-    const tagMatches = rawInput.matchAll(/#([a-zA-Z0-9_-]+)/g);
-    for (const match of tagMatches) {
-      tags.push(match[1]);
+    // Match all #word patterns (keep as keywords for content)
+    const keywordMatches = rawInput.matchAll(/#([a-zA-Z0-9_-]+)/g);
+    for (const match of keywordMatches) {
+      keywords.push(match[1]);
     }
 
-    // Remove projects and tags from filepath
+    // Remove projects and keywords from filepath
     const filepath = rawInput
       .replace(/\+[a-zA-Z0-9_-]+/g, '')
       .replace(/#[a-zA-Z0-9_-]+/g, '')
       .trim();
 
-    return { filepath, projects, tags };
+    return { filepath, projects, keywords };
   },
 
   execute: async (args, context) => {
-    const { filepath, projects = [], tags = [] } = args as {
+    const { filepath, projects = [], keywords = [] } = args as {
       filepath: string;
       projects?: string[];
-      tags?: string[];
+      keywords?: string[];
     };
 
     if (!filepath) {
@@ -87,15 +87,15 @@ export const ingestDocument: Tool = {
         ? `URL: ${source.sourceUrl}\nSaved as: ${source.filename}`
         : `File: ${source.filename}`;
 
-      // Build tags array: always include 'media', plus user-specified tags
-      const allTags = ['media', ...tags];
+      // Build classification keywords for content
+      const classificationKeywords = ['media', ...keywords].join(' ');
 
       const mediaPage = context.services.garden.create({
         type: 'media',
         title,
         status: 'active',
-        tags: allTags,
-        content: `${authorLine}${sourceInfo}\nIngested: ${new Date(source.ingestedAt).toLocaleDateString()}\nChunks: ${source.chunkCount}\n\nUse \`ask shed <question>\` to query this document.`,
+        // tags removed - keywords in content
+        content: `${authorLine}${sourceInfo}\nIngested: ${new Date(source.ingestedAt).toLocaleDateString()}\nChunks: ${source.chunkCount}\n\nUse \`ask shed <question>\` to query this document.\n\n${classificationKeywords}`,
         metadata: {
           shed_source_id: source.id,
           filename: source.filename,
@@ -126,7 +126,7 @@ export const ingestDocument: Tool = {
       const sourceDisplay = source.sourceUrl ? `\n  URL: ${source.sourceUrl}` : '';
       const metadataDisplay =
         (projects.length > 0 ? `\n  Projects: ${projects.map(p => '+' + p).join(' ')}` : '') +
-        (tags.length > 0 ? `\n  Tags: ${tags.map(t => '#' + t).join(' ')}` : '');
+        (keywords.length > 0 ? `\n  Keywords: ${keywords.map(k => k).join(' ')}` : '');
 
       return `✓ Ingested: "${source.title}"${authorDisplay}${sourceDisplay}\n  Chunks: ${source.chunkCount}\n  Saved as: ${source.filename}${metadataDisplay}\n  Page created: open "${mediaPage.title}"`;
     } catch (err) {

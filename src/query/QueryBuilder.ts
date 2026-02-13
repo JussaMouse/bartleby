@@ -50,7 +50,7 @@ export class QueryBuilder {
   private types: RecordType[] = [];
   private whereClauses: WhereClause[] = [];
   private relatedClauses: RelatedClause[] = [];
-  private tags: string[] = [];
+  // tags removed - use where() with content LIKE for text search
   private statuses: RecordStatus[] = [];
   private orderByField?: string;
   private orderDirection: OrderDirection = 'asc';
@@ -92,14 +92,7 @@ export class QueryBuilder {
     return this;
   }
 
-  /**
-   * Filter by tag(s)
-   */
-  tag(tag: string | string[]): this {
-    const tagsToAdd = Array.isArray(tag) ? tag : [tag];
-    this.tags.push(...tagsToAdd);
-    return this;
-  }
+  // tag() method removed - use where('content', 'LIKE', '%keyword%') instead
 
   /**
    * Filter by status(es)
@@ -225,13 +218,7 @@ export class QueryBuilder {
       }
     }
 
-    // Tag filter
-    for (const tag of this.tags) {
-      whereConditions.push(`json_array_length(json_extract(r.tags, '$')) > 0 AND EXISTS (
-        SELECT 1 FROM json_each(r.tags) WHERE value = ?
-      )`);
-      params.push(tag);
-    }
+    // Tag filter removed - use content search instead
 
     // Custom WHERE clauses
     for (const clause of this.whereClauses) {

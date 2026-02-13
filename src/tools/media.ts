@@ -44,9 +44,9 @@ export const addMedia: Tool = {
       rawInput = input.replace(/^(add\s+media|upload)\s*/i, '').trim();
     }
 
-    // Extract projects (+project-name) and tags (#tag-name)
+    // Extract projects (+project-name) and keywords
     const projects: string[] = [];
-    const tags: string[] = [];
+    const keywords: string[] = [];
     let ocr = false;
 
     // Match all +word patterns
@@ -55,10 +55,10 @@ export const addMedia: Tool = {
       projects.push(match[1]);
     }
 
-    // Match all #word patterns
-    const tagMatches = rawInput.matchAll(/#([a-zA-Z0-9_-]+)/g);
-    for (const match of tagMatches) {
-      tags.push(match[1]);
+    // Match all #word patterns (keep as keywords for content)
+    const keywordMatches = rawInput.matchAll(/#([a-zA-Z0-9_-]+)/g);
+    for (const match of keywordMatches) {
+      keywords.push(match[1]);
     }
 
     // Check for --ocr flag
@@ -66,21 +66,21 @@ export const addMedia: Tool = {
       ocr = true;
     }
 
-    // Remove projects, tags, and flags from filepath
+    // Remove projects and flags from filepath (keep keywords for content)
     const filepath = rawInput
       .replace(/\+[a-zA-Z0-9_-]+/g, '')
       .replace(/#[a-zA-Z0-9_-]+/g, '')
       .replace(/--ocr/g, '')
       .trim();
 
-    return { filepath, projects, tags, ocr };
+    return { filepath, projects, keywords, ocr };
   },
 
   execute: async (args, context) => {
-    const { filepath, projects = [], tags = [], ocr = false } = args as {
+    const { filepath, projects = [], keywords = [], ocr = false } = args as {
       filepath: string;
       projects?: string[];
-      tags?: string[];
+      keywords?: string[];
       ocr?: boolean;
     };
 
@@ -131,7 +131,8 @@ export const addMedia: Tool = {
       fs.copyFileSync(absolutePath, targetPath);
 
       // Build tags array
-      const allTags = ['media', fileType, ...tags];
+      // Build classification keywords for content
+      const classificationKeywords = ['media', fileType, ...keywords].join(' ');
 
       // Build content
       let content = `**File:** ${originalFilename}\n`;
@@ -153,12 +154,17 @@ export const addMedia: Tool = {
         }
       }
 
+      // Add classification keywords to content for search
+      if (classificationKeywords) {
+        content += `\n\n${classificationKeywords}`;
+      }
+
       // Create Garden page
       const mediaPage = context.services.garden.create({
         type: 'media',
         title: baseName,
         status: 'active',
-        tags: allTags,
+        // tags removed - keywords in content
         content,
         metadata: {
           file_path: `/media/${newFilename}`,
@@ -187,7 +193,7 @@ export const addMedia: Tool = {
       // Build output
       const metadataDisplay =
         (projects.length > 0 ? `\n  Projects: ${projects.map(p => '+' + p).join(' ')}` : '') +
-        (tags.length > 0 ? `\n  Tags: ${tags.map(t => '#' + t).join(' ')}` : '');
+        (keywords.length > 0 ? `\n  Keywords: ${keywords.map(k => k).join(' ')}` : '');
 
       const ocrDisplay = ocrText ? `\n  OCR: ${ocrText.length} chars extracted` : '';
 

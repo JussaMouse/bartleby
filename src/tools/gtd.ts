@@ -1976,43 +1976,7 @@ export const openPage: Tool = {
   },
 };
 
-export const showTagged: Tool = {
-  name: 'showTagged',
-  description: 'Show pages with a specific tag',
-
-  routing: {
-    patterns: [
-      /^show\s+tagged\s+(.+)$/i,
-      /^tagged\s+(.+)$/i,
-      /^#(\w+)$/,
-    ],
-    keywords: { verbs: ['show', 'find'], nouns: ['tagged', 'tag'] },
-    examples: ['show tagged urgent', 'tagged work', '#taxes'],
-    priority: 80,
-  },
-
-  parseArgs: (input, match) => {
-    const tag = match ? match[1] : input.replace(/^(show\s+)?tagged\s+/i, '').replace(/^#/, '');
-    return { tag };
-  },
-
-  execute: async (args, context) => {
-    const { tag } = args as { tag: string };
-    const records = context.services.garden.getByTag(tag);
-    
-    if (records.length === 0) {
-      return `No pages tagged "${tag}".`;
-    }
-
-    const lines = [`**Tagged: ${tag}** (${records.length})\n`];
-    
-    for (const record of records) {
-      lines.push(`• ${record.title} (${record.type})`);
-    }
-
-    return lines.join('\n');
-  },
-};
+// showTagged tool removed - use search() or find command instead
 
 export const deleteProject: Tool = {
   name: 'deleteProject',
@@ -2175,7 +2139,7 @@ export const gtdTools: Tool[] = [
   showByType,
   showRecent,
   openPage,
-  showTagged,
+  // showTagged removed
   markDone,
   editAction,
   editPage,       // After editAction (lower priority)

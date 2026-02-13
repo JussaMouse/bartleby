@@ -1,9 +1,10 @@
 # Testing learning system integration
 
+# Testing learning system integration
+
+#testing #learning
+
 ---
-tags:
-  - testing
-  - learning
 project: bartleby
 type: note
 status: active
