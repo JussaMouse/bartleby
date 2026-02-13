@@ -777,6 +777,49 @@ Events automatically prompt for optional content/notes after creation, just like
 
 The `when`, `who`, `where` keywords let you structure complex events clearly.
 
+### Natural Language Dates
+
+**Month names:**
+```
+> new event team meeting March 15 at 2pm
+> new event conference Apr 22 10am
+> new event dentist 15 March 3pm           # European format works too
+```
+
+**Relative days:**
+```
+> new event planning session next week
+> new event follow up in 3 days at 2pm
+> new event review 5 days from now
+```
+
+**Relative times:**
+```
+> new event standup in 2 hours
+> new event quick call in 30 minutes
+> new event reminder 45 min from now
+```
+
+**Week references:**
+```
+> new event team meeting next Monday 3pm
+> new event demo this Friday morning
+> new event 1:1 next Tuesday afternoon
+```
+
+**Combined patterns:**
+```
+> new event planning next Tuesday at 3pm with sarah
+> new event conference March 22 at 10am 1h reminder
+> new event follow up in 3 days at 2pm with mike
+```
+
+All date parsing is smart:
+- Past dates automatically advance to next year (March 15 in May → next year)
+- "next Monday" = Monday of next week (always 7+ days away)
+- "this Friday" = Friday of this week (0-6 days away)
+- Works with all existing time formats (3pm, 15:30, afternoon, etc.)
+
 ### Example
 
 ```

@@ -513,7 +513,150 @@ function parseEventInput(input: string): {
   if (/\btoday\b/i.test(text)) {
     text = text.replace(/\btoday\b/gi, '').trim();
   }
-  
+
+  // === NATURAL LANGUAGE DATE PARSING ===
+
+  // Month names support: "March 15", "15 March", "Mar 15"
+  const MONTHS: Record<string, number> = {
+    'january': 0, 'jan': 0,
+    'february': 1, 'feb': 1,
+    'march': 2, 'mar': 2,
+    'april': 3, 'apr': 3,
+    'may': 4,
+    'june': 5, 'jun': 5,
+    'july': 6, 'jul': 6,
+    'august': 7, 'aug': 7,
+    'september': 8, 'sep': 8, 'sept': 8,
+    'october': 9, 'oct': 9,
+    'november': 10, 'nov': 10,
+    'december': 11, 'dec': 11,
+  };
+
+  // Check for "March 15" or "Mar 15"
+  const monthDayMatch = text.match(/\b(january|jan|february|feb|march|mar|april|apr|may|june|jun|july|jul|august|aug|september|sep|sept|october|oct|november|nov|december|dec)\s+(\d{1,2})(?:st|nd|rd|th)?\b/i);
+  if (monthDayMatch) {
+    const monthName = monthDayMatch[1].toLowerCase();
+    const day = parseInt(monthDayMatch[2], 10);
+    const month = MONTHS[monthName];
+
+    if (month !== undefined) {
+      const date = new Date(startTime);
+      date.setMonth(month);
+      date.setDate(day);
+
+      // If date already passed this year, use next year
+      if (date < new Date()) {
+        date.setFullYear(date.getFullYear() + 1);
+      }
+
+      startTime = date;
+      text = text.replace(monthDayMatch[0], '').trim();
+    }
+  }
+
+  // Check for "15 March" or "15 Mar" (European format)
+  const dayMonthMatch = text.match(/\b(\d{1,2})(?:st|nd|rd|th)?\s+(january|jan|february|feb|march|mar|april|apr|may|june|jun|july|jul|august|aug|september|sep|sept|october|oct|november|nov|december|dec)\b/i);
+  if (dayMonthMatch) {
+    const day = parseInt(dayMonthMatch[1], 10);
+    const monthName = dayMonthMatch[2].toLowerCase();
+    const month = MONTHS[monthName];
+
+    if (month !== undefined) {
+      const date = new Date(startTime);
+      date.setMonth(month);
+      date.setDate(day);
+
+      // If date already passed this year, use next year
+      if (date < new Date()) {
+        date.setFullYear(date.getFullYear() + 1);
+      }
+
+      startTime = date;
+      text = text.replace(dayMonthMatch[0], '').trim();
+    }
+  }
+
+  // Relative days: "next week"
+  if (/\bnext\s+week\b/i.test(text)) {
+    startTime.setDate(startTime.getDate() + 7);
+    text = text.replace(/\bnext\s+week\b/gi, '').trim();
+  }
+
+  // Relative days: "in N days" or "N days from now"
+  const inDaysMatch = text.match(/\b(?:in\s+)?(\d+)\s+days?(?:\s+from\s+now)?\b/i);
+  if (inDaysMatch) {
+    const days = parseInt(inDaysMatch[1], 10);
+    startTime.setDate(startTime.getDate() + days);
+    text = text.replace(inDaysMatch[0], '').trim();
+  }
+
+  // Relative times: "in N hours" or "N hours from now"
+  const inHoursMatch = text.match(/\b(?:in\s+)?(\d+)\s+hours?(?:\s+from\s+now)?\b/i);
+  if (inHoursMatch) {
+    const hours = parseInt(inHoursMatch[1], 10);
+    startTime.setHours(startTime.getHours() + hours);
+    hasTime = true;
+    text = text.replace(inHoursMatch[0], '').trim();
+  }
+
+  // Relative times: "in N minutes" or "N minutes from now"
+  const inMinutesMatch = text.match(/\b(?:in\s+)?(\d+)\s+min(?:ute)?s?(?:\s+from\s+now)?\b/i);
+  if (inMinutesMatch) {
+    const minutes = parseInt(inMinutesMatch[1], 10);
+    startTime.setMinutes(startTime.getMinutes() + minutes);
+    hasTime = true;
+    text = text.replace(inMinutesMatch[0], '').trim();
+  }
+
+  // Week references: "next Monday", "next Tuesday", etc.
+  const WEEKDAYS: Record<string, number> = {
+    'sunday': 0, 'sun': 0,
+    'monday': 1, 'mon': 1,
+    'tuesday': 2, 'tue': 2, 'tues': 2,
+    'wednesday': 3, 'wed': 3,
+    'thursday': 4, 'thu': 4, 'thur': 4, 'thurs': 4,
+    'friday': 5, 'fri': 5,
+    'saturday': 6, 'sat': 6,
+  };
+
+  const nextWeekdayMatch = text.match(/\bnext\s+(sunday|sun|monday|mon|tuesday|tue|tues|wednesday|wed|thursday|thu|thur|thurs|friday|fri|saturday|sat)\b/i);
+  if (nextWeekdayMatch) {
+    const dayName = nextWeekdayMatch[1].toLowerCase();
+    const targetDay = WEEKDAYS[dayName];
+
+    if (targetDay !== undefined) {
+      const today = startTime.getDay();
+      let daysUntil = targetDay - today;
+
+      // "next Monday" means the Monday of next week (at least 7 days away)
+      if (daysUntil <= 0) daysUntil += 7;
+      else daysUntil += 7; // Force next week
+
+      startTime.setDate(startTime.getDate() + daysUntil);
+      text = text.replace(nextWeekdayMatch[0], '').trim();
+    }
+  }
+
+  // Week references: "this Friday", "this Monday", etc.
+  const thisWeekdayMatch = text.match(/\bthis\s+(sunday|sun|monday|mon|tuesday|tue|tues|wednesday|wed|thursday|thu|thur|thurs|friday|fri|saturday|sat)\b/i);
+  if (thisWeekdayMatch) {
+    const dayName = thisWeekdayMatch[1].toLowerCase();
+    const targetDay = WEEKDAYS[dayName];
+
+    if (targetDay !== undefined) {
+      const today = startTime.getDay();
+      let daysUntil = targetDay - today;
+
+      // "this Friday" means this week's Friday (0-6 days away)
+      if (daysUntil < 0) daysUntil += 7;
+
+      startTime.setDate(startTime.getDate() + daysUntil);
+      text = text.replace(thisWeekdayMatch[0], '').trim();
+    }
+  }
+
+  // === END NATURAL LANGUAGE DATE PARSING ===
+
   // Extract am/pm first (anywhere in text) - use simple string check
   const textLower = text.toLowerCase();
   const hasSpaceAm = textLower.includes(' am');
