@@ -108,7 +108,7 @@ Try these commands.
 ### 2) Create your first action
 
 ```
-> new action call mom @phone #family
+> new action call mom @phone
 ```
 
 ### 3) Make a project and link actions
@@ -122,7 +122,7 @@ Try these commands.
 ### 4) Create a wiki page (entry) and a scratch note
 
 ```
-> new entry house rules #family +home
+> new entry house rules +home
 ```
 
 **Notes** support multi-line content. Two ways to create:
@@ -136,8 +136,8 @@ What would you like to add to this note?
 > - 2 cups flour
 > - 1 cup sugar
 > done
-Any project or tags? (e.g., +project #tag1 #tag2, or ENTER to skip)
-> +thanksgiving #recipe
+Any project? (e.g., +project, or ENTER to skip)
+> +thanksgiving
 ✓ Saved: cherry pie
 
 # Without title (prompts for it):
@@ -150,24 +150,23 @@ What would you like to add to this note?
 > - prioritize mobile app
 > - hire 2 engineers
 > done
-Any metadata? (e.g., +project @context #tag with person, or ENTER to skip)
-> +q1 planning @work #meeting with sarah
+Any metadata? (e.g., +project @context with person, or ENTER to skip)
+> +q1-planning @work with sarah
 ✓ Note saved: "meeting notes jan 24"
-  +q1 planning @work #meeting with sarah
+  +q1-planning @work with sarah
 ```
 
 While in note mode, everything you type is appended verbatim — no routing, no AI processing. Type `done` when finished.
 
-**Tagging step supports all operators:**
+**Metadata step supports these operators:**
 - `+project name` — link to project (spaces allowed, auto-creates)
-- `@context` — set context  
-- `#tag` — add tags
+- `@context` — set context
 - `with person` — link to contact (auto-creates)
 
 ### 5) Import media
 
 ```
-> import ~/photos/beach.jpg vacation photo +thailand #travel
+> import ~/photos/beach.jpg vacation photo +thailand
 (or drag into the dashboard)
 ```
 
@@ -182,7 +181,7 @@ While in note mode, everything you type is appended verbatim — no routing, no 
 ```
 > edit nort[TAB]
 > edit northside-hs-attendance-zone
-> +home-search #schools
+> +home-search
 ```
 
 ---
@@ -218,15 +217,15 @@ Three layers:
 
 | Layer | Contains | Essential? | Example |
 |-------|----------|------------|---------|
-| **Files** | User content, static metadata | ✅ Required | Title, status, tags, due dates |
+| **Files** | User content, static metadata | ✅ Required | Title, status, projects, due dates |
 | **Database** | Parsed data, search indexes | ⚠️ Derived | Full-text index, fast lookups |
 | **Facts** | Usage stats, AI insights | ❌ Optional | View counts, momentum scores |
 
 If you lose the database, Bartleby rebuilds it from files on startup. If you lose facts, they start fresh going forward. Only the markdown files are irreplaceable.
 
-**How dynamic pages work:** Bartleby builds a knowledge graph from your markdown files. When you use `[[wiki links]]`, `+projects`, `with contacts`, or `#tags`, these become edges in the graph. Pages automatically display related items by querying this graph:
+**How dynamic pages work:** Bartleby builds a knowledge graph from your markdown files. When you use `[[wiki links]]`, `+projects`, and `with contacts`, these become edges in the graph. Pages automatically display related items by querying this graph:
 
-- **Project pages** → show all actions with `+project-name`, notes mentioning `[[Project Name]]`, and media tagged to the project
+- **Project pages** → show all actions with `+project-name`, notes mentioning `[[Project Name]]`, and media linked to the project
 - **Contact pages** → show all actions/events with `with person-name`
 - **Any page** → shows backlinks (what references this page)
 
@@ -252,14 +251,14 @@ Location: `./garden/`
 
 Ingest documents and web pages, ask questions.
 
-1. `ingest <file or url> [+project] [#tag ...]` — chunks and embeds (supports .md, .txt, .pdf, URLs)
+1. `ingest <file or url> [+project]` — chunks and embeds (supports .md, .txt, .pdf, URLs)
 2. `ask shed <question>` — searches chunks, synthesizes answer
 
 **Commands:**
 ```
-ingest <file or url> [+project] [#tag ...]
+ingest <file or url> [+project]
     Add to library (also creates Garden page)
-    Optionally link to projects and add tags with tab completion
+    Optionally link to projects with tab completion
 list sources            Show all documents
 ask shed <question>     Query your documents
 ```
@@ -267,18 +266,16 @@ ask shed <question>     Query your documents
 **Examples:**
 ```
 # Local files
-> ingest ~/Documents/contract.pdf #legal
+> ingest ~/Documents/contract.pdf
 ✓ Ingested: contract.pdf (23 chunks)
-  Tags: #legal
 
 # Web pages with metadata
-> ingest https://www.uscis.gov/e-2-visa-requirements +visa-project #immigration #legal
+> ingest https://www.uscis.gov/e-2-visa-requirements +visa-project
 ✓ Ingested: "E-2 Treaty Investors"
   URL: https://www.uscis.gov/e-2-visa-requirements
   Chunks: 15
   Saved as: uscis.gov-2026-02-10T20-14-56.md
   Projects: +visa-project
-  Tags: #immigration #legal
 
 # Query any ingested content
 > ask shed what are the E-2 visa financial requirements
@@ -286,7 +283,7 @@ Based on the USCIS guidelines, E-2 visa requires a substantial
 investment, typically $100,000-$200,000 depending on the business...
 ```
 
-**Tab Completion:** Press Tab after typing `+` or `#` to see available projects and tags.
+**Tab Completion:** Press Tab after typing `+` to see available projects.
 
 Location: `./shed/`
 
@@ -501,8 +498,8 @@ Tags categorize across types. Use them for:
 - **Time horizons:** `thisweek`, `q1`
 
 ```
-> new action call accountant @phone #taxes #urgent
-> show tagged urgent
+> new action call accountant about taxes urgent @phone
+> find urgent
 ```
 
 ### Contacts
@@ -642,11 +639,11 @@ These can appear anywhere in a command:
 
 ### Tips
 
-**Tab completion.** Hit `TAB` to autocomplete commands, page names, `@contexts`, `+projects`, `#tags`, and `with` contacts:
+**Tab completion.** Hit `TAB` to autocomplete commands, page names, `@contexts`, `+projects`, and `with` contacts:
 ```
 edit scr[TAB] @ho[TAB] +20[TAB]  →  edit screenshot tax form @home +2025-taxes
 new action call with sar[TAB]   →  new action call with sarah chen
-ingest doc.pdf +visa[TAB] #imm[TAB]  →  ingest doc.pdf +visa-project #immigration
+ingest doc.pdf +visa[TAB]  →  ingest doc.pdf +visa-project
 ```
 
 **Command history.** Use `↑` and `↓` arrow keys to cycle through previous commands, even from past sessions:
@@ -712,13 +709,12 @@ Reminder?
 → **none** / **15m** / **30m** / **1h**
 > 15m
 Add anything else? (Enter to skip)
-→ **with <person>**, **at <location>**, **#tag**
-> with sarah at Blue Bottle #social
+→ **with <person>**, **at <location>**
+> with sarah at Blue Bottle
 ✓ Created: Coffee with Sarah
   Friday, January 17 at 10:00 AM
   📍 Blue Bottle
   👤 sarah
-  🏷️ #social
   🔔 Reminder: 15m before
 ```
 
@@ -857,7 +853,7 @@ Each panel has a **+ New** button for quick creation:
 | Calendar | + New Event | Event (prompts for date/time) |
 | Notes | + New Note | New note |
 
-**Inline creation:** When you click **+ New Action**, an empty action appears and you can immediately start typing. Add `@context`, `+project`, or `#tags` inline, then press Enter to save.
+**Inline creation:** When you click **+ New Action**, an empty action appears and you can immediately start typing. Add `@context` or `+project` inline, then press Enter to save.
 
 ### Editing Actions
 
@@ -884,13 +880,13 @@ pack bags                    →  pack bags @home +thailand-trip due:friday
 
 Notes use the same inline editing as actions:
 
-- **Click** any note → edit title inline, add `+project` or `#tags`
+- **Click** any note → edit title inline, add `+project`
 - **View** → opens note content in its own panel
 - **Save** / **Cancel** / **Remove** buttons
 
 Note panels show:
 - Full content with markdown rendering
-- Metadata (project, tags, last updated)
+- Metadata (project, last updated)
 - Edit in REPL button for content changes
 
 ### Project Pages
@@ -910,7 +906,7 @@ Click a project name to open its dedicated panel showing:
 3. For images, a prompt appears:
    - **Type a title** — Extract text and save as note with that title
    - **1** — OCR only (extract text, show in REPL, don't save)
-   - **3** — Import image to garden (can add `+project` `#tags`)
+   - **3** — Import image to garden (can add `+project`)
 4. Non-images go straight to import
 
 Images appear as thumbnails on project pages. Click to view full-size.
@@ -1417,7 +1413,7 @@ Bartleby follows a **files-first architecture** where markdown files are authori
 
 **Essential data (in markdown files):**
 - All content (notes, descriptions, journal entries)
-- Essential metadata (type, status, tags, due dates)
+- Essential metadata (type, status, projects, due dates)
 - Relationships (projects, contexts, contacts, wiki links)
 - File structure and organization
 
@@ -1476,7 +1472,7 @@ pnpm start
 
 # 2. Garden service automatically:
 #    - Scans all .md files
-#    - Parses frontmatter (type, status, tags, dates)
+#    - Parses frontmatter (type, status, projects, dates)
 #    - Extracts [[wiki links]] and +projects/@contexts
 #    - Rebuilds entire database
 #    - Regenerates full-text search index
@@ -1487,7 +1483,7 @@ pnpm start
 
 **What you never lose** (as long as you have markdown files):
 - ✅ All content and notes
-- ✅ All essential metadata (type, status, tags, dates)
+- ✅ All essential metadata (type, status, projects, dates)
 - ✅ All relationships (projects, contexts, wiki links)
 - ✅ File organization
 
