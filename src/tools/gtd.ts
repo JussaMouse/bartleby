@@ -695,7 +695,15 @@ export const editPage: Tool = {
     // No inline changes - show current state and prompt
     const meta = record.metadata as Record<string, unknown> | undefined;
     let response = `📝 **${record.title}** (${record.type})\n`;
-    
+
+    // Show contact-specific fields
+    if (record.type === 'contact') {
+      if (record.email) response += `  📧 Email: ${record.email}\n`;
+      if (record.phone) response += `  📱 Phone: ${record.phone}\n`;
+      if (record.birthday) response += `  🎂 Birthday: ${record.birthday}\n`;
+      if (meta?.note) response += `  📝 Note: ${meta.note}\n`;
+    }
+
     if (record.project) {
       const proj = context.services.garden.get(record.project);
       response += `  Project: +${proj?.title || record.project}\n`;
@@ -706,10 +714,10 @@ export const editPage: Tool = {
     if (meta?.filePath) {
       response += `  File: ${meta.filePath}\n`;
     }
-    
+
     // Set pending edit state
     context.services.context.setFact('system', 'pending_edit_page', record.id, { source: 'explicit' });
-    
+
     response += '\nType new tags/project (e.g., +project #tag1 #tag2) or ENTER to cancel:';
     return response;
   },
