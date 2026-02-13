@@ -831,6 +831,17 @@ All date parsing is smart:
 - "this Friday" = Friday of this week (0-6 days away)
 - Works with all existing time formats (3pm, 15:30, afternoon, etc.)
 
+**All-Day Events:**
+
+Omit the time to create all-day events:
+```
+> new event vacation next week
+> new event company holiday friday
+> new event tax deadline april 15
+```
+
+All-day events show "(all day)" in calendar view and are listed before timed events. Perfect for vacations, holidays, birthdays, and deadlines.
+
 ### Example
 
 ```

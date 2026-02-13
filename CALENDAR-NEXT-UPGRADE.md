@@ -7,8 +7,8 @@ Based on user value and implementation complexity:
 1. ✅ **Natural Language Date Parsing** (COMPLETED)
 2. ✅ **Edit Event Tool** (COMPLETED)
 3. ✅ **System Views Initialization** (COMPLETED)
-4. **All-Day Events Enhancement** (Medium value, Low complexity) - RECOMMENDED NEXT
-5. **Enhanced Query Parser** (Low value, High complexity)
+4. ✅ **All-Day Events Enhancement** (COMPLETED)
+5. **Enhanced Query Parser** (Low value, High complexity) - RECOMMENDED NEXT
 6. **Recurring Events** (High value, Very high complexity)
 
 ---
@@ -559,6 +559,34 @@ const event = context.services.garden.create({
 **Effort:** 2 hours
 **Risk:** Low
 **Value:** Medium
+
+### ✅ IMPLEMENTATION COMPLETE
+
+**Completed:** Full all-day events support
+
+**Added features:**
+1. ✅ Auto-detection: Events without times are all-day
+2. ✅ parseEventInput returns `allDay: boolean` field
+3. ✅ All event creation sites use `all_day: parsed.allDay`
+4. ✅ Wizard mode supports all-day events
+5. ✅ Calendar display already handles all-day (shows "all day")
+6. ✅ Works with natural language dates
+7. ✅ Editing/rescheduling preserves all-day status
+
+**Files changed:**
+- `src/tools/calendar.ts`: Updated parseEventInput return type, detection logic, and all event creation sites (~15 locations)
+- `README.md`: Documented all-day events with examples
+- `ALL-DAY-EVENTS-GUIDE.md`: Comprehensive guide with use cases
+
+**Testing results:**
+- ✅ "new event vacation friday" creates all-day event
+- ✅ "new event holiday march 15" creates all-day event
+- ✅ Calendar display shows "(all day)" label
+- ✅ Wizard accepts date-only inputs
+- ✅ Reschedule preserves all-day status
+- ✅ Mixed calendar (all-day + timed) displays correctly
+
+**User value:** HIGH - Essential for vacations, holidays, birthdays, deadlines
 
 ---
 

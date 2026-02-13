@@ -246,12 +246,13 @@ You said **${parsed.ambiguousHour}${parsed.minute ? ':' + parsed.minute.toString
         status: 'active',
         start_time: parsed.startTime.toISOString(),
         end_time: endTime.toISOString(),
-        all_day: false,
+        all_day: parsed.allDay,
         contacts: parsed.contacts,
         metadata,
       });
-      
-      let response = `✓ Created: "${event.title}"\n  ${dateStr} at ${timeStr}`;
+
+      const whenStr = parsed.allDay ? dateStr : `${dateStr} at ${timeStr}`;
+      let response = `✓ Created: "${event.title}"\n  ${whenStr}`;
 
       if (parsed.location) {
         response += `\n  📍 ${parsed.location}`;
@@ -281,6 +282,7 @@ You said **${parsed.ambiguousHour}${parsed.minute ? ':' + parsed.minute.toString
       step: 'reminder',
       title: parsed.title,
       startTime: parsed.startTime.toISOString(),
+      allDay: parsed.allDay,
       contacts: parsed.contacts,
       location: parsed.location,
       tags: parsed.tags,
@@ -299,6 +301,7 @@ function parseEventInput(input: string): {
   title: string;
   startTime: Date;
   hasTime: boolean;
+  allDay: boolean;
   ambiguousHour: number | null;
   minute: number;
   reminderMinutes: number | null;
@@ -432,8 +435,8 @@ function parseEventInput(input: string): {
     
     startTime = new Date(year, month, day, h, minute, 0, 0);
     hasTime = true;
-    
-    return { title: titlePart.trim(), startTime, hasTime, ambiguousHour, minute, reminderMinutes, contacts, location, tags };
+
+    return { title: titlePart.trim(), startTime, hasTime, allDay: false, ambiguousHour, minute, reminderMinutes, contacts, location, tags };
   }
   
   // Check for explicit date MM/DD or MM/DD/YY anywhere in text
@@ -700,8 +703,11 @@ function parseEventInput(input: string): {
     .replace(/^\s*,/g, '')            // leading comma
     .replace(/\s+/g, ' ')
     .trim();
-  
-  return { title: text, startTime, hasTime, ambiguousHour, minute, reminderMinutes, contacts, location, tags };
+
+  // All-day events are those without a specific time
+  const allDay = !hasTime;
+
+  return { title: text, startTime, hasTime, allDay, ambiguousHour, minute, reminderMinutes, contacts, location, tags };
 }
 
 // Tool to handle wizard responses
@@ -740,6 +746,7 @@ export const eventWizardResponse: Tool = {
       step: string;
       title?: string;
       startTime?: string;
+      allDay?: boolean;
       ambiguousHour?: number;
       minute?: number;
       baseDate?: string;
@@ -765,12 +772,18 @@ export const eventWizardResponse: Tool = {
       case 'when': {
         // Parse the date/time
         const parsed = parseEventInput(input);
-        
-        if (!parsed.hasTime && !parsed.title) {
+
+        // Check if we parsed a date successfully
+        // For all-day events, parsed.hasTime will be false but we should have a valid date
+        const now = new Date();
+        const timeDiff = Math.abs(parsed.startTime.getTime() - now.getTime());
+        const parsedDate = timeDiff > 60000; // More than 1 minute difference means we parsed something
+
+        if (!parsed.hasTime && !parsedDate) {
           // Couldn't parse - try again
-          return "I didn't understand that. Try: tomorrow 3pm, 1/22 7:30am, or friday 2pm";
+          return "I didn't understand that. Try: tomorrow 3pm, friday, 1/22 7:30am, or next week";
         }
-        
+
         // Use parsed time, keep the title from state
         const title = state.title!;
         
@@ -795,12 +808,14 @@ export const eventWizardResponse: Tool = {
           step: 'reminder',
           title,
           startTime: parsed.startTime.toISOString(),
+          allDay: parsed.allDay,
         }, { source: 'explicit' });
         
         const dateStr = parsed.startTime.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
         const timeStr = parsed.startTime.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
-        
-        return `📅 **"${title}"**\n  ${dateStr} at ${timeStr}\n\nReminder?\n→ **none** / **15m** / **30m** / **1h**`;
+        const whenStr = parsed.allDay ? dateStr : `${dateStr} at ${timeStr}`;
+
+        return `📅 **"${title}"**\n  ${whenStr}\n\nReminder?\n→ **none** / **15m** / **30m** / **1h**`;
       }
       
       case 'ampm': {
@@ -818,11 +833,12 @@ export const eventWizardResponse: Tool = {
         
         const startTime = new Date(state.baseDate!);
         startTime.setHours(hour, state.minute || 0, 0, 0);
-        
+
         context.services.context.setFact('system', 'event_wizard_pending', {
           step: 'reminder',
           title: state.title,
           startTime: startTime.toISOString(),
+          allDay: false, // If we're in ampm step, it's not all-day
         }, { source: 'explicit' });
         
         const dateStr = startTime.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
@@ -891,7 +907,7 @@ export const eventWizardResponse: Tool = {
             status: 'active',
             start_time: startTime.toISOString(),
             end_time: endTime.toISOString(),
-            all_day: false,
+            all_day: state.allDay || false,
             contacts: contactIds,
             metadata,
           });
@@ -1017,7 +1033,7 @@ export const eventWizardResponse: Tool = {
           status: 'active',
           start_time: startTime.toISOString(),
           end_time: endTime.toISOString(),
-          all_day: false,
+          all_day: state.allDay || false,
           contacts: contactIds,
           metadata,
         });
