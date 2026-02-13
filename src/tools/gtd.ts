@@ -1,6 +1,7 @@
 // src/tools/gtd.ts
 import { Tool } from './types.js';
 import { loadConfig } from '../config.js';
+import type { GardenRecord } from '../services/garden.js';
 
 /**
  * Parse a time string like "5pm", "5:30pm", "17:30" into "HH:MM" format
@@ -632,17 +633,34 @@ export const editPage: Tool = {
 
   parseArgs: (input, match) => {
     if (!match) return { title: '', changes: '' };
-    
+
     const title = match[1].trim();
     const changes = match[2] ? input.slice(input.indexOf(match[2])) : '';
+
+    // Check for field-specific edits: "edit sarah email new@example.com"
+    const fieldEditMatch = input.match(/^edit\s+(.+?)\s+(email|phone|company|address|birthday|note)\s+(.+)$/i);
+    if (fieldEditMatch) {
+      return {
+        title: fieldEditMatch[1].trim(),
+        field: fieldEditMatch[2].toLowerCase(),
+        value: fieldEditMatch[3].trim(),
+        changes: ''
+      };
+    }
+
     return { title, changes };
   },
 
   execute: async (args, context) => {
-    const { title, changes } = args as { title: string; changes: string };
+    const { title, changes, field, value } = args as {
+      title: string;
+      changes: string;
+      field?: string;
+      value?: string;
+    };
 
     if (!title) {
-      return 'Usage: edit <page name> [+project #tag]\nExample: edit vacation photo +thailand #travel';
+      return 'Usage: edit <page name> [+project #tag]\nOr: edit <contact> <field> <value>\nExample: edit sarah email new@example.com';
     }
 
     // Find the page by partial match
@@ -654,10 +672,39 @@ export const editPage: Tool = {
       return `Page not found: "${title}"\nTry: recent`;
     }
 
+    // Handle field-specific edits for contacts
+    if (field && value && record.type === 'contact') {
+      const updates: Partial<GardenRecord> = {};
+
+      switch (field) {
+        case 'email':
+          updates.email = value;
+          break;
+        case 'phone':
+          updates.phone = value;
+          break;
+        case 'company':
+          updates.company = value;
+          break;
+        case 'address':
+          updates.address = value;
+          break;
+        case 'birthday':
+          updates.birthday = value;
+          break;
+        case 'note':
+          updates.content = value;
+          break;
+      }
+
+      context.services.garden.update(record.id, updates);
+      return `✓ Updated ${record.title}: ${field} = ${value}`;
+    }
+
     // If changes provided inline, apply them directly
     if (changes) {
       const updates: { project?: string; tags?: string[] } = {};
-      
+
       // Parse +project
       const projectMatch = changes.match(/\+([^\s#]+)/);
       if (projectMatch) {
@@ -673,7 +720,7 @@ export const editPage: Tool = {
         }
         updates.project = project.id;
       }
-      
+
       // Parse #tags
       const tagMatches = changes.match(/#(\w+)/g);
       if (tagMatches) {
@@ -681,10 +728,10 @@ export const editPage: Tool = {
         const existingTags = record.tags || [];
         updates.tags = [...new Set([...existingTags, ...newTags])];
       }
-      
+
       if (Object.keys(updates).length > 0) {
         context.services.garden.update(record.id, updates);
-        
+
         let response = `✓ Updated: "${record.title}"`;
         if (updates.project) response += `\n  +${projectMatch![1]}`;
         if (updates.tags) response += `\n  ${updates.tags.map(t => '#' + t).join(' ')}`;
@@ -720,7 +767,16 @@ export const editPage: Tool = {
     // Set pending edit state
     context.services.context.setFact('system', 'pending_edit_page', record.id, { source: 'explicit' });
 
-    response += '\nType new tags/project (e.g., +project #tag1 #tag2) or ENTER to cancel:';
+    // Customize prompt based on record type
+    if (record.type === 'contact') {
+      response += '\n\nTo edit fields, use: edit <name> <field> <value>';
+      response += '\nFields: email, phone, company, address, birthday, note';
+      response += '\nOr add tags/project: +project #tag1 #tag2';
+      response += '\nPress ENTER to cancel';
+    } else {
+      response += '\nType new tags/project (e.g., +project #tag1 #tag2) or ENTER to cancel:';
+    }
+
     return response;
   },
 };
