@@ -299,6 +299,7 @@ What Bartleby learns about you over time using the **unified learning system** �
 - Relationships ("my wife Sarah")
 - Goals and interests
 - Conversation history and session summaries
+- Command execution history (timing, success/failure, patterns)
 - Work patterns and primary projects
 - Record importance and AI insights
 
@@ -324,6 +325,8 @@ what do you know about me    (alternative to /memory)
 show profile                 (alternative to /memory)
 /insights                    AI insights about your garden
 /related <record>            Find records related to a given record
+/history [N]                 Show recent command history (default 20, specify N for more)
+/search history <query>      Search command execution history
 pnpm monitor                 Database stats and health
 pnpm optimize                Clean expired data and optimize
 pnpm profile export          Backup learning data
@@ -334,7 +337,7 @@ pnpm profile import <file>   Restore from backup
 - **+ Memory** button - View preferences, patterns, context, and goals
 - **+ Graph** button - Visualize relationship graph between records
 
-**Data location:** `./database/garden.sqlite3` (unified SQLite database with garden records and learning system)
+**Data location:** `./database/garden.sqlite3` (unified SQLite database with garden records, learning system, and command history)
 
 ---
 
@@ -760,6 +763,44 @@ The dashboard shows live-updating panels:
 | **REPL** | Command line in the browser |
 
 Click the `+` buttons in the footer to add panels. Layout persists across reloads.
+
+### Command History API
+
+Track and analyze your command execution patterns with the command history API:
+
+**CLI Commands:**
+```
+> /history              Show last 20 commands with timestamps and status
+> /history 50           Show last 50 commands
+> /search history note  Search for commands containing "note"
+```
+
+Each entry shows:
+- ✓/✗ Success indicator
+- Timestamp and execution time
+- Full command text
+- Error messages (if failed)
+
+**API Endpoints:**
+
+```bash
+# Get recent commands
+curl http://localhost:3333/api/command/history?limit=50
+
+# Search command history (full-text search)
+curl http://localhost:3333/api/command/search?q=note&limit=20
+
+# Get execution statistics
+curl http://localhost:3333/api/command/stats
+```
+
+Statistics include:
+- Total commands executed
+- Success rate percentage
+- Most-used command types (intents)
+- Commands by source (cli, dashboard, api)
+
+All command history is stored in the unified learning database and used to improve Bartleby's context awareness during conversations.
 
 ### Rich Project & Note Views
 
