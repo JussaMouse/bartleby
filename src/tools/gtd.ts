@@ -722,12 +722,7 @@ export const editPage: Tool = {
       }
 
       // Parse #tags
-      const tagMatches = changes.match(/#(\w+)/g);
-      if (tagMatches) {
-        const newTags = tagMatches.map((t: string) => t.slice(1));
-        const existingTags = record.tags || [];
-        updates.tags = [...new Set([...existingTags, ...newTags])];
-      }
+      // Tag parsing removed - tags no longer supported
 
       if (Object.keys(updates).length > 0) {
         context.services.garden.update(record.id, updates);
@@ -757,9 +752,7 @@ export const editPage: Tool = {
       const proj = context.services.garden.get(record.project);
       response += `  Project: +${proj?.title || record.project}\n`;
     }
-    if (record.tags && record.tags.length > 0) {
-      response += `  Tags: ${record.tags.map(t => '#' + t).join(' ')}\n`;
-    }
+    // Tags display removed
     if (meta?.filePath) {
       response += `  File: ${meta.filePath}\n`;
     }
@@ -833,16 +826,10 @@ export const handleEditPage: Tool = {
       updates.project = project.id;
     }
     
-    // Parse #tags (add to existing)
-    const tagMatches = input.match(/#(\w+)/g);
-    if (tagMatches) {
-      const newTags = tagMatches.map((t: string) => t.slice(1));
-      const existingTags = record.tags || [];
-      updates.tags = [...new Set([...existingTags, ...newTags])];
-    }
-    
+    // Tag parsing removed
+
     if (Object.keys(updates).length === 0) {
-      return 'No changes. Use +project or #tag format.';
+      return 'No changes. Use +project format.';
     }
     
     context.services.garden.update(record.id, updates);
@@ -1533,12 +1520,12 @@ export const createEntry: Tool = {
       status: 'active',
       content: '',
       project: projectId,
-      tags: tags.length > 0 ? tags : undefined,
+      // tags removed
     });
 
     let response = `📖 **Entry: ${entry.title}**`;
     if (project) response += `\n  +${project}`;
-    if (tags.length > 0) response += `\n  ${tags.map(t => '#' + t).join(' ')}`;
+    // tags display removed
     response += `\n\nEdit: \`${context.services.garden.getFilePath(entry)}\``;
 
     return response;
@@ -1666,15 +1653,12 @@ export const importMedia: Tool = {
     // Import the media
     const media = context.services.garden.importMedia(resolvedPath, title, projectId);
 
-    // Add tags if specified
-    if (tags.length > 0) {
-      context.services.garden.update(media.id, { tags });
-    }
+    // Tags removed
 
     const metadata = media.metadata as { fileName?: string; filePath?: string; mimeType?: string } | undefined;
     let response = `📎 **Media imported: ${media.title}**`;
     if (project) response += `\n  +${project}`;
-    if (tags.length > 0) response += `\n  ${tags.map(t => '#' + t).join(' ')}`;
+    // tags display removed
     response += `\n  📁 ${metadata?.fileName || 'saved'}`;
 
     // Run OCR on images if available
@@ -1743,8 +1727,8 @@ export const showByType: Tool = {
     const lines = [`**${type.charAt(0).toUpperCase() + type.slice(1)}s** (${records.length})\n`];
     
     for (const record of records.slice(0, 20)) {
-      const tags = record.tags?.length ? ` [${record.tags.join(', ')}]` : '';
-      lines.push(`• ${record.title}${tags}`);
+      // tags display removed
+      lines.push(`• ${record.title}`);
     }
     
     if (records.length > 20) {
@@ -1956,7 +1940,7 @@ export const openPage: Tool = {
     if (record.context) meta.push(`Context: ${record.context}`);
     if (record.project) meta.push(`Project: ${record.project}`);
     if (record.due_date) meta.push(`Due: ${record.due_date}`);
-    if (record.tags?.length) meta.push(`Tags: ${record.tags.join(', ')}`);
+    // tags display removed
     if (record.contacts?.length) {
       // Look up contact names
       const contactNames = record.contacts.map(id => {

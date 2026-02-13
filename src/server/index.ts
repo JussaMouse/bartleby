@@ -522,13 +522,7 @@ export class DashboardServer {
         ...this.garden.getByType('media'),
         ...contacts,
       ];
-      for (const page of allPages) {
-        if (page.tags) {
-          for (const tag of page.tags) {
-            tags.add(tag);
-          }
-        }
-      }
+      // Tag collection removed - tags no longer supported
 
       // Common commands
       const commands = [
@@ -628,7 +622,7 @@ export class DashboardServer {
         title: title.trim(),
         content: content || '',
         project: project || undefined,
-        tags: tags || [],
+        // tags removed
         status: 'active',
       });
 
@@ -679,7 +673,7 @@ export class DashboardServer {
         title: actionTitle,
         context: context || '@home',
         project: project || undefined,
-        tags: tags || [],
+        // tags removed
         status: 'active',
       });
       
@@ -702,7 +696,7 @@ export class DashboardServer {
       const project = this.garden.create({
         type: 'project',
         title: title.trim(),
-        tags: tags || [],
+        // tags removed
         status: 'active',
       });
       
@@ -1022,11 +1016,8 @@ export class DashboardServer {
           metadata: media.metadata,
         });
         
-        // Add tags if specified
-        if (tags.length > 0) {
-          this.garden.update(media.id, { tags });
-        }
-        
+        // Tags removed
+
         // Clean up temp file
         fs.unlinkSync(tempPathWithExt);
         
@@ -1453,23 +1444,7 @@ export class DashboardServer {
           });
         });
     } else if (tagMatch) {
-      // Suggest tags
-      const partial = tagMatch[1];
-      const allTags = new Set<string>();
-      this.garden.getByType('note').forEach(n => {
-        if (n.tags) n.tags.forEach(t => allTags.add(t));
-      });
-      Array.from(allTags)
-        .filter(t => t.toLowerCase().includes(partial))
-        .slice(0, 5)
-        .forEach(t => {
-          suggestions.push({
-            type: 'entity',
-            text: '#' + t,
-            description: 'Tag',
-            category: 'tag',
-          });
-        });
+      // Tag autocomplete removed - tags no longer supported
     } else if (contextMatch) {
       // Suggest contexts
       const partial = contextMatch[1];

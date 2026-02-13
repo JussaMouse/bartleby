@@ -38,7 +38,7 @@ function executeCreateNote(cmd: CreateNoteCommand, garden: GardenService): Comma
       title: cmd.title,
       content: cmd.content || '',
       project: cmd.metadata.project,
-      tags: cmd.metadata.tags,
+      // tags removed
       status: 'active',
     });
 
@@ -72,7 +72,7 @@ function executeCreateAction(cmd: CreateActionCommand, garden: GardenService): C
       context: cmd.metadata.context,
       project: cmd.metadata.project,
       due_date: cmd.metadata.dueDate,
-      tags: cmd.metadata.tags,
+      // tags removed
       status: 'active',
     });
 
@@ -102,7 +102,7 @@ function executeCreateProject(cmd: CreateProjectCommand, garden: GardenService):
     const project = garden.create({
       type: 'project',
       title: cmd.name,
-      tags: cmd.tags,
+      // tags removed
       status: 'active',
     });
 
@@ -160,7 +160,7 @@ function executeCreateContact(cmd: CreateContactCommand, garden: GardenService):
     const contact = garden.create({
       type: 'contact',
       title: cmd.name,
-      tags: cmd.tags,
+      // tags removed
       status: 'active',
     });
 
