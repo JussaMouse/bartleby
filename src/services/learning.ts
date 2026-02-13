@@ -107,6 +107,25 @@ export interface SessionSummary {
   artifacts: string[];
 }
 
+export interface CommandRecord {
+  id: string;
+  timestamp: string;
+  rawInput: string;
+  intentType: string;
+  success: boolean;
+  resultId?: string;
+  executionTimeMs: number;
+  source: 'cli' | 'dashboard' | 'api';
+  errorMessage?: string;
+}
+
+export interface CommandStats {
+  totalCommands: number;
+  successfulCommands: number;
+  failedCommands: number;
+  topIntents: Array<{ intent: string; count: number }>;
+}
+
 // ============================================================================
 // Schema
 // ============================================================================
@@ -845,6 +864,259 @@ export class LearningService {
       before: before.databaseSizeMB,
       after: after.databaseSizeMB,
       reclaimedMB
+    };
+  }
+
+  // ============================================================================
+  // Command History API
+  // ============================================================================
+
+  /**
+   * Record a command execution in the learning system
+   */
+  recordCommand(data: {
+    rawInput: string;
+    intentType: string;
+    parsedMetadata?: any;
+    success: boolean;
+    resultId?: string;
+    errorMessage?: string;
+    executionTimeMs: number;
+    source: 'cli' | 'dashboard' | 'api';
+    sessionId?: string;
+  }): string {
+    // Create command entity
+    const commandId = this.createEntity('command', {
+      source: data.source,
+      timestamp: new Date().toISOString()
+    });
+
+    // Record observations about the command
+    this.recordObservation({
+      entityId: commandId,
+      key: 'raw_input',
+      value: data.rawInput,
+      sourceType: 'computed',
+      confidence: 1.0
+    });
+
+    this.recordObservation({
+      entityId: commandId,
+      key: 'intent_type',
+      value: data.intentType,
+      sourceType: 'computed',
+      confidence: 1.0
+    });
+
+    this.recordObservation({
+      entityId: commandId,
+      key: 'success',
+      value: String(data.success),
+      sourceType: 'computed',
+      confidence: 1.0
+    });
+
+    this.recordObservation({
+      entityId: commandId,
+      key: 'execution_time_ms',
+      value: String(data.executionTimeMs),
+      sourceType: 'computed',
+      confidence: 1.0
+    });
+
+    if (data.parsedMetadata) {
+      this.recordObservation({
+        entityId: commandId,
+        key: 'parsed_metadata',
+        value: JSON.stringify(data.parsedMetadata),
+        valueType: 'json',
+        sourceType: 'computed',
+        confidence: 1.0
+      });
+    }
+
+    if (data.resultId) {
+      this.recordObservation({
+        entityId: commandId,
+        key: 'result_id',
+        value: data.resultId,
+        sourceType: 'computed',
+        confidence: 1.0
+      });
+
+      // Create relationship: command created/modified a record
+      const actionType = data.intentType.includes('create') ? 'created' :
+                        data.intentType.includes('edit') || data.intentType.includes('update') ? 'modified' :
+                        'affected';
+      this.recordRelationship({
+        fromEntity: commandId,
+        toEntity: data.resultId,
+        relationType: actionType
+      });
+    }
+
+    if (data.errorMessage) {
+      this.recordObservation({
+        entityId: commandId,
+        key: 'error_message',
+        value: data.errorMessage,
+        sourceType: 'computed',
+        confidence: 1.0
+      });
+    }
+
+    // Link to user
+    this.recordRelationship({
+      fromEntity: 'user',
+      toEntity: commandId,
+      relationType: 'executed'
+    });
+
+    // Link to session if available
+    if (data.sessionId) {
+      this.recordRelationship({
+        fromEntity: commandId,
+        toEntity: data.sessionId,
+        relationType: 'part_of'
+      });
+    }
+
+    debug('Command recorded', { commandId, intentType: data.intentType, success: data.success });
+    return commandId;
+  }
+
+  /**
+   * Get recent commands
+   */
+  getRecentCommands(limit: number = 10): CommandRecord[] {
+    const commands = this.db.prepare(`
+      SELECT id, data, created_at
+      FROM entities
+      WHERE type = 'command'
+      ORDER BY created_at DESC
+      LIMIT ?
+    `).all(limit) as Array<{id: string; data: string; created_at: string}>;
+
+    return commands.map(cmd => this.commandEntityToRecord(cmd));
+  }
+
+  /**
+   * Get commands by intent type
+   */
+  getCommandsByIntent(intentType: string, limit: number = 10): CommandRecord[] {
+    const obs = this.queryObservationsByKey('intent_type', { notExpired: true });
+    const matching = obs
+      .filter(o => o.value === intentType)
+      .slice(0, limit);
+
+    return matching.map(o => {
+      const entity = this.getEntity(o.entityId);
+      if (!entity) return null;
+      return this.commandEntityToRecord({
+        id: entity.id,
+        data: JSON.stringify(entity.data),
+        created_at: entity.createdAt
+      });
+    }).filter(Boolean) as CommandRecord[];
+  }
+
+  /**
+   * Search command history
+   */
+  searchCommands(query: string, limit: number = 10): CommandRecord[] {
+    const results = this.searchObservations(query, limit * 3);
+    const commandIds = new Set(
+      results
+        .map(o => o.entityId)
+        .filter(id => {
+          const entity = this.getEntity(id);
+          return entity?.type === 'command';
+        })
+    );
+
+    return Array.from(commandIds).slice(0, limit).map(id => {
+      const entity = this.getEntity(id);
+      if (!entity) return null;
+      return this.commandEntityToRecord({
+        id: entity.id,
+        data: JSON.stringify(entity.data),
+        created_at: entity.createdAt
+      });
+    }).filter(Boolean) as CommandRecord[];
+  }
+
+  /**
+   * Get commands for a specific session
+   */
+  getCommandsBySession(sessionId: string): CommandRecord[] {
+    const rels = this.getRelationships(sessionId, {
+      direction: 'to',
+      relationType: 'part_of'
+    });
+
+    return rels.map(rel => {
+      const entity = this.getEntity(rel.fromEntity);
+      if (!entity || entity.type !== 'command') return null;
+      return this.commandEntityToRecord({
+        id: entity.id,
+        data: JSON.stringify(entity.data),
+        created_at: entity.createdAt
+      });
+    }).filter(Boolean) as CommandRecord[];
+  }
+
+  /**
+   * Get command statistics
+   */
+  getCommandStats(): CommandStats {
+    const allCommands = this.db.prepare(`
+      SELECT COUNT(*) as total
+      FROM entities
+      WHERE type = 'command'
+    `).get() as { total: number };
+
+    const successObs = this.queryObservationsByKey('success', { notExpired: true });
+    const successful = successObs.filter(o => o.value === 'true').length;
+    const failed = successObs.filter(o => o.value === 'false').length;
+
+    const intentObs = this.queryObservationsByKey('intent_type', { notExpired: true });
+    const intentCounts: Record<string, number> = {};
+    for (const obs of intentObs) {
+      intentCounts[obs.value] = (intentCounts[obs.value] || 0) + 1;
+    }
+
+    const topIntents = Object.entries(intentCounts)
+      .sort(([, a], [, b]) => b - a)
+      .slice(0, 5)
+      .map(([intent, count]) => ({ intent, count }));
+
+    return {
+      totalCommands: allCommands.total,
+      successfulCommands: successful,
+      failedCommands: failed,
+      topIntents
+    };
+  }
+
+  /**
+   * Convert command entity to CommandRecord format
+   */
+  private commandEntityToRecord(cmd: {id: string; data: string; created_at: string}): CommandRecord {
+    const data = JSON.parse(cmd.data || '{}');
+    const obs = this.getObservations(cmd.id);
+
+    const executionTimeStr = obs.find(o => o.key === 'execution_time_ms')?.value || '0';
+
+    return {
+      id: cmd.id,
+      timestamp: cmd.created_at,
+      rawInput: obs.find(o => o.key === 'raw_input')?.value || '',
+      intentType: obs.find(o => o.key === 'intent_type')?.value || '',
+      success: obs.find(o => o.key === 'success')?.value === 'true',
+      resultId: obs.find(o => o.key === 'result_id')?.value,
+      executionTimeMs: parseInt(executionTimeStr),
+      source: data.source,
+      errorMessage: obs.find(o => o.key === 'error_message')?.value
     };
   }
 

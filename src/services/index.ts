@@ -78,10 +78,9 @@ export async function initServices(config: Config): Promise<ServiceContainer> {
   const scheduler = new SchedulerService(config, signal);
   const data = new DataService(config);
 
-  // Initialize data services
+  // Initialize data services (except context - needs learning first)
   await garden.initialize();
   await calendar.initialize();
-  await context.initialize();
   await shed.initialize();
   await scheduler.initialize();
 
@@ -93,6 +92,9 @@ export async function initServices(config: Config): Promise<ServiceContainer> {
 
   // Wire up learning and LLM to context service for automatic session analysis
   context.setServices(learning, llm);
+
+  // Now initialize context after learning service is wired up
+  await context.initialize();
 
   // Wire up calendar to services that need temporal index
   garden.setCalendar(calendar);
@@ -193,7 +195,7 @@ export { EmbeddingRelationships } from './embedding-relationships.js';
 export type { GardenRecord, RecordType, RecordStatus, TaskFilters } from './garden.js';
 export type { CalendarEntry, CalendarEvent, EntryType, SourceType } from './calendar.js';
 export type { Episode } from './context.js';
-export type { Entity, Observation, Relationship, UserProfile, WorkContext, SessionSummary } from './learning.js';
+export type { Entity, Observation, Relationship, UserProfile, WorkContext, SessionSummary, CommandRecord, CommandStats } from './learning.js';
 export type { PresenceConfig, MomentType } from './presence.js';
 export type { Tier, Complexity } from './llm.js';
 export type { VectorMetadata } from './vectors.js';

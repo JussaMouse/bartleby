@@ -68,6 +68,17 @@ export class Agent {
         }
       }
 
+      // Get recent commands
+      const recentCommands = this.services.learning.getRecentCommands(10);
+      if (recentCommands.length > 0) {
+        contextParts.push(`\n**Recent Commands:**`);
+        for (const cmd of recentCommands.slice(0, 5)) {
+          const timeAgo = this.formatTimeAgo(new Date(cmd.timestamp));
+          const status = cmd.success ? '✓' : '✗';
+          contextParts.push(`- ${status} ${timeAgo}: ${cmd.rawInput}`);
+        }
+      }
+
       // Get last session summary
       const lastSession = this.services.context.getLastSession();
       if (lastSession) {
@@ -248,6 +259,17 @@ export class Agent {
         parameters: this.inferParameters(tool),
       },
     }));
+  }
+
+  /**
+   * Format time ago for display
+   */
+  private formatTimeAgo(date: Date): string {
+    const seconds = Math.floor((Date.now() - date.getTime()) / 1000);
+    if (seconds < 60) return 'just now';
+    if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
+    if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`;
+    return `${Math.floor(seconds / 86400)}d ago`;
   }
 
   /**

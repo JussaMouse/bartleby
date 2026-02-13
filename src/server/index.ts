@@ -1276,11 +1276,52 @@ export class DashboardServer {
 
     /**
      * GET /api/command/history - Get command history
+     * Query params: ?limit=50
      * Response: { commands: CommandRecord[] }
      */
     this.app.get('/api/command/history', (req, res) => {
-      // TODO: Implement command history storage and retrieval
-      res.json({ commands: [] });
+      try {
+        const limit = parseInt(req.query.limit as string) || 50;
+        const commands = this.services.learning.getRecentCommands(limit);
+        res.json({ commands });
+      } catch (err) {
+        error('Failed to get command history', { error: String(err) });
+        res.status(500).json({ error: 'Failed to get command history' });
+      }
+    });
+
+    /**
+     * GET /api/command/search - Search command history
+     * Query params: ?q=search&limit=20
+     * Response: { commands: CommandRecord[] }
+     */
+    this.app.get('/api/command/search', (req, res) => {
+      try {
+        const query = req.query.q as string;
+        if (!query) {
+          return res.status(400).json({ error: 'Query parameter "q" is required' });
+        }
+        const limit = parseInt(req.query.limit as string) || 20;
+        const commands = this.services.learning.searchCommands(query, limit);
+        res.json({ commands });
+      } catch (err) {
+        error('Failed to search commands', { error: String(err) });
+        res.status(500).json({ error: 'Failed to search commands' });
+      }
+    });
+
+    /**
+     * GET /api/command/stats - Get command statistics
+     * Response: { stats: CommandStats }
+     */
+    this.app.get('/api/command/stats', (req, res) => {
+      try {
+        const stats = this.services.learning.getCommandStats();
+        res.json({ stats });
+      } catch (err) {
+        error('Failed to get command stats', { error: String(err) });
+        res.status(500).json({ error: 'Failed to get command stats' });
+      }
     });
   }
 

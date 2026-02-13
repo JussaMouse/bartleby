@@ -13,6 +13,7 @@ import { dataTools } from './data.js';
 import { mediaTools } from './media.js';
 import { insightsTools } from './insights.js';
 import { relatedTools } from './related.js';
+import { historyTools } from './history.js';
 
 // Aggregate all tools
 export const allTools: Tool[] = [
@@ -22,6 +23,7 @@ export const allTools: Tool[] = [
   ...contextTools,
   ...insightsTools,
   ...relatedTools,
+  ...historyTools,
   ...shedTools,
   ...mediaTools,
   ...schedulerTools,

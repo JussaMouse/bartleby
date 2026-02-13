@@ -509,17 +509,53 @@ export function executeCommand(
   learning?: LearningService,
   sessionId?: string
 ): CommandResult {
-  // Execute the command
-  const result = executeCommandInternal(intent, garden);
+  const startTime = Date.now();
 
-  // Record observations if learning service available
-  if (learning) {
-    recordCommandObservations(intent, result, learning, sessionId).catch(err => {
-      debug('Failed to record command observations', { error: String(err) });
-    });
+  try {
+    // Execute the command
+    const result = executeCommandInternal(intent, garden);
+    const executionTime = Date.now() - startTime;
+
+    // Record command history in learning service
+    if (learning) {
+      const resultId = result.result?.id || undefined;
+      learning.recordCommand({
+        rawInput: intent.rawInput || '',
+        intentType: intent.type,
+        parsedMetadata: intent,
+        success: true,
+        resultId,
+        executionTimeMs: executionTime,
+        source: 'api', // Will be overridden by server if from dashboard/cli
+        sessionId
+      });
+
+      // Also record legacy observations for backward compatibility
+      recordCommandObservations(intent, result, learning, sessionId).catch(err => {
+        debug('Failed to record legacy observations', { error: String(err) });
+      });
+    }
+
+    return result;
+  } catch (err) {
+    const executionTime = Date.now() - startTime;
+
+    // Record failed command
+    if (learning) {
+      learning.recordCommand({
+        rawInput: intent.rawInput || '',
+        intentType: intent.type,
+        parsedMetadata: intent,
+        success: false,
+        errorMessage: String(err),
+        executionTimeMs: executionTime,
+        source: 'api',
+        sessionId
+      });
+    }
+
+    throw err;
   }
-
-  return result;
 }
 
 /**
