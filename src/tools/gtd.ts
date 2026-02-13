@@ -700,8 +700,10 @@ export const editPage: Tool = {
     if (record.type === 'contact') {
       if (record.email) response += `  📧 Email: ${record.email}\n`;
       if (record.phone) response += `  📱 Phone: ${record.phone}\n`;
+      if (record.company) response += `  🏢 Company: ${record.company}\n`;
+      if (record.address) response += `  📍 Address: ${record.address}\n`;
       if (record.birthday) response += `  🎂 Birthday: ${record.birthday}\n`;
-      if (meta?.note) response += `  📝 Note: ${meta.note}\n`;
+      if (record.content) response += `  📝 Note: ${record.content}\n`;
     }
 
     if (record.project) {
@@ -1832,7 +1834,10 @@ export const openPage: Tool = {
       // Show contact info and linked records
       if (record.email) lines.push(`📧 ${record.email}`);
       if (record.phone) lines.push(`📱 ${record.phone}`);
+      if (record.company) lines.push(`🏢 ${record.company}`);
+      if (record.address) lines.push(`📍 ${record.address}`);
       if (record.birthday) lines.push(`🎂 ${record.birthday}`);
+      if (record.content) lines.push(`\n${record.content}`);
       
       // Get all records linked to this contact
       const linkedRecords = context.services.garden.getByContact(record.id);

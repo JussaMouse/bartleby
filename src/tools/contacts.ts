@@ -19,47 +19,76 @@ export const addContact: Tool = {
   },
 
   parseArgs: (input) => {
-    let text = input.replace(/^(add|new)\s+contact\s*/i, '');
+    let text = input.replace(/^(add|new|create)\s+contact\s*/i, '');
 
-    // Parse "name, email xxx, phone xxx"
+    // Parse flexible format: "name, field: value, field value, ..."
     const parts = text.split(/,\s*/);
     const name = parts[0]?.trim();
 
     let email: string | undefined;
     let phone: string | undefined;
+    let company: string | undefined;
+    let address: string | undefined;
+    let birthday: string | undefined;
     let notes: string[] = [];
 
     for (let i = 1; i < parts.length; i++) {
-      const part = parts[i].trim().toLowerCase();
-      if (part.startsWith('email ')) {
-        email = parts[i].replace(/^email\s*/i, '').trim();
-      } else if (part.startsWith('phone ')) {
-        phone = parts[i].replace(/^phone\s*/i, '').trim();
+      const part = parts[i].trim();
+      const partLower = part.toLowerCase();
+
+      // Handle "field: value" or "field value" format
+      if (partLower.startsWith('email:') || partLower.startsWith('email ')) {
+        email = part.replace(/^email[:\s]+/i, '').trim();
+      } else if (partLower.startsWith('phone:') || partLower.startsWith('phone ')) {
+        phone = part.replace(/^phone[:\s]+/i, '').trim();
+      } else if (partLower.startsWith('company:') || partLower.startsWith('company ')) {
+        company = part.replace(/^company[:\s]+/i, '').trim();
+      } else if (partLower.startsWith('address:') || partLower.startsWith('address ')) {
+        address = part.replace(/^address[:\s]+/i, '').trim();
+      } else if (partLower.startsWith('birthday:') || partLower.startsWith('birthday ')) {
+        birthday = part.replace(/^birthday[:\s]+/i, '').trim();
+      } else if (partLower.startsWith('note:') || partLower.startsWith('note ')) {
+        // Note goes into content
+        notes.push(part.replace(/^note[:\s]+/i, '').trim());
       } else {
-        notes.push(parts[i].trim());
+        // Unrecognized format - add to notes
+        notes.push(part);
       }
     }
 
-    return { name, email, phone, content: notes.join('\n') };
+    return { name, email, phone, company, address, birthday, content: notes.join('\n') };
   },
 
   execute: async (args, context) => {
-    const { name, email, phone, content } = args as {
+    const { name, email, phone, company, address, birthday, content } = args as {
       name: string;
       email?: string;
       phone?: string;
+      company?: string;
+      address?: string;
+      birthday?: string;
       content?: string;
     };
 
     if (!name) {
-      return 'Please provide a name. Example: add contact Sarah Chen, email sarah@example.com';
+      return 'Please provide a name. Example: add contact Sarah Chen, email: sarah@example.com, company: Acme Corp';
     }
 
-    const contact = context.services.garden.addContact(name, { email, phone, content });
+    const contact = context.services.garden.addContact(name, {
+      email,
+      phone,
+      company,
+      address,
+      birthday,
+      content
+    });
 
     let response = `✓ Created contact: ${contact.title}`;
-    if (email) response += `\n  Email: ${email}`;
-    if (phone) response += `\n  Phone: ${phone}`;
+    if (email) response += `\n  📧 Email: ${email}`;
+    if (phone) response += `\n  📱 Phone: ${phone}`;
+    if (company) response += `\n  🏢 Company: ${company}`;
+    if (address) response += `\n  📍 Address: ${address}`;
+    if (birthday) response += `\n  🎂 Birthday: ${birthday}`;
 
     return response;
   },
@@ -105,8 +134,11 @@ export const findContact: Tool = {
     const lines = [`Found ${contacts.length} contact(s):`];
     for (const c of contacts) {
       lines.push(`\n**${c.title}**`);
-      if (c.email) lines.push(`  Email: ${c.email}`);
-      if (c.phone) lines.push(`  Phone: ${c.phone}`);
+      if (c.email) lines.push(`  📧 Email: ${c.email}`);
+      if (c.phone) lines.push(`  📱 Phone: ${c.phone}`);
+      if (c.company) lines.push(`  🏢 Company: ${c.company}`);
+      if (c.address) lines.push(`  📍 Address: ${c.address}`);
+      if (c.birthday) lines.push(`  🎂 Birthday: ${c.birthday}`);
     }
 
     return lines.join('\n');

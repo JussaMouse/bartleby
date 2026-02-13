@@ -45,6 +45,8 @@ export interface GardenRecord {
   email?: string;
   phone?: string;
   birthday?: string;
+  company?: string;    // Company/organization name
+  address?: string;    // Physical address
   content?: string;
   tags?: string[];
   contacts?: string[];  // Array of contact record IDs
@@ -96,6 +98,8 @@ CREATE TABLE IF NOT EXISTS garden_records (
   email TEXT,
   phone TEXT,
   birthday TEXT,
+  company TEXT,
+  address TEXT,
   content TEXT,
   tags TEXT,
   metadata TEXT,
@@ -150,6 +154,8 @@ CREATE INDEX IF NOT EXISTS idx_rel_source_type ON garden_relationships(source_id
 const MIGRATIONS = [
   `ALTER TABLE garden_records ADD COLUMN contacts TEXT`,  // JSON array of contact IDs
   `ALTER TABLE garden_records ADD COLUMN privacy TEXT`,   // Privacy level
+  `ALTER TABLE garden_records ADD COLUMN company TEXT`,   // Company/organization name
+  `ALTER TABLE garden_records ADD COLUMN address TEXT`,   // Physical address
 ];
 
 // === Service ===
@@ -340,13 +346,14 @@ export class GardenService {
 
     this.db.prepare(`
       INSERT INTO garden_records
-      (id, type, title, status, context, project, privacy, due_date, email, phone, birthday, content, tags, contacts, metadata, created_at, updated_at, completed_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      (id, type, title, status, context, project, privacy, due_date, email, phone, birthday, company, address, content, tags, contacts, metadata, created_at, updated_at, completed_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       record.id, record.type, record.title, record.status,
       record.context, record.project, record.privacy,
       record.due_date,
       record.email, record.phone, record.birthday,
+      record.company, record.address,
       record.content, JSON.stringify(record.tags || []),
       JSON.stringify(record.contacts || []),
       JSON.stringify(record.metadata || {}),
@@ -449,7 +456,7 @@ export class GardenService {
     this.db.prepare(`
       UPDATE garden_records SET
         type=?, title=?, status=?, context=?, project=?, privacy=?, due_date=?,
-        email=?, phone=?, birthday=?, content=?, tags=?, contacts=?, metadata=?,
+        email=?, phone=?, birthday=?, company=?, address=?, content=?, tags=?, contacts=?, metadata=?,
         updated_at=?, completed_at=?
       WHERE id=?
     `).run(
@@ -457,6 +464,7 @@ export class GardenService {
       updated.context, updated.project, updated.privacy,
       updated.due_date,
       updated.email, updated.phone, updated.birthday,
+      updated.company, updated.address,
       updated.content, JSON.stringify(updated.tags || []),
       JSON.stringify(updated.contacts || []),
       JSON.stringify(updated.metadata || {}),
@@ -1064,6 +1072,8 @@ export class GardenService {
       email: data.email,
       phone: data.phone,
       birthday: data.birthday,
+      company: data.company,
+      address: data.address,
       content: data.content,
       tags: data.tags,
     });
@@ -1298,6 +1308,8 @@ export class GardenService {
       email: row.email || undefined,
       phone: row.phone || undefined,
       birthday: row.birthday || undefined,
+      company: row.company || undefined,
+      address: row.address || undefined,
       content: row.content || undefined,
       tags: row.tags ? JSON.parse(row.tags) : [],
       contacts: row.contacts ? JSON.parse(row.contacts) : [],
