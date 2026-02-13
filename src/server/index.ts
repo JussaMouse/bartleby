@@ -608,10 +608,6 @@ export class DashboardServer {
 
     // Create a new note
     this.app.post('/api/note', (req, res) => {
-      const timestamp = new Date().toISOString();
-      console.log(`\n=== /api/note REQUEST at ${timestamp} ===`);
-      console.log('Body:', JSON.stringify(req.body, null, 2));
-
       info('/api/note request received', {
         body: req.body,
         contentLength: req.body?.content?.length || 0,
@@ -637,12 +633,6 @@ export class DashboardServer {
       });
 
       const filePath = this.garden.getFilePath(note);
-      console.log(`\n=== NOTE CREATED SUCCESSFULLY ===`);
-      console.log(`ID: ${note.id}`);
-      console.log(`Title: ${note.title}`);
-      console.log(`Content length: ${note.content?.length || 0}`);
-      console.log(`File path: ${filePath}`);
-      console.log(`===================================\n`);
 
       info('Note created successfully', {
         id: note.id,
@@ -1018,13 +1008,15 @@ export class DashboardServer {
       
       try {
         // Import the media file (now with proper extension)
-        console.log('[UPLOAD DEBUG] Original filename:', file.originalname);
-        console.log('[UPLOAD DEBUG] Extension:', originalExt);
-        console.log('[UPLOAD DEBUG] Temp path with ext:', tempPathWithExt);
-        
+        debug('Importing media file', {
+          originalFilename: file.originalname,
+          extension: originalExt,
+          tempPath: tempPathWithExt,
+        });
+
         const media = this.garden.importMedia(tempPathWithExt, name, projectId);
-        
-        console.log('[UPLOAD DEBUG] Media created:', {
+
+        debug('Media created successfully', {
           id: media.id,
           title: media.title,
           metadata: media.metadata,

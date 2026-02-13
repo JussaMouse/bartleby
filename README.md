@@ -334,12 +334,7 @@ pnpm profile import <file>   Restore from backup
 - **+ Memory** button - View preferences, patterns, context, and goals
 - **+ Graph** button - Visualize relationship graph between records
 
-**Data location:** `./database/bartleby.db` (unified SQLite database)
-
-**Migration:** If you have legacy memory data in `./database/memory/`, run:
-```bash
-npx tsx scripts/migrate-memory-to-learning.ts
-```
+**Data location:** `./database/garden.sqlite3` (unified SQLite database with garden records and learning system)
 
 ---
 

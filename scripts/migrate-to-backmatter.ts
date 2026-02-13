@@ -1,10 +1,14 @@
 #!/usr/bin/env tsx
 /**
  * Migration script: Convert frontmatter files to backmatter format
- * 
+ *
+ * ⚠️  NOTE: This script is likely deprecated. Bartleby now uses backmatter format
+ * by default, and most garden files should already be in the correct format.
+ * Only run this if you're migrating old frontmatter files.
+ *
  * Usage:
  *   pnpm tsx scripts/migrate-to-backmatter.ts
- * 
+ *
  * This will:
  * 1. Scan all .md files in garden/
  * 2. Convert frontmatter → backmatter format
