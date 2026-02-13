@@ -509,10 +509,33 @@ Tags categorize across types. Use them for:
 
 Link actions and events to people using the `with` operator (see [Linking Operators](#linking-operators)):
 
+**Create contacts** with flexible syntax (Bartleby adapts your input):
 ```
-> new contact Sarah Chen, email sarah@example.com, phone 555-1234
-> new action lunch meeting with sarah @calendar
-> new event coffee with sarah friday 10am
+> new contact Sarah Chen, email: sarah@example.com, phone: 555-1234
+> new contact Ali Brodie, email ali@example.com, company: Fox Rothschild, note: immigration lawyer
+> new contact Mike Jones, phone 555-9999, address: 123 Main St, birthday: 1985-03-15
+```
+
+**Available fields:** email, phone, company, address, birthday, note (stored as content)
+
+**Edit contacts** - update individual fields directly:
+```
+> edit sarah email new@example.com
+> edit ali company New Firm LLC
+> edit mike address 456 Oak Ave
+> edit sarah note specializes in EB-2 visas
+```
+
+Or use interactive mode:
+```
+> edit sarah
+📝 Sarah Chen (contact)
+  📧 Email: sarah@example.com
+  🏢 Company: Acme Corp
+  📱 Phone: 555-1234
+
+To edit fields, use: edit <name> <field> <value>
+Fields: email, phone, company, address, birthday, note
 ```
 
 Contact names are fuzzy-matched — "sarah" finds "Sarah Chen". Unknown names create contacts automatically.
@@ -522,6 +545,7 @@ Contact names are fuzzy-matched — "sarah" finds "Sarah Chen". Unknown names cr
 > show all with sarah
 > do i have anything with nicole?
 > open sarah chen
+> find contact sarah
 ```
 
 Opening a contact shows all linked actions, events, projects, and notes.
