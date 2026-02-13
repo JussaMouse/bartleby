@@ -262,10 +262,13 @@ show events             List all events
 | All Notes | Reference notes | `open all notes` |
 | Contacts | People directory | `open contacts` |
 
-**Create custom views:**
+**Create custom views with powerful queries:**
 ```
 > create view "Urgent Tasks" showing urgent actions
 > create view "Work Notes" showing notes in work-project
+> create view "Phone Calls" showing actions @phone
+> create view "This Week" showing events this week
+> create view "Project Dashboard" showing actions and notes in client-work
 
 > open urgent tasks
 **Urgent Tasks** (page)
@@ -275,6 +278,14 @@ show events             List all events
   2. Call client about proposal
   ...
 ```
+
+**Query features:**
+- **Context filtering:** `@phone`, `@computer`, `@errands`
+- **Date ranges:** `this week`, `next month`, `due in 7 days`
+- **Priority:** `urgent`, `important`
+- **Search:** `containing "keyword"`
+- **Multiple types:** `actions and notes`
+- **Combined:** `urgent active actions @phone in project due this week`
 
 System views execute queries dynamically when opened, always showing current results.
 

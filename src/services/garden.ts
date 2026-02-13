@@ -949,6 +949,11 @@ export class GardenService {
     return rows.map(r => this.rowToRecord(r));
   }
 
+  getAll(): GardenRecord[] {
+    const rows = this.db.prepare('SELECT * FROM garden_records ORDER BY type, title').all() as any[];
+    return rows.map(r => this.rowToRecord(r));
+  }
+
   getRecent(limit = 10): GardenRecord[] {
     const rows = this.db.prepare(`
       SELECT * FROM garden_records 

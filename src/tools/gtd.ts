@@ -2,6 +2,7 @@
 import { Tool } from './types.js';
 import { loadConfig } from '../config.js';
 import type { GardenRecord } from '../services/garden.js';
+import { parseQuery, executeQuery, describeQuery, type QuerySpec } from '../services/queryParser.js';
 
 /**
  * Parse a time string like "5pm", "5:30pm", "17:30" into "HH:MM" format
@@ -1578,28 +1579,8 @@ export const createView: Tool = {
       queryText = match[2];
     }
 
-    // Parse query text into querySpec
-    // Simple parsing - can be enhanced later
-    const querySpec: any = {};
-
-    // Extract type
-    if (queryText.includes('notes')) querySpec.type = 'note';
-    else if (queryText.includes('actions')) querySpec.type = 'action';
-    else if (queryText.includes('projects')) querySpec.type = 'project';
-    else if (queryText.includes('contacts')) querySpec.type = 'contact';
-    else if (queryText.includes('events')) querySpec.type = 'event';
-    else if (queryText.includes('pages')) querySpec.type = 'page';
-    else if (queryText.includes('items')) querySpec.type = 'item';
-
-    // Extract project filter
-    const projectMatch = queryText.match(/in (\w+)/i);
-    if (projectMatch) {
-      querySpec.project = projectMatch[1];
-    }
-
-    // Extract status
-    if (queryText.includes('active')) querySpec.status = 'active';
-    else if (queryText.includes('completed')) querySpec.status = 'completed';
+    // Parse query text using enhanced query parser
+    const querySpec = parseQuery(queryText);
 
     return { title, querySpec, queryText };
   },
@@ -1607,7 +1588,7 @@ export const createView: Tool = {
   execute: async (args, context) => {
     const { title, querySpec, queryText } = args as {
       title: string;
-      querySpec: any;
+      querySpec: QuerySpec;
       queryText: string;
     };
 
@@ -1636,11 +1617,12 @@ export const createView: Tool = {
       recordTitle: page.title,
     }, { source: 'explicit' });
 
+    // Generate human-readable description of the query
+    const queryDescription = describeQuery(querySpec);
+
     let response = `✓ Created system view: "${page.title}"`;
-    if (querySpec.type) {
-      response += `\n  Displays: ${querySpec.type}`;
-      if (querySpec.status) response += ` (${querySpec.status})`;
-      if (querySpec.project) response += ` in ${querySpec.project}`;
+    if (queryDescription) {
+      response += `\n  Query: ${queryDescription}`;
     }
     response += '\n\nDescription (optional, Enter to skip):';
 
@@ -1944,29 +1926,25 @@ export const openPage: Tool = {
         lines.push('');
       }
 
-      const querySpec = record.metadata.querySpec as any;
-      let items: any[] = [];
+      const querySpec = record.metadata.querySpec as QuerySpec;
 
-      // Execute query based on spec
-      if (querySpec?.type) {
-        items = context.services.garden.getByType(querySpec.type);
+      // Get all records from garden
+      const allRecords = context.services.garden.getAll();
 
-        // Apply filters
-        if (querySpec?.status) {
-          items = items.filter(i => i.status === querySpec.status);
-        }
-        if (querySpec?.project) {
-          items = items.filter(i => i.project === querySpec.project);
-        }
-      }
+      // Execute enhanced query
+      const items = executeQuery(allRecords, querySpec);
 
       // Display results
       if (items.length === 0) {
-        lines.push(`No ${querySpec?.type || 'items'} found.`);
+        const queryDesc = describeQuery(querySpec);
+        lines.push(`No results found for: ${queryDesc}`);
       } else {
         lines.push(`**Results:** (${items.length})\n`);
         items.slice(0, 20).forEach((item, i) => {
-          lines.push(`  ${i + 1}. ${item.title}`);
+          // Show context and project if available
+          const ctx = item.context ? ` ${item.context}` : '';
+          const proj = item.project ? ` +${item.project}` : '';
+          lines.push(`  ${i + 1}. ${item.title}${ctx}${proj}`);
         });
         if (items.length > 20) {
           lines.push(`\n... and ${items.length - 20} more`);
