@@ -119,11 +119,16 @@ Try these commands.
 > new action call accountant +2025-taxes @phone
 ```
 
-### 4) Create a wiki page (entry) and a scratch note
+### 4) Create a wiki page and a scratch note
 
 ```
-> new entry house rules +home
+> new page house rules
+Content (optional, Enter to skip):
+> Family guidelines for house maintenance
+✓ Created page: "house rules"
 ```
+
+Pages support optional content prompts after creation. Press Enter to skip or type content.
 
 **Notes** support multi-line content. Two ways to create:
 
@@ -205,13 +210,14 @@ Three layers:
 | `action` | A single next step you can do |
 | `project` | An outcome requiring multiple actions |
 | `item` | Inbox capture, not yet processed |
-| `entry` | Wiki page — permanent structured knowledge |
+| `page` | Wiki page — permanent structured knowledge |
 | `note` | Scratch text, meeting notes, journal entries |
 | `contact` | People, with email/phone/birthday |
+| `event` | Calendar event with specific time |
 | `list` | Dynamic smart lists (Next Actions, Projects) |
 | `media` | Images and files imported into the garden |
 
-**Entry vs Note:** An *entry* is a permanent wiki page ("house rules", "packing checklist"). A *note* is scratch/working text, often attached to a project.
+**Page vs Note:** A *page* is permanent reference ("house rules", "packing checklist"). A *note* is scratch/working text, often attached to a project. Both support prompted content entry after creation.
 
 **Data Layers Explained:**
 
@@ -233,13 +239,35 @@ Example: Create `new action book flights +thailand-trip` and it immediately appe
 
 **Commands:**
 ```
-new entry <title>       Create a wiki page
+new page <title>        Create a wiki page (prompts for content)
 new note <title>        Create a note
 import <path> [name]    Import image/file
 open <title>            View any page
+show pages              List all pages
 show notes              List all notes
 show projects           List all projects
+show events             List all events
 ```
+
+**System Views:** Create custom dynamic queries saved as pages:
+```
+> create view "Active Notes" showing all notes
+✓ Created system view: "Active Notes"
+Description (optional, Enter to skip):
+> All my reference notes
+
+> open active notes
+**Active Notes** (page)
+────────────────────────────────────────
+All my reference notes
+
+**Results:** (15)
+  1. Meeting with Sarah 2026-02-10
+  2. House maintenance checklist
+  ...
+```
+
+System views execute queries dynamically when opened, always showing current results.
 
 **Files are the source of truth.** Edit them in any text editor — Bartleby watches for changes and syncs automatically.
 
@@ -438,9 +466,11 @@ Capture everything. Process later. Work from lists.
 | **Item** | Raw capture, not yet processed | "Call someone about that thing" |
 | **Action** | A single, concrete next step | "Call Dr. Smith to schedule checkup @phone" |
 | **Project** | An outcome requiring multiple actions | "2025 Taxes" |
-| **Event** | Something happening at a specific time | "Team meeting at 2pm" |
+| **Event** | Garden record with specific time (synced to calendar) | "Team meeting at 2pm" |
 
 The key insight: an **action** is something you can actually *do*. "Do taxes" isn't an action — it's a project. "Find last year's W2" is an action.
+
+**Events** are now proper garden records (type: `event`) with `startTime` and `endTime` metadata. They appear in the calendar and can be linked to projects and contacts like any other record.
 
 ### The Lists
 
@@ -489,18 +519,20 @@ When you have 10 minutes and your phone, filter to `@phone` actions. When you're
 
 **Note:** There is no `@inbox` context. Items live in the inbox by virtue of being `type: item`, not by having a context.
 
-### Tags
+### Content Field
 
-Tags categorize across types. Use them for:
-
-- **Priority:** `urgent`, `important`
-- **Topics:** `taxes`, `health`, `house`
-- **Time horizons:** `thisweek`, `q1`
+All record types (pages, projects, contacts, notes) support a `content` field for arbitrary text. When creating pages, projects, or contacts, Bartleby prompts for optional content:
 
 ```
-> new action call accountant about taxes urgent @phone
-> find urgent
+> new project thailand trip
+✓ Created project: "thailand trip"
+
+Content (optional, Enter to skip):
+> Planning 2-week trip to Thailand for March 2026. Budget: $5000.
+✓ Added content to "thailand trip"
 ```
+
+Press Enter to skip content entry. Content is always searchable and displayed when viewing the record.
 
 ### Contacts
 
@@ -665,13 +697,22 @@ History is saved to `~/.bartleby/database/history.txt` (last 1,000 commands).
 
 ## The Time System
 
-Everything with a "when" shows up in one place.
+Everything with a "when" shows up in one place. Events are garden records that automatically sync to the calendar temporal index.
+
+### Architecture
+
+**Events are garden records** with `type: 'event'` and temporal fields:
+- `start_time`: ISO datetime (when it starts)
+- `end_time`: ISO datetime (when it ends)
+- `all_day`: Boolean (all-day event flag)
+
+When you create an event, it's stored as a markdown file in your garden AND automatically indexed in the calendar. The calendar is a temporal view, not the source of truth.
 
 ### What it tracks
 
 | Symbol | Type | Source |
 |--------|------|--------|
-| 📅 | Events | Calendar |
+| 📅 | Events | Garden records (type: event) |
 | ⚠️ | Deadlines | Actions with due dates |
 | 🔔 | Scheduled | Reminders and recurring items |
 
@@ -682,6 +723,8 @@ today                        Today's unified view
 calendar                     Upcoming events and deadlines
 new event                    Create event (guided wizard)
 new event <details>          Create event (inline)
+show events                  List all events
+open <event name>            View event details
 remind me <msg> in <time>    Set reminder
 ```
 
@@ -716,7 +759,13 @@ Add anything else? (Enter to skip)
   📍 Blue Bottle
   👤 sarah
   🔔 Reminder: 15m before
+
+Description/notes (optional, Enter to skip):
+> Discuss Q2 planning and website redesign
+✓ Added description to "Coffee with Sarah"
 ```
+
+Events automatically prompt for optional content/notes after creation, just like projects and contacts.
 
 **Inline mode** — everything in one command:
 
@@ -739,6 +788,43 @@ The `when`, `who`, `where` keywords let you structure complex events clearly.
   14:00  📅 1:1 with Sarah
   17:00  ⚠️ Submit report (due)
 ```
+
+### Event Architecture & Persistence
+
+**Events are first-class garden records**, not just calendar entries. This means:
+
+**Stored as Markdown:**
+```markdown
+# Coffee with Sarah
+
+Discuss Q2 planning and website redesign
+
+---
+type: event
+status: active
+start: 2026-01-17T10:00:00Z
+end: 2026-01-17T11:00:00Z
+contacts: [sarah-id]
+id: evt-abc123
+---
+```
+
+**Benefits:**
+- ✅ Events persist in your garden (source of truth)
+- ✅ Edit events in any text editor
+- ✅ Events included in backups (just markdown files)
+- ✅ Calendar automatically syncs from garden
+- ✅ Can link events to projects, contacts, notes
+- ✅ Events appear in search and knowledge graph
+
+**Automatic Syncing:**
+When you create or update an event in the garden, it automatically:
+1. Registers in the calendar temporal index (for time-based views)
+2. Schedules reminders via the scheduler (if reminder specified)
+3. Updates project/contact relationships
+4. Appears in relevant views (today, calendar, project pages)
+
+The calendar is a **derived view** — delete `database/calendar.sqlite3` and it rebuilds from your markdown files on startup.
 
 ### Notifications
 

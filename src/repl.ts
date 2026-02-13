@@ -384,7 +384,8 @@ function createCompleter(services: ServiceContainer) {
           ...services.garden.getTasks({ status: 'active' }),
           ...services.garden.getByType('project'),
           ...services.garden.getByType('note'),
-          ...services.garden.getByType('entry'),
+          ...services.garden.getByType('page'),
+          ...services.garden.getByType('event'),
           ...services.garden.getByType('media'),
           ...services.garden.getByType('contact'),
         ];
@@ -440,7 +441,8 @@ function createCompleter(services: ServiceContainer) {
           ...services.garden.getTasks({ status: 'active' }),
           ...services.garden.getByType('project'),
           ...services.garden.getByType('note'),
-          ...services.garden.getByType('entry'),
+          ...services.garden.getByType('page'),
+          ...services.garden.getByType('event'),
           ...services.garden.getByType('media'),
           ...services.garden.getByType('contact'),
         ];

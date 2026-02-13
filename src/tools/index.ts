@@ -1,5 +1,6 @@
 // src/tools/index.ts
 import { Tool } from './types.js';
+import { promptHandler } from './prompt-handler.js';
 import { gtdTools } from './gtd.js';
 import { calendarTools } from './calendar.js';
 import { contactTools } from './contacts.js';
@@ -16,7 +17,9 @@ import { relatedTools } from './related.js';
 import { historyTools } from './history.js';
 
 // Aggregate all tools
+// promptHandler MUST be first for Layer 0 contextual routing
 export const allTools: Tool[] = [
+  promptHandler,  // Layer 0: pending prompts bypass all routing
   ...gtdTools,
   ...calendarTools,
   ...contactTools,

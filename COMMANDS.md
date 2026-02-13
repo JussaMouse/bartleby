@@ -45,28 +45,30 @@ Complete list of all commands. For quick start, see [README.md](README.md).
 
 | Command | Description |
 |---------|-------------|
-| `new entry <title>` | Create wiki page (#tags +project inline) |
-| `new note <title>` | Create note (prompts for content, then tags) |
-| `import <path> [name]` | Import image/file (+project #tags inline) |
+| `new page <title>` | Create wiki page (prompts for content, +project inline) |
+| `new note <title>` | Create note (prompts for content) |
+| `import <path> [name]` | Import image/file (+project inline) |
+| `show pages` | List all wiki pages |
 | `show notes` | List all notes |
-| `show entries` | List all wiki entries |
+| `show events` | List all calendar events |
 | `show media` | List all imported media |
 | `open <title>` | Display any page inline |
-| `edit <title>` | Edit any page's tags/project (tab-completable) |
+| `edit <title>` | Edit any page's project (tab-completable) |
 | `recent` | Last 10 modified pages |
 | `delete <title>` | Remove a page |
+| `create view "<title>" showing <query>` | Create system view (dynamic query page) |
 
-**Entry vs Note:** Entries are permanent wiki pages. Notes are scratch/working text.
+**Page vs Note:** Pages are permanent wiki pages. Notes are scratch/working text. Both support prompted content after creation.
 
-**Edit any page:** Add tags or link to a project:
+**Edit any page:** Link to a project:
 ```
-edit vacation photo +thailand #travel
-edit nort[TAB]  →  prompts for +project #tags
+edit vacation photo +thailand
+edit nort[TAB]  →  prompts for +project
 ```
 
 **Import examples:**
 ```
-import ~/photos/beach.jpg vacation photo +thailand #travel
+import ~/photos/beach.jpg vacation photo +thailand
 import "/path with spaces/doc.pdf" project specs +work
 ```
 

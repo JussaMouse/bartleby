@@ -518,7 +518,8 @@ export class DashboardServer {
         ...tasks,
         ...projects,
         ...this.garden.getByType('note'),
-        ...this.garden.getByType('entry'),
+        ...this.garden.getByType('page'),
+        ...this.garden.getByType('event'),
         ...this.garden.getByType('media'),
         ...contacts,
       ];
@@ -876,7 +877,7 @@ export class DashboardServer {
       }
       
       const { targetType } = req.body;
-      if (!targetType || !['action', 'note', 'project', 'entry', 'event'].includes(targetType)) {
+      if (!targetType || !['action', 'note', 'project', 'page', 'event'].includes(targetType)) {
         res.status(400).json({ error: 'Invalid target type' });
         return;
       }

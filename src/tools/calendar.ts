@@ -234,23 +234,25 @@ You said **${parsed.ambiguousHour}${parsed.minute ? ':' + parsed.minute.toString
       const endTime = new Date(parsed.startTime);
       endTime.setHours(endTime.getHours() + 1);
       
-      // Build metadata for contacts and tags
+      // Build metadata for location and reminder
       const metadata: Record<string, unknown> = {};
-      if (parsed.contacts.length > 0) metadata.contacts = parsed.contacts;
-      if (parsed.tags.length > 0) metadata.tags = parsed.tags;
-      
-      const event = context.services.calendar.create({
+      if (parsed.location) metadata.location = parsed.location;
+      if (parsed.reminderMinutes > 0) metadata.reminder = parsed.reminderMinutes;
+
+      // Create garden record (will auto-sync to calendar)
+      const event = context.services.garden.create({
+        type: 'event',
         title: parsed.title,
+        status: 'active',
         start_time: parsed.startTime.toISOString(),
         end_time: endTime.toISOString(),
         all_day: false,
-        reminder_minutes: parsed.reminderMinutes,
-        location: parsed.location || undefined,
-        metadata: Object.keys(metadata).length > 0 ? JSON.stringify(metadata) : undefined,
+        contacts: parsed.contacts,
+        metadata,
       });
       
       let response = `✓ Created: "${event.title}"\n  ${dateStr} at ${timeStr}`;
-      
+
       if (parsed.location) {
         response += `\n  📍 ${parsed.location}`;
       }
@@ -260,27 +262,18 @@ You said **${parsed.ambiguousHour}${parsed.minute ? ':' + parsed.minute.toString
       if (parsed.tags.length > 0) {
         response += `\n  🏷️ ${parsed.tags.map(t => '#' + t).join(' ')}`;
       }
-      
-      // Schedule reminder if requested
       if (parsed.reminderMinutes > 0) {
-        const reminderTime = new Date(parsed.startTime.getTime() - parsed.reminderMinutes * 60 * 1000);
-        
-        if (reminderTime > new Date()) {
-          context.services.scheduler.create({
-            type: 'reminder',
-            scheduleType: 'once',
-            scheduleValue: reminderTime.toISOString(),
-            actionType: 'notify',
-            actionPayload: `"${event.title}" starts in ${parsed.reminderMinutes} minutes`,
-            nextRun: reminderTime.toISOString(),
-            createdBy: 'system',
-            relatedRecord: event.id,
-          });
-          response += `\n  🔔 Reminder: ${parsed.reminderMinutes}m before`;
-        }
+        response += `\n  🔔 Reminder: ${parsed.reminderMinutes}m before`;
       }
-      
-      return response;
+
+      // Set pending prompt for content/description
+      context.services.context.setFact('system', 'pending_prompt', {
+        recordId: event.id,
+        recordType: 'event',
+        recordTitle: event.title,
+      }, { source: 'explicit' });
+
+      return response + '\n\nDescription/notes (optional, Enter to skip):';
     }
     
     // Otherwise ask about reminder (carry contacts/location/tags through wizard)
@@ -744,17 +737,20 @@ export const eventWizardResponse: Tool = {
           }
           
           const metadata: Record<string, unknown> = {};
-          if (contactIds.length > 0) metadata.contactIds = contactIds;
-          if (contactNames.length > 0) metadata.contacts = contactNames; // Keep names for display
+          if (state.location) metadata.location = state.location;
+          if (reminderMinutes > 0) metadata.reminder = reminderMinutes;
           if (state.tags && state.tags.length > 0) metadata.tags = state.tags;
-          
-          const event = context.services.calendar.create({
+
+          // Create garden record (will auto-sync to calendar)
+          const event = context.services.garden.create({
+            type: 'event',
             title: state.title!,
+            status: 'active',
             start_time: startTime.toISOString(),
             end_time: endTime.toISOString(),
             all_day: false,
-            location: state.location || undefined,
-            metadata: Object.keys(metadata).length > 0 ? JSON.stringify(metadata) : undefined,
+            contacts: contactIds,
+            metadata,
           });
           
           // Clear wizard state
@@ -777,27 +773,18 @@ export const eventWizardResponse: Tool = {
           if (contactsCreated.length > 0) {
             response += `\n✓ Created contact(s): ${contactsCreated.join(', ')}`;
           }
-          
-          // Schedule reminder if requested
           if (reminderMinutes > 0) {
-            const reminderTime = new Date(startTime.getTime() - reminderMinutes * 60 * 1000);
-            
-            if (reminderTime > new Date()) {
-              context.services.scheduler.create({
-                type: 'reminder',
-                scheduleType: 'once',
-                scheduleValue: reminderTime.toISOString(),
-                actionType: 'notify',
-                actionPayload: `"${event.title}" starts in ${reminderMinutes} minutes`,
-                nextRun: reminderTime.toISOString(),
-                createdBy: 'system',
-                relatedRecord: event.id,
-              });
-              response += `\n  🔔 Reminder: ${reminderMinutes}m before`;
-            }
+            response += `\n  🔔 Reminder: ${reminderMinutes}m before`;
           }
-          
-          return response;
+
+          // Set pending prompt for content/description
+          context.services.context.setFact('system', 'pending_prompt', {
+            recordId: event.id,
+            recordType: 'event',
+            recordTitle: event.title,
+          }, { source: 'explicit' });
+
+          return response + '\n\nDescription/notes (optional, Enter to skip):';
         }
         
         // Move to extras step
@@ -874,19 +861,22 @@ export const eventWizardResponse: Tool = {
         
         const reminderMinutes = state.reminderMinutes || 0;
         
-        // Build metadata for contacts and tags
+        // Build metadata
         const metadata: Record<string, unknown> = {};
-        if (contactIds.length > 0) metadata.contactIds = contactIds;
-        if (contactNames.length > 0) metadata.contacts = contactNames;
+        if (location) metadata.location = location;
+        if (reminderMinutes > 0) metadata.reminder = reminderMinutes;
         if (tags.length > 0) metadata.tags = tags;
-        
-        const event = context.services.calendar.create({
+
+        // Create garden record (will auto-sync to calendar)
+        const event = context.services.garden.create({
+          type: 'event',
           title: state.title!,
+          status: 'active',
           start_time: startTime.toISOString(),
           end_time: endTime.toISOString(),
           all_day: false,
-          location,
-          metadata: Object.keys(metadata).length > 0 ? JSON.stringify(metadata) : undefined,
+          contacts: contactIds,
+          metadata,
         });
         
         // Clear wizard state
@@ -909,27 +899,18 @@ export const eventWizardResponse: Tool = {
         if (contactsCreated.length > 0) {
           response += `\n✓ Created contact(s): ${contactsCreated.join(', ')}`;
         }
-        
-        // Schedule reminder if requested
         if (reminderMinutes > 0) {
-          const reminderTime = new Date(startTime.getTime() - reminderMinutes * 60 * 1000);
-          
-          if (reminderTime > new Date()) {
-            context.services.scheduler.create({
-              type: 'reminder',
-              scheduleType: 'once',
-              scheduleValue: reminderTime.toISOString(),
-              actionType: 'notify',
-              actionPayload: `"${event.title}" starts in ${reminderMinutes} minutes`,
-              nextRun: reminderTime.toISOString(),
-              createdBy: 'system',
-              relatedRecord: event.id,
-            });
-            response += `\n  🔔 Reminder: ${reminderMinutes}m before`;
-          }
+          response += `\n  🔔 Reminder: ${reminderMinutes}m before`;
         }
-        
-        return response;
+
+        // Set pending prompt for content/description
+        context.services.context.setFact('system', 'pending_prompt', {
+          recordId: event.id,
+          recordType: 'event',
+          recordTitle: event.title,
+        }, { source: 'explicit' });
+
+        return response + '\n\nDescription/notes (optional, Enter to skip):';
       }
       
       default:
@@ -1352,20 +1333,30 @@ export const clarifyEventTime: Tool = {
     const endTime = new Date(startTime);
     endTime.setHours(endTime.getHours() + 1);
     
-    const event = context.services.calendar.create({
+    // Create garden record (will auto-sync to calendar)
+    const event = context.services.garden.create({
+      type: 'event',
       title,
+      status: 'active',
       start_time: startTime.toISOString(),
       end_time: endTime.toISOString(),
       all_day: false,
     });
-    
+
     // Clear pending state
     context.services.context.setFact('system', 'event_pending_clarification', null, { source: 'explicit' });
-    
+
     const dateStr = startTime.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
     const timeStr = startTime.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
-    
-    return `✓ Created: ${event.title}\n  ${dateStr} at ${timeStr}`;
+
+    // Set pending prompt for content/description
+    context.services.context.setFact('system', 'pending_prompt', {
+      recordId: event.id,
+      recordType: 'event',
+      recordTitle: event.title,
+    }, { source: 'explicit' });
+
+    return `✓ Created: ${event.title}\n  ${dateStr} at ${timeStr}\n\nDescription/notes (optional, Enter to skip):`;
   },
 };
 

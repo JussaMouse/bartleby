@@ -1029,7 +1029,14 @@ export const addProject: Tool = {
     const privacyIcon = privacy ? context.services.garden.getPrivacyIcon(privacy) : '';
     const privacyNote = privacy ? `\n${privacyIcon} Privacy: ${privacy} (all linked items inherit this)` : '';
 
-    return `✓ Created project: "${project.title}"${privacyNote}\n\nAdd actions with: new action <text> +${project.title.toLowerCase().replace(/\s+/g, '-')}`;
+    // Set pending prompt for description
+    context.services.context.setFact('system', 'pending_prompt', {
+      recordId: project.id,
+      recordType: 'project',
+      recordTitle: project.title,
+    }, { source: 'explicit' });
+
+    return `✓ Created project: "${project.title}"${privacyNote}\n\nDescription (optional, Enter to skip):`;
   },
 };
 
@@ -1446,22 +1453,22 @@ export const tagNote: Tool = {
   },
 };
 
-// === Entry (Wiki) Tools ===
+// === Page (Wiki) Tools ===
 
-export const createEntry: Tool = {
-  name: 'createEntry',
-  description: 'Create a wiki-like entry page',
+export const createPage: Tool = {
+  name: 'createPage',
+  description: 'Create a wiki-like page',
 
   routing: {
     patterns: [
-      /^(new|create|add)\s+entry\s*:?\s*(.*)$/i,
-      /^entry\s*:?\s*(.+)$/i,
+      /^(new|create|add)\s+page\s*:?\s*(.*)$/i,
+      /^page\s*:?\s*(.+)$/i,
     ],
     keywords: {
       verbs: ['new', 'create', 'add'],
-      nouns: ['entry', 'wiki', 'page'],
+      nouns: ['page', 'wiki'],
     },
-    examples: ['new entry house rules', 'create entry vacation packing list #travel', 'entry: project guidelines +work'],
+    examples: ['new page house rules', 'create page vacation packing list', 'page: project guidelines +work'],
     priority: 90,
   },
 
@@ -1470,33 +1477,31 @@ export const createEntry: Tool = {
     if (match) {
       rest = match[match.length - 1] || '';
     } else {
-      rest = input.replace(/^(new|create|add)\s+entry\s*:?\s*/i, '').trim();
+      rest = input.replace(/^(new|create|add)\s+(page|entry)\s*:?\s*/i, '').trim();
     }
-    
+
     // Extract project
     const projectMatch = rest.match(/\+([^\s#]+)/);
     const project = projectMatch ? projectMatch[1] : undefined;
     rest = rest.replace(/\+[^\s#]+/g, '').trim();
-    
-    // Extract tags
-    const tagMatches = rest.match(/#(\w+)/g);
-    const tags = tagMatches ? tagMatches.map(t => t.slice(1)) : [];
+
+    // Tags removed
     rest = rest.replace(/#\w+/g, '').trim();
-    
-    return { title: rest, project, tags };
+
+    return { title: rest, project };
   },
 
   execute: async (args, context) => {
-    const { title, project, tags } = args as { title: string; project?: string; tags: string[] };
+    const { title, project } = args as { title: string; project?: string };
 
     if (!title) {
-      return 'Please provide an entry title. Example: new entry house rules #family';
+      return 'Please provide a page title. Example: new page house rules';
     }
 
-    // Check if entry already exists
+    // Check if page already exists
     const existing = context.services.garden.getByTitle(title);
-    if (existing && existing.type === 'entry') {
-      return `Entry "${title}" already exists. Use "open ${title}" to view it.`;
+    if (existing && existing.type === 'page') {
+      return `Page "${title}" already exists. Use "open ${title}" to view it.`;
     }
 
     // Auto-create project if specified
@@ -1514,19 +1519,130 @@ export const createEntry: Tool = {
       projectId = proj.id;
     }
 
-    const entry = context.services.garden.create({
-      type: 'entry',
+    const page = context.services.garden.create({
+      type: 'page',
       title,
       status: 'active',
       content: '',
       project: projectId,
-      // tags removed
     });
 
-    let response = `📖 **Entry: ${entry.title}**`;
-    if (project) response += `\n  +${project}`;
-    // tags display removed
-    response += `\n\nEdit: \`${context.services.garden.getFilePath(entry)}\``;
+    // Set pending prompt for content
+    context.services.context.setFact('system', 'pending_prompt', {
+      recordId: page.id,
+      recordType: 'page',
+      recordTitle: page.title,
+    }, { source: 'explicit' });
+
+    let response = `✓ Created page: "${page.title}"`;
+    if (project) response += ` +${project}`;
+    response += '\n\nContent (optional, Enter to skip):';
+
+    return response;
+  },
+};
+
+export const createView: Tool = {
+  name: 'createView',
+  description: 'Create a custom system view (saved query as page)',
+
+  routing: {
+    patterns: [
+      /^create view "([^"]+)" showing (.+)$/i,
+      /^new view (.+) showing (.+)$/i,
+    ],
+    keywords: {
+      verbs: ['create', 'new'],
+      nouns: ['view'],
+    },
+    examples: [
+      'create view "Notes List" showing all notes',
+      'new view Urgent showing urgent actions',
+    ],
+    priority: 92,
+  },
+
+  parseArgs: (input, match) => {
+    if (!match) return { title: '', queryText: '' };
+
+    let title: string;
+    let queryText: string;
+
+    if (match[0].includes('"')) {
+      // Pattern: create view "Title" showing query
+      title = match[1];
+      queryText = match[2];
+    } else {
+      // Pattern: new view title showing query
+      title = match[1];
+      queryText = match[2];
+    }
+
+    // Parse query text into querySpec
+    // Simple parsing - can be enhanced later
+    const querySpec: any = {};
+
+    // Extract type
+    if (queryText.includes('notes')) querySpec.type = 'note';
+    else if (queryText.includes('actions')) querySpec.type = 'action';
+    else if (queryText.includes('projects')) querySpec.type = 'project';
+    else if (queryText.includes('contacts')) querySpec.type = 'contact';
+    else if (queryText.includes('events')) querySpec.type = 'event';
+    else if (queryText.includes('pages')) querySpec.type = 'page';
+    else if (queryText.includes('items')) querySpec.type = 'item';
+
+    // Extract project filter
+    const projectMatch = queryText.match(/in (\w+)/i);
+    if (projectMatch) {
+      querySpec.project = projectMatch[1];
+    }
+
+    // Extract status
+    if (queryText.includes('active')) querySpec.status = 'active';
+    else if (queryText.includes('completed')) querySpec.status = 'completed';
+
+    return { title, querySpec, queryText };
+  },
+
+  execute: async (args, context) => {
+    const { title, querySpec, queryText } = args as {
+      title: string;
+      querySpec: any;
+      queryText: string;
+    };
+
+    if (!title) {
+      return 'Usage: create view "View Name" showing <type> [filters]\nExample: create view "Client Notes" showing notes in client-work';
+    }
+
+    // Create page with system view metadata
+    const page = context.services.garden.create({
+      type: 'page',
+      title,
+      status: 'active',
+      content: '',
+      metadata: {
+        systemView: true,
+        createdBy: 'user',
+        querySpec,
+        queryText,
+      },
+    });
+
+    // Set pending prompt for description
+    context.services.context.setFact('system', 'pending_prompt', {
+      recordId: page.id,
+      recordType: 'page',
+      recordTitle: page.title,
+    }, { source: 'explicit' });
+
+    let response = `✓ Created system view: "${page.title}"`;
+    if (querySpec.type) {
+      response += `\n  Displays: ${querySpec.type}`;
+      if (querySpec.status) response += ` (${querySpec.status})`;
+      if (querySpec.project) response += ` in ${querySpec.project}`;
+    }
+    response += '\n\nDescription (optional, Enter to skip):';
 
     return response;
   },
@@ -1690,23 +1806,24 @@ export const showByType: Tool = {
 
   routing: {
     patterns: [
-      /^show\s+(notes?|contacts?|entries?|items?|daily|lists?|media)$/i,
-      /^(notes|contacts|entries)$/i,
+      /^show\s+(notes?|contacts?|pages?|entries?|events?|items?|daily|lists?|media)$/i,
+      /^(notes|contacts|pages|entries|events)$/i,
     ],
     keywords: {
       verbs: ['show', 'list', 'view'],
-      nouns: ['notes', 'contacts', 'entries', 'items', 'daily', 'lists', 'media'],
+      nouns: ['notes', 'contacts', 'pages', 'entries', 'events', 'items', 'daily', 'lists', 'media'],
     },
-    examples: ['show notes', 'show contacts', 'list entries', 'contacts'],
+    examples: ['show notes', 'show contacts', 'show pages', 'show events', 'contacts'],
     priority: 80,
   },
 
   parseArgs: (input) => {
-    const match = input.match(/(notes?|contacts?|entries?|items?|daily|lists?|media)/i);
+    const match = input.match(/(notes?|contacts?|pages?|events?|items?|daily|lists?|media)/i);
     const typeMap: Record<string, string> = {
       note: 'note', notes: 'note',
       contact: 'contact', contacts: 'contact',
-      entry: 'entry', entries: 'entry',
+      page: 'page', pages: 'page',
+      event: 'event', events: 'event',
       item: 'item', items: 'item',
       daily: 'daily',
       list: 'list', lists: 'list',
@@ -1819,11 +1936,50 @@ export const openPage: Tool = {
       `**${record.title}** (${record.type})`,
       '─'.repeat(40),
     ];
-    
+
+    // Special handling for system views: execute query dynamically
+    if (record.metadata?.systemView && record.metadata?.querySpec) {
+      if (record.content) {
+        lines.push(record.content);
+        lines.push('');
+      }
+
+      const querySpec = record.metadata.querySpec as any;
+      let items: any[] = [];
+
+      // Execute query based on spec
+      if (querySpec?.type) {
+        items = context.services.garden.getByType(querySpec.type);
+
+        // Apply filters
+        if (querySpec?.status) {
+          items = items.filter(i => i.status === querySpec.status);
+        }
+        if (querySpec?.project) {
+          items = items.filter(i => i.project === querySpec.project);
+        }
+      }
+
+      // Display results
+      if (items.length === 0) {
+        lines.push(`No ${querySpec?.type || 'items'} found.`);
+      } else {
+        lines.push(`**Results:** (${items.length})\n`);
+        items.slice(0, 20).forEach((item, i) => {
+          lines.push(`  ${i + 1}. ${item.title}`);
+        });
+        if (items.length > 20) {
+          lines.push(`\n... and ${items.length - 20} more`);
+        }
+      }
+
+      return lines.join('\n');
+    }
+
     if (record.content) {
       lines.push(record.content);
     }
-    
+
     // Special handling for projects: show linked actions and notes
     if (record.type === 'project') {
       const projectSlug = record.title.toLowerCase().replace(/\s+/g, '-');
@@ -2118,7 +2274,8 @@ export const gtdTools: Tool[] = [
   deleteProject,  // Higher priority than deletePage
   showProjects,
   createNote,
-  createEntry,
+  createPage,
+  createView,
   importMedia,
   showByType,
   showRecent,

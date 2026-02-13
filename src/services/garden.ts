@@ -19,17 +19,19 @@ import { ViewCache } from '../views/ViewCache.js';
 // === Types ===
 
 // GTD types: item → action → completed (workflow)
-// Wiki types: entry, note, contact, media, list, daily (persistent knowledge)
+// Knowledge types: page, note, contact, media (persistent knowledge)
+// Temporal types: event (things with specific times)
 export type RecordType =
   | 'item'      // Raw inbox, unprocessed
   | 'action'    // Doable next step
   | 'project'   // Multi-action outcome
-  | 'entry'     // Wiki/encyclopedia page
+  | 'page'      // User-created wiki page (arbitrary content)
   | 'note'      // Reference/scratch notes
   | 'contact'   // Person
+  | 'event'     // Calendar event (specific time)
   | 'media'     // File attachment
-  | 'list'      // Curated collection
-  | 'daily';    // Journal entry
+  | 'list'      // Curated collection (planned)
+  | 'daily';    // Journal entry (planned)
 export type RecordStatus = 'active' | 'completed' | 'archived' | 'someday' | 'waiting';
 export type PrivacyLevel = 'public' | 'private' | 'confidential';
 
@@ -42,6 +44,9 @@ export interface GardenRecord {
   project?: string;
   privacy?: PrivacyLevel;  // Explicit privacy setting
   due_date?: string;
+  start_time?: string;     // ISO datetime for events
+  end_time?: string;       // ISO datetime for events
+  all_day?: boolean;       // For calendar events (no specific time)
   email?: string;
   phone?: string;
   birthday?: string;
@@ -95,6 +100,9 @@ CREATE TABLE IF NOT EXISTS garden_records (
   project TEXT,
   privacy TEXT,
   due_date TEXT,
+  start_time TEXT,
+  end_time TEXT,
+  all_day INTEGER DEFAULT 0,
   email TEXT,
   phone TEXT,
   birthday TEXT,
@@ -156,6 +164,9 @@ const MIGRATIONS = [
   `ALTER TABLE garden_records ADD COLUMN privacy TEXT`,   // Privacy level
   `ALTER TABLE garden_records ADD COLUMN company TEXT`,   // Company/organization name
   `ALTER TABLE garden_records ADD COLUMN address TEXT`,   // Physical address
+  `ALTER TABLE garden_records ADD COLUMN start_time TEXT`, // ISO datetime for events
+  `ALTER TABLE garden_records ADD COLUMN end_time TEXT`,   // ISO datetime for events
+  `ALTER TABLE garden_records ADD COLUMN all_day INTEGER DEFAULT 0`, // All-day events flag
 ];
 
 // === Service ===
@@ -346,12 +357,12 @@ export class GardenService {
 
     this.db.prepare(`
       INSERT INTO garden_records
-      (id, type, title, status, context, project, privacy, due_date, email, phone, birthday, company, address, content, contacts, metadata, created_at, updated_at, completed_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      (id, type, title, status, context, project, privacy, due_date, start_time, end_time, all_day, email, phone, birthday, company, address, content, contacts, metadata, created_at, updated_at, completed_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       record.id, record.type, record.title, record.status,
       record.context, record.project, record.privacy,
-      record.due_date,
+      record.due_date, record.start_time, record.end_time, record.all_day ? 1 : 0,
       record.email, record.phone, record.birthday,
       record.company, record.address,
       record.content,
@@ -455,14 +466,14 @@ export class GardenService {
 
     this.db.prepare(`
       UPDATE garden_records SET
-        type=?, title=?, status=?, context=?, project=?, privacy=?, due_date=?,
+        type=?, title=?, status=?, context=?, project=?, privacy=?, due_date=?, start_time=?, end_time=?, all_day=?,
         email=?, phone=?, birthday=?, company=?, address=?, content=?, contacts=?, metadata=?,
         updated_at=?, completed_at=?
       WHERE id=?
     `).run(
       updated.type, updated.title, updated.status,
       updated.context, updated.project, updated.privacy,
-      updated.due_date,
+      updated.due_date, updated.start_time, updated.end_time, updated.all_day ? 1 : 0,
       updated.email, updated.phone, updated.birthday,
       updated.company, updated.address,
       updated.content,
@@ -1169,6 +1180,9 @@ export class GardenService {
       context: record.context,
       project: record.project,
       due: record.due_date,
+      start: record.start_time,
+      end: record.end_time,
+      allDay: record.all_day,
       email: record.email,
       phone: record.phone,
       birthday: record.birthday,
@@ -1224,6 +1238,9 @@ export class GardenService {
         context: meta.context as string | undefined,
         project: meta.project as string | undefined,
         due_date: meta.due as string | undefined,
+        start_time: meta.start as string | undefined,
+        end_time: meta.end as string | undefined,
+        all_day: meta.allDay as boolean | undefined,
         email: meta.email as string | undefined,
         phone: meta.phone as string | undefined,
         birthday: meta.birthday as string | undefined,
@@ -1296,6 +1313,9 @@ export class GardenService {
       project: row.project || undefined,
       privacy: row.privacy as PrivacyLevel | undefined,
       due_date: row.due_date || undefined,
+      start_time: row.start_time || undefined,
+      end_time: row.end_time || undefined,
+      all_day: row.all_day === 1 ? true : undefined,
       email: row.email || undefined,
       phone: row.phone || undefined,
       birthday: row.birthday || undefined,
@@ -1338,6 +1358,72 @@ export class GardenService {
    */
   private syncToCalendar(record: GardenRecord, previous?: GardenRecord): void {
     if (!this.calendar) return;
+
+    // Handle type: 'event' records with start_time/end_time
+    if (record.type === 'event') {
+      const hasStartTime = !!record.start_time && record.status === 'active';
+      const hadStartTime = previous && !!previous.start_time && previous.status === 'active';
+
+      if (hasStartTime) {
+        const startDate = new Date(record.start_time!);
+        const endDate = record.end_time ? new Date(record.end_time) : new Date(startDate.getTime() + 60 * 60 * 1000); // 1 hour default
+
+        this.calendar.registerTemporal(
+          'garden',
+          record.id,
+          startDate,
+          'event',
+          record.title,
+          {
+            endTime: endDate,
+            metadata: {
+              type: 'event',
+              allDay: record.all_day,
+              project: record.project,
+              contacts: record.contacts,
+              location: record.metadata?.location,
+            },
+          }
+        );
+
+        // Schedule reminders if specified in metadata
+        if (this.scheduler && record.metadata?.reminder) {
+          const reminderMinutes = typeof record.metadata.reminder === 'number' ? record.metadata.reminder : 15;
+          const reminderTime = new Date(startDate.getTime() - reminderMinutes * 60 * 1000);
+
+          // Clear existing reminders
+          const existing = this.scheduler.getByRelatedRecord(record.id, 'system');
+          for (const task of existing) {
+            if (task.type === 'reminder') this.scheduler.cancel(task.id);
+          }
+
+          // Schedule new reminder if event is in the future
+          if (reminderTime > new Date()) {
+            this.scheduler.create({
+              type: 'reminder',
+              scheduleType: 'once',
+              scheduleValue: reminderTime.toISOString(),
+              actionType: 'notify',
+              actionPayload: `Event: ${record.title}`,
+              nextRun: reminderTime.toISOString(),
+              createdBy: 'system',
+              relatedRecord: record.id,
+            });
+          }
+        }
+      } else if (hadStartTime && !hasStartTime) {
+        // Event completed or start time removed - remove from calendar
+        this.calendar.removeTemporal('garden', record.id);
+
+        if (this.scheduler) {
+          const existing = this.scheduler.getByRelatedRecord(record.id, 'system');
+          for (const task of existing) {
+            if (task.type === 'reminder') this.scheduler.cancel(task.id);
+          }
+        }
+      }
+      return; // Event handling complete, skip action due_date logic below
+    }
 
     const hasDueDate = !!record.due_date && record.status === 'active';
     const hadDueDate = previous && !!previous.due_date && previous.status === 'active';

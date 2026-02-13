@@ -125,17 +125,29 @@ function executeCreateProject(cmd: CreateProjectCommand, garden: GardenService):
 
 function executeCreateEvent(cmd: CreateEventCommand, garden: GardenService): CommandResult {
   try {
-    // TODO: Parse dateStr into actual date
-    // For now, store as-is in metadata
+    // Parse dateStr into Date object
+    // TODO: Use more sophisticated date parsing from calendar.ts
+    const startTime = new Date(cmd.dateStr);
+    if (isNaN(startTime.getTime())) {
+      return {
+        success: false,
+        action: 'error',
+        message: `Invalid date: "${cmd.dateStr}"`,
+        error: 'Invalid date format',
+      };
+    }
+
+    // Calculate end time (1 hour default duration)
+    const endTime = new Date(startTime.getTime() + 60 * 60 * 1000);
+
     const event = garden.create({
-      type: 'entry',  // Events are stored as entries with event metadata
+      type: 'event',
       title: cmd.title,
       project: cmd.project,
       status: 'active',
-      metadata: {
-        entryType: 'event',
-        dateStr: cmd.dateStr,
-      },
+      start_time: startTime.toISOString(),
+      end_time: endTime.toISOString(),
+      all_day: false,
     });
 
     return {
@@ -143,7 +155,7 @@ function executeCreateEvent(cmd: CreateEventCommand, garden: GardenService): Com
       action: 'created',
       message: `Event created: "${event.title}" at ${cmd.dateStr}`,
       result: event,
-      panelsToRefresh: ['calendar', 'today'],
+      panelsToRefresh: ['calendar', 'today', 'events'],
     };
   } catch (err) {
     return {

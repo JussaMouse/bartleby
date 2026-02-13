@@ -90,6 +90,17 @@ export const addContact: Tool = {
     if (address) response += `\n  📍 Address: ${address}`;
     if (birthday) response += `\n  🎂 Birthday: ${birthday}`;
 
+    // If no content provided inline, prompt for it
+    if (!content?.trim()) {
+      context.services.context.setFact('system', 'pending_prompt', {
+        recordId: contact.id,
+        recordType: 'contact',
+        recordTitle: contact.title,
+      }, { source: 'explicit' });
+
+      response += '\n\nNote (optional, Enter to skip):';
+    }
+
     return response;
   },
 };
