@@ -249,21 +249,30 @@ show projects           List all projects
 show events             List all events
 ```
 
-**System Views:** Create custom dynamic queries saved as pages:
+**System Views:** Dynamic query pages that show filtered lists. **8 standard GTD views are auto-created at startup:**
+
+| View | Shows | Usage |
+|------|-------|-------|
+| Inbox | Unprocessed items | `open inbox` |
+| Next Actions | All active actions | `open next actions` |
+| Projects | Active projects | `open projects` |
+| Waiting For | Delegated actions | `open waiting for` |
+| Someday Maybe | Future possibilities | `open someday maybe` |
+| All Events | Calendar events | `open all events` |
+| All Notes | Reference notes | `open all notes` |
+| Contacts | People directory | `open contacts` |
+
+**Create custom views:**
 ```
-> create view "Active Notes" showing all notes
-✓ Created system view: "Active Notes"
-Description (optional, Enter to skip):
-> All my reference notes
+> create view "Urgent Tasks" showing urgent actions
+> create view "Work Notes" showing notes in work-project
 
-> open active notes
-**Active Notes** (page)
+> open urgent tasks
+**Urgent Tasks** (page)
 ────────────────────────────────────────
-All my reference notes
-
-**Results:** (15)
-  1. Meeting with Sarah 2026-02-10
-  2. House maintenance checklist
+**Results:** (7)
+  1. Submit quarterly report
+  2. Call client about proposal
   ...
 ```
 

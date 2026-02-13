@@ -328,9 +328,92 @@ export class GardenService {
     ensureDir(this.gardenPath);
 
     await this.syncFromFiles();
+
+    // Initialize system views (only on first run)
+    await this.initializeSystemViews();
+
     this.startWatcher();
 
     info('GardenService initialized', { path: this.gardenPath });
+  }
+
+  /**
+   * Initialize standard GTD system views on first run
+   */
+  private async initializeSystemViews(): Promise<void> {
+    // Check if system views already exist
+    const existingViews = this.getByType('page').filter(p =>
+      p.metadata?.systemView === true && p.metadata?.createdBy === 'system'
+    );
+
+    if (existingViews.length > 0) {
+      debug('System views already initialized', { count: existingViews.length });
+      return;
+    }
+
+    info('Initializing system views...');
+
+    // Standard GTD views
+    const systemViews = [
+      {
+        title: 'Inbox',
+        querySpec: { type: 'item', status: 'active' },
+        description: 'Unprocessed items waiting for clarification. Process these regularly to convert into actions, projects, or reference.',
+      },
+      {
+        title: 'Next Actions',
+        querySpec: { type: 'action', status: 'active' },
+        description: 'All active actions you can do now. Filter by context (@phone, @computer, etc.) to see what\'s possible.',
+      },
+      {
+        title: 'Projects',
+        querySpec: { type: 'project', status: 'active' },
+        description: 'Outcomes requiring multiple actions. Each project should have at least one next action.',
+      },
+      {
+        title: 'Waiting For',
+        querySpec: { type: 'action', status: 'waiting' },
+        description: 'Actions delegated or waiting on others. Review weekly to follow up.',
+      },
+      {
+        title: 'Someday Maybe',
+        querySpec: { type: 'action', status: 'someday' },
+        description: 'Future possibilities to review later. Things you might want to do but not now.',
+      },
+      {
+        title: 'All Events',
+        querySpec: { type: 'event', status: 'active' },
+        description: 'Upcoming events and meetings. Shows everything in your calendar.',
+      },
+      {
+        title: 'All Notes',
+        querySpec: { type: 'note', status: 'active' },
+        description: 'Reference notes and documentation. Searchable knowledge base.',
+      },
+      {
+        title: 'Contacts',
+        querySpec: { type: 'contact', status: 'active' },
+        description: 'People in your network. Link to actions and events with "with <person>".',
+      },
+    ];
+
+    for (const view of systemViews) {
+      this.create({
+        type: 'page',
+        title: view.title,
+        status: 'active',
+        content: view.description,
+        metadata: {
+          systemView: true,
+          createdBy: 'system',
+          querySpec: view.querySpec,
+          queryText: `showing ${view.querySpec.type}`,
+        },
+      });
+      info(`Created system view: ${view.title}`);
+    }
+
+    info('System views initialized', { count: systemViews.length });
   }
 
   // === CRUD ===

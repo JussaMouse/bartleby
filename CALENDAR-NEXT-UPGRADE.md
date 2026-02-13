@@ -6,8 +6,8 @@ Based on user value and implementation complexity:
 
 1. ✅ **Natural Language Date Parsing** (COMPLETED)
 2. ✅ **Edit Event Tool** (COMPLETED)
-3. **System Views Initialization** (Medium value, Low complexity) - RECOMMENDED NEXT
-4. **All-Day Events Enhancement** (Medium value, Low complexity)
+3. ✅ **System Views Initialization** (COMPLETED)
+4. **All-Day Events Enhancement** (Medium value, Low complexity) - RECOMMENDED NEXT
 5. **Enhanced Query Parser** (Low value, High complexity)
 6. **Recurring Events** (High value, Very high complexity)
 
@@ -360,7 +360,7 @@ export const editEvent: Tool = {
 
 ---
 
-## 3. System Views Initialization (GOOD HOUSEKEEPING) - RECOMMENDED NEXT
+## 3. System Views Initialization (GOOD HOUSEKEEPING)
 
 ### Current State
 - System views can be created manually via `create view` command
@@ -473,6 +473,32 @@ async initialize(): Promise<void> {
 **Effort:** 1-2 hours
 **Risk:** Low
 **Value:** Medium (nice polish, better OOBE)
+
+### ✅ IMPLEMENTATION COMPLETE
+
+**Completed:** System views auto-creation on first startup
+
+**Added features:**
+1. ✅ 8 standard GTD views created automatically
+2. ✅ Idempotent initialization (checks for existing views)
+3. ✅ Views include: Inbox, Next Actions, Projects, Waiting For, Someday Maybe, All Events, All Notes, Contacts
+4. ✅ Each view has querySpec metadata for dynamic filtering
+5. ✅ Marked with systemView: true and createdBy: 'system'
+6. ✅ Runs after file sync, before watcher starts
+
+**Files changed:**
+- `src/services/garden.ts`: Added initializeSystemViews() method (lines 336-406)
+- `README.md`: Documented system views table in data section
+- `SYSTEM-VIEWS-GUIDE.md`: Comprehensive guide to system views
+
+**Testing results:**
+- ✅ Views created on first startup
+- ✅ Not recreated on subsequent startups (idempotent)
+- ✅ All 8 views accessible via `open <view-name>`
+- ✅ Dynamic queries execute correctly
+- ✅ New users get GTD structure out-of-box
+
+**User value:** MEDIUM - Improves onboarding, provides GTD structure immediately
 
 ---
 
