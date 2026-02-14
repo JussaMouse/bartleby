@@ -3,6 +3,7 @@ import OpenAI from 'openai';
 import { Config } from '../config.js';
 import { info, warn, debug } from '../utils/logger.js';
 import { getSystemPrompt, SYSTEM_PROMPTS } from '../llm/system-prompts.js';
+import { ResponseCache, type CacheStats } from '../llm/response-cache.js';
 
 export type Tier = 'router' | 'fast' | 'thinking';
 export type Complexity = 'SIMPLE' | 'COMPLEX';
@@ -28,9 +29,13 @@ export class LLMService {
   private config: Config;
   private clients: Record<Tier, OpenAI>;
   private healthy: Record<Tier, boolean> = { router: false, fast: false, thinking: false };
+  private cache: ResponseCache;
 
   constructor(config: Config) {
     this.config = config;
+
+    // Initialize response cache (1000 entries, 1 hour TTL)
+    this.cache = new ResponseCache(1000, 3600000);
 
     // Use configured API key or fallback for local-only setups
     const apiKey = config.llm.apiKey || 'not-needed-for-local';
@@ -159,19 +164,28 @@ export class LLMService {
 
   async chat(
     messages: Array<{ role: 'system' | 'user' | 'assistant' | 'tool'; content: string; toolCallId?: string }>,
-    options: { tier?: Tier; maxTokens?: number; tools?: OpenAI.ChatCompletionTool[] } = {}
+    options: { tier?: Tier; maxTokens?: number; tools?: OpenAI.ChatCompletionTool[]; skipCache?: boolean } = {}
   ): Promise<string> {
     const tier = options.tier || 'fast';
     const tierConfig = this.config.llm[tier];
     const client = this.clients[tier];
-
-    debug('LLM chat', { tier, model: tierConfig.model });
 
     // Prepend appropriate system prompt if not already present
     const hasSystemPrompt = messages.some(m => m.role === 'system');
     const messagesWithSystem = hasSystemPrompt
       ? messages
       : [{ role: 'system' as const, content: getSystemPrompt(tier) }, ...messages];
+
+    // Check cache first (unless explicitly skipped)
+    if (!options.skipCache) {
+      const cached = this.cache.get(tier, messagesWithSystem, options.tools);
+      if (cached) {
+        debug('LLM cache hit', { tier, model: tierConfig.model });
+        return cached;
+      }
+    }
+
+    debug('LLM chat', { tier, model: tierConfig.model });
 
     const requestParams: OpenAI.ChatCompletionCreateParamsNonStreaming = {
       model: tierConfig.model,
@@ -186,8 +200,12 @@ export class LLMService {
     }
 
     const response = await client.chat.completions.create(requestParams);
+    const content = response.choices[0]?.message?.content || '';
 
-    return response.choices[0]?.message?.content || '';
+    // Cache the response
+    this.cache.set(tier, messagesWithSystem, options.tools, content);
+
+    return content;
   }
 
   /**
@@ -207,11 +225,11 @@ export class LLMService {
     const hasSystemPrompt = messages.some(m => m.role === 'system');
     const messagesWithSystem = hasSystemPrompt
       ? messages
-      : [{ role: 'system', content: getSystemPrompt(tier) }, ...messages];
+      : [{ role: 'system', content: getSystemPrompt(tier) } as OpenAI.ChatCompletionMessageParam, ...messages];
 
     const response = await client.chat.completions.create({
       model: tierConfig.model,
-      messages: messagesWithSystem,
+      messages: messagesWithSystem as OpenAI.ChatCompletionMessageParam[],
       tools,
       tool_choice: 'auto',
       max_tokens: tierConfig.maxTokens,
@@ -222,6 +240,20 @@ export class LLMService {
 
   getMaxIterations(): number {
     return this.config.llm.agentMaxIterations;
+  }
+
+  /**
+   * Get cache statistics
+   */
+  getCacheStats(): CacheStats {
+    return this.cache.getStats();
+  }
+
+  /**
+   * Clear the response cache
+   */
+  clearCache(): void {
+    this.cache.clear();
   }
 
   close(): void {
