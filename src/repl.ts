@@ -4,7 +4,7 @@ import fs from 'fs';
 import path from 'path';
 import { CommandRouter } from './router/index.js';
 import { Agent } from './agent/index.js';
-import { ServiceContainer } from './services/index.js';
+import { ServiceContainer, closeServices } from './services/index.js';
 import { info, warn, error, debug } from './utils/logger.js';
 import { getDbPath, ensureDir } from './config.js';
 
@@ -659,6 +659,7 @@ export async function startRepl(
     }
     info('Session ended');
     await services.context.endSession();
+    closeServices(services);  // Save vector index and close all services
     process.exit(0);
   });
 
@@ -694,6 +695,7 @@ async function handleShutdown(
 
   console.log('\nGoodbye! 👋\n');
   await services.context.endSession();
+  closeServices(services);  // Save vector index and close all services
   rl.close();
   process.exit(0);
 }
