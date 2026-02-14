@@ -10,6 +10,7 @@ import { info, warn, debug, error } from '../utils/logger.js';
 import { EmbeddingService } from './embeddings.js';
 import { VectorService } from './vectors.js';
 import { LLMService } from './llm.js';
+import { bootstrapDocs } from './shed-bootstrap.js';
 
 export interface ShedSource {
   id: string;
@@ -85,6 +86,9 @@ export class ShedService {
     this.db.exec(SCHEMA);
     ensureDir(this.sourcesPath);
     info('ShedService initialized', { path: this.shedPath });
+
+    // Bootstrap documentation on first run
+    await bootstrapDocs(this);
   }
 
   // === Document Ingestion ===

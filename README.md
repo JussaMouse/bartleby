@@ -343,6 +343,16 @@ investment, typically $100,000-$200,000 depending on the business...
 
 **Tab Completion:** Press Tab after typing `+` to see available projects.
 
+**Self-Documentation:** On first run, Bartleby automatically ingests its own documentation (README, TECH_SPEC, COMMANDS, optimization guide) into the Shed. This enables natural language help queries:
+
+```
+> ask shed how do I import files?
+> ask shed what is the learning system?
+> ask shed how do I set up weather?
+```
+
+The bootstrap only runs once—subsequent startups detect the marker and skip re-ingestion.
+
 Location: `./shed/`
 
 ### About You
