@@ -4,6 +4,7 @@ import { allTools, getToolsByPriority, getToolByName, getToolDescriptions } from
 import { ServiceContainer } from '../services/index.js';
 import { SemanticMatcher } from './semantic.js';
 import { Complexity } from '../services/llm.js';
+import type { RoutingDecision } from '../llm/enhanced-router.js';
 import { debug, info } from '../utils/logger.js';
 
 export interface RouterResult {
@@ -13,6 +14,8 @@ export interface RouterResult {
   route?: RouteResult;
   /** Complexity classification */
   complexity: Complexity;
+  /** Full routing decision with confidence and reasoning */
+  decision?: RoutingDecision;
 }
 
 export class CommandRouter {
@@ -59,13 +62,19 @@ export class CommandRouter {
     }
 
     // === Step 1: Classify complexity ===
-    const complexity = await this.services!.llm.classifyComplexity(normalized);
-    debug('Complexity classification', { complexity, input: input.slice(0, 50) });
+    const decision = await this.services!.llm.classifyComplexity(normalized);
+    const complexity = decision.complexity;
+    debug('Complexity classification', {
+      complexity,
+      confidence: decision.confidence.toFixed(2),
+      reason: decision.reason,
+      input: input.slice(0, 50)
+    });
 
     // === Step 2: Complex requests skip router entirely ===
     if (complexity === 'COMPLEX') {
       debug('Complex request - routing to Thinking model agentic loop');
-      return { type: 'llm-complex', complexity };
+      return { type: 'llm-complex', complexity, decision };
     }
 
     // === Step 3: Simple requests go through deterministic router ===
@@ -74,14 +83,14 @@ export class CommandRouter {
     const patternResult = this.matchPattern(normalized);
     if (patternResult) {
       debug('Layer 1 match (pattern)', { tool: patternResult.tool });
-      return { type: 'routed', route: patternResult, complexity };
+      return { type: 'routed', route: patternResult, complexity, decision };
     }
 
     // Layer 2: Keyword matching
     const keywordResult = this.matchKeywords(normalized);
     if (keywordResult && keywordResult.confidence >= 0.7) {
       debug('Layer 2 match (keyword)', { tool: keywordResult.tool, confidence: keywordResult.confidence.toFixed(2) });
-      return { type: 'routed', route: keywordResult, complexity };
+      return { type: 'routed', route: keywordResult, complexity, decision };
     }
 
     // Layer 3: Semantic matching (embeddings)
@@ -89,13 +98,13 @@ export class CommandRouter {
       const semanticResult = await this.matchSemantic(normalized);
       if (semanticResult) {
         debug('Layer 3 match (semantic)', { tool: semanticResult.tool, confidence: semanticResult.confidence.toFixed(2) });
-        return { type: 'routed', route: semanticResult, complexity };
+        return { type: 'routed', route: semanticResult, complexity, decision };
       }
     }
 
     // Layer 4: No match - use Fast LLM for simple single-tool call
     debug('No router match - using Fast model for simple LLM fallback');
-    return { type: 'llm-simple', complexity };
+    return { type: 'llm-simple', complexity, decision };
   }
 
   async execute(result: RouteResult, input: string): Promise<string> {

@@ -277,14 +277,70 @@ async function processInput(
       case 'llm-simple':
         // Simple request, no router match - use Fast model
         debug('Handling with Fast model (simple)');
-        response = await agent.handleSimple(input);
+        {
+          const startTime = Date.now();
+          try {
+            response = await agent.handleSimple(input);
+            const responseTime = Date.now() - startTime;
+
+            // Record successful routing outcome for learning
+            if (routerResult.decision) {
+              services.llm.recordRoutingOutcome({
+                decision: routerResult.decision,
+                success: true,
+                responseTimeMs: responseTime,
+              });
+            }
+          } catch (err) {
+            const responseTime = Date.now() - startTime;
+
+            // Record failed routing outcome
+            if (routerResult.decision) {
+              services.llm.recordRoutingOutcome({
+                decision: routerResult.decision,
+                success: false,
+                responseTimeMs: responseTime,
+                errorMessage: String(err),
+              });
+            }
+            throw err; // Re-throw to be handled by outer catch
+          }
+        }
         break;
 
       case 'llm-complex':
         // Complex request - use Thinking model with agentic loop
         debug('Handling with Thinking model (complex agentic loop)');
         console.log('\n🤔 This looks like a complex request. Let me work on it...\n');
-        response = await agent.handleComplex(input);
+        {
+          const startTime = Date.now();
+          try {
+            response = await agent.handleComplex(input);
+            const responseTime = Date.now() - startTime;
+
+            // Record successful routing outcome for learning
+            if (routerResult.decision) {
+              services.llm.recordRoutingOutcome({
+                decision: routerResult.decision,
+                success: true,
+                responseTimeMs: responseTime,
+              });
+            }
+          } catch (err) {
+            const responseTime = Date.now() - startTime;
+
+            // Record failed routing outcome
+            if (routerResult.decision) {
+              services.llm.recordRoutingOutcome({
+                decision: routerResult.decision,
+                success: false,
+                responseTimeMs: responseTime,
+                errorMessage: String(err),
+              });
+            }
+            throw err; // Re-throw to be handled by outer catch
+          }
+        }
         break;
 
       default:
