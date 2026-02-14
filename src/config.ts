@@ -48,6 +48,7 @@ const ConfigSchema = z.object({
     shed: z.string(),
     database: z.string(),
     logs: z.string(),
+    inbox: z.string(),
   }),
 
   weather: z.object({
@@ -145,6 +146,7 @@ export function loadConfig(): Config {
       shed: process.env.SHED_PATH || './shed',
       database: process.env.DATABASE_PATH || './database',
       logs: process.env.LOG_DIR || './logs',
+      inbox: process.env.BARTLEBY_INBOX_PATH || './inbox',
     },
     weather: {
       city: process.env.WEATHER_CITY || undefined,

@@ -18,6 +18,7 @@ import { LearningService } from './learning.js';
 import { BackgroundAnalysis } from './background-analysis.js';
 import { EmbeddingRelationships } from './embedding-relationships.js';
 import { ReflectionService } from './reflection.js';
+import { InboxService } from './inbox.js';
 import { info } from '../utils/logger.js';
 
 export interface ServiceContainer {
@@ -29,6 +30,7 @@ export interface ServiceContainer {
   shed: ShedService;
   calendar: CalendarService;
   data: DataService;
+  inbox: InboxService;
 
   // Context - Bartleby's memory of you
   context: ContextService;
@@ -85,6 +87,10 @@ export async function initServices(config: Config): Promise<ServiceContainer> {
   await calendar.initialize();
   await shed.initialize();
   await scheduler.initialize();
+
+  // Create inbox service (shares garden database)
+  const inbox = new InboxService(garden.getDatabase());
+  await inbox.initialize();
 
   // Create learning service (shares garden database)
   const learning = new LearningService(garden.getDatabase());
@@ -147,6 +153,7 @@ export async function initServices(config: Config): Promise<ServiceContainer> {
     shed,
     calendar,
     data,
+    inbox,
     context,
     learning,
     reflection,
@@ -184,6 +191,7 @@ export { CalendarService } from './calendar.js';
 export { ContextService } from './context.js';
 export { LearningService } from './learning.js';
 export { ReflectionService } from './reflection.js';
+export { InboxService } from './inbox.js';
 export { PresenceService } from './presence.js';
 export { LLMService } from './llm.js';
 export { EmbeddingService } from './embeddings.js';
@@ -200,6 +208,7 @@ export { EmbeddingRelationships } from './embedding-relationships.js';
 
 // Re-export types
 export type { GardenRecord, RecordType, RecordStatus, TaskFilters } from './garden.js';
+export type { InboxItem } from './inbox.js';
 export type { CalendarEntry, CalendarEvent, EntryType, SourceType } from './calendar.js';
 export type { Episode } from './context.js';
 export type { Entity, Observation, Relationship, UserProfile, WorkContext, SessionSummary, CommandRecord, CommandStats } from './learning.js';

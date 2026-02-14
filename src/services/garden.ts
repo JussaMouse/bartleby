@@ -167,6 +167,7 @@ const MIGRATIONS = [
   `ALTER TABLE garden_records ADD COLUMN start_time TEXT`, // ISO datetime for events
   `ALTER TABLE garden_records ADD COLUMN end_time TEXT`,   // ISO datetime for events
   `ALTER TABLE garden_records ADD COLUMN all_day INTEGER DEFAULT 0`, // All-day events flag
+  `ALTER TABLE garden_records ADD COLUMN source_file TEXT`, // Path to source file for imports
 ];
 
 // === Service ===

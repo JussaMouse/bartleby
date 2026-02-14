@@ -242,7 +242,10 @@ Example: Create `new action book flights +thailand-trip` and it immediately appe
 ```
 new page <title>        Create a wiki page (prompts for content)
 new note <title>        Create a note
-import <path> [name]    Import image/file
+import <path> [name]    Import single image/file
+import files            Import all files from inbox directory
+show inbox              View files staged for import
+confirm import          Process and import staged files
 open <title>            View any page
 show pages              List all pages
 show notes              List all notes
@@ -1313,6 +1316,82 @@ Images appear as thumbnails on project pages. Click to view full-size.
 **CLI OCR:**
 ```
 > ocr ~/Desktop/screenshot.png
+```
+
+### File Import Workflow
+
+Import multiple files at once using the inbox directory:
+
+**1. Add files to inbox:**
+```bash
+# Copy files to the inbox directory
+cp ~/Downloads/*.pdf ./inbox/
+cp ~/Documents/*.txt ./inbox/
+cp ~/Pictures/*.jpg ./inbox/
+```
+
+**2. Review and import:**
+```
+> import files
+Found 5 files in inbox:
+
+📄 DOCUMENT (2):
+  - contract.pdf (245.3 KB)
+  - report.docx (89.1 KB)
+
+🖼️ IMAGE (2):
+  - photo1.jpg (1.2 MB)
+  - photo2.jpg (856.3 KB)
+
+📝 TEXT (1):
+  - notes.txt (3.4 KB)
+
+Ready to import. Type "confirm" to process these files.
+
+> confirm
+✓ Imported 5 files:
+
+  • contract.pdf
+    → note: "Imported: Contract"
+    → garden/imports/2026-02-14/contract.pdf
+  • report.docx
+    → note: "Imported: Report"
+    → garden/imports/2026-02-14/report.docx
+  ...
+
+Files stored in: /Users/you/bartleby/garden/imports/2026-02-14
+```
+
+**3. View staged files:**
+```
+> show inbox
+Inbox: 5 files (2.4 MB)
+
+📄 DOCUMENT (2):
+  • contract.pdf (245.3 KB) - captured 2026-02-14
+  • report.docx (89.1 KB) - captured 2026-02-14
+...
+```
+
+**What happens on import:**
+- Files are copied to `garden/imports/YYYY-MM-DD/`
+- Garden records are created (notes for documents/text, media for images)
+- Original files are removed from inbox
+- Records include `source_file` reference to the imported file
+
+**Supported file types:**
+- **Documents**: PDF, DOC, DOCX, ODT, RTF
+- **Spreadsheets**: XLS, XLSX, CSV, TSV, ODS
+- **Images**: PNG, JPG, JPEG, GIF, BMP, SVG, WEBP, HEIC
+- **Text**: TXT, MD, JSON, XML, YAML, LOG
+- **Archives**: ZIP, TAR, GZ, 7Z, RAR
+- **Email**: EML, MSG, MBOX
+- **Web**: HTML, HTM, MHTML
+
+**Configuration:**
+```env
+# .env
+BARTLEBY_INBOX_PATH=./inbox  # Default location
 ```
 
 ### Voice Commands

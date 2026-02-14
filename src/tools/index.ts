@@ -16,6 +16,7 @@ import { mediaTools } from './media.js';
 import { insightsTools } from './insights.js';
 import { relatedTools } from './related.js';
 import { historyTools } from './history.js';
+import { importTools } from './import.js';
 
 // Aggregate all tools
 // promptHandler MUST be first for Layer 0 contextual routing
@@ -31,6 +32,7 @@ export const allTools: Tool[] = [
   ...historyTools,
   ...shedTools,
   ...mediaTools,
+  ...importTools,
   ...schedulerTools,
   ...weatherTools,
   ...systemTools,
