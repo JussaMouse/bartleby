@@ -435,7 +435,7 @@ Example response: {"title": "Deep Work", "author": "Cal Newport"}`;
 
     // Generate answer with timeout
     const startTime = Date.now();
-    debug('Starting LLM call for shed query');
+    info('Starting LLM call for shed query');
     try {
       const response = await Promise.race([
         this.llm.chat([
@@ -447,14 +447,14 @@ Example response: {"title": "Deep Work", "author": "Cal Newport"}`;
             role: 'user',
             content: `Context:\n${context}\n\n---\n\nQuestion: ${question}`,
           },
-        ], { tier: 'thinking' }),
+        ], { tier: 'fast' }),
         new Promise<string>((_, reject) =>
           setTimeout(() => reject(new Error('LLM query timeout after 60s')), 60000)
         ),
       ]);
 
       const duration = Date.now() - startTime;
-      debug('LLM call completed', { duration: `${duration}ms`, responseLength: response.length });
+      info('LLM call completed', { duration: `${duration}ms`, responseLength: response.length });
       return response;
     } catch (err) {
       const duration = Date.now() - startTime;

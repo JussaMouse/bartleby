@@ -223,11 +223,11 @@ export class LLMService {
     }
 
     const startTime = Date.now();
-    debug('Starting LLM HTTP call', { tier, model: requestParams.model });
+    info('Starting LLM HTTP call', { tier, model: requestParams.model });
     const response = await client.chat.completions.create(requestParams);
     const duration = Date.now() - startTime;
     const content = response.choices[0]?.message?.content || '';
-    debug('LLM HTTP call completed', { tier, duration: `${duration}ms`, responseLength: content.length });
+    info('LLM HTTP call completed', { tier, duration: `${duration}ms`, responseLength: content.length });
 
     // Cache the response
     this.cache.set(tier, messagesWithSystem, options.tools, content);

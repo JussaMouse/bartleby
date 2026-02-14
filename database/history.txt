@@ -16,3 +16,7 @@ how do i add a note to the garden?
 quit
 what commands are available?
 quit
+how do i create a new note?
+quit
+how do i add a task?
+quit
