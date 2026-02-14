@@ -1334,6 +1334,11 @@ cp ~/Pictures/*.jpg ./inbox/
 ```
 > import files              # Scan inbox
 > import files --ocr        # Enable OCR for images
+
+# Or import all at once without confirmation
+> import all
+> import all --ocr
+
 Found 5 files in inbox:
 
 📄 DOCUMENT (2):
@@ -1365,13 +1370,24 @@ Files stored in: /Users/you/bartleby/garden/imports/2026-02-14
 
 **3. View staged files:**
 ```
-> show inbox
+> show inbox                # Show all files
+> show inbox images         # Filter by type
+> show inbox documents
+
 Inbox: 5 files (2.4 MB)
 
 📄 DOCUMENT (2):
   • contract.pdf (245.3 KB) - captured 2026-02-14
   • report.docx (89.1 KB) - captured 2026-02-14
 ...
+```
+
+**4. Selective and batch operations:**
+```
+> import only images        # Import only images, leave others
+> import only documents     # Import only documents
+
+> clear inbox               # Delete all staged files
 ```
 
 **What happens on import:**

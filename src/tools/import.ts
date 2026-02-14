@@ -358,17 +358,19 @@ export const showInbox: Tool = {
   routing: {
     patterns: [
       /^show\s+inbox\s*$/i,
+      /^show\s+inbox\s+(documents?|spreadsheets?|images?|text|archives?|emails?|web|other)\s*$/i,
       /^list\s+inbox\s*$/i,
       /^inbox\s*$/i,
     ],
     keywords: {
       verbs: ['show', 'list', 'view'],
-      nouns: ['inbox', 'imports'],
+      nouns: ['inbox', 'imports', 'documents', 'images', 'spreadsheets'],
     },
     examples: [
       'show inbox',
+      'show inbox images',
+      'show inbox documents',
       'list inbox',
-      'inbox',
     ],
     priority: 70,
   },
