@@ -36,32 +36,47 @@ export class EmbeddingService {
       headers['Authorization'] = `Bearer ${this.config.embeddings.apiKey}`;
     }
 
-    const response = await fetch(`${this.config.embeddings.url}/embeddings`, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({
-        model: this.config.embeddings.model,
-        input: text,
-      }),
-    });
+    // Create AbortController for timeout
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 30000); // 30 second timeout
 
-    if (!response.ok) {
-      throw new Error(`Embedding failed: ${response.status}`);
-    }
+    try {
+      const response = await fetch(`${this.config.embeddings.url}/embeddings`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          model: this.config.embeddings.model,
+          input: text,
+        }),
+        signal: controller.signal,
+      });
 
-    const data = await response.json() as { data: Array<{ embedding: number[] }> };
-    const embedding = data.data[0].embedding;
+      clearTimeout(timeout);
 
-    // Cache with simple LRU
-    this.cache.set(text, embedding);
-    if (this.cache.size > 1000) {
-      const keys = Array.from(this.cache.keys());
-      for (let i = 0; i < 100; i++) {
-        this.cache.delete(keys[i]);
+      if (!response.ok) {
+        throw new Error(`Embedding failed: ${response.status}`);
       }
-    }
 
-    return embedding;
+      const data = await response.json() as { data: Array<{ embedding: number[] }> };
+      const embedding = data.data[0].embedding;
+
+      // Cache with simple LRU
+      this.cache.set(text, embedding);
+      if (this.cache.size > 1000) {
+        const keys = Array.from(this.cache.keys());
+        for (let i = 0; i < 100; i++) {
+          this.cache.delete(keys[i]);
+        }
+      }
+
+      return embedding;
+    } catch (err) {
+      clearTimeout(timeout);
+      if ((err as Error).name === 'AbortError') {
+        throw new Error('Embedding request timeout after 30s');
+      }
+      throw err;
+    }
   }
 
   async embedBatch(texts: string[]): Promise<number[][]> {

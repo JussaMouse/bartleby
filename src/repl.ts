@@ -655,17 +655,10 @@ export async function startRepl(
     await processInput(input, rl, router, agent, services, dashboardServer);
   });
 
-  rl.on('close', async () => {
-    // Disable bracketed paste mode on exit
-    if (process.stdin.isTTY) {
-      process.stdout.write('\x1b[?2004l');
-    }
-    info('Session ended');
-    await services.context.endSession();
-    await dashboardServer.stop();
-    closeServices(services);  // Save vector index and close all services
-    process.exit(0);
-  });
+  // Note: Shutdown is handled by handleShutdown() which is called from:
+  // 1. quit command (in processInput)
+  // 2. SIGINT/SIGTERM signals (below)
+  // No need for separate rl.on('close') handler as it causes race conditions
 
   // Handle shutdown signals (Ctrl+C, kill, etc.)
   const signalHandler = async () => {
@@ -706,10 +699,31 @@ async function handleShutdown(
   console.log('\nGoodbye! 👋\n');
   info('Shutting down...');
 
-  // Graceful shutdown sequence
-  await services.context.endSession();  // End session and save episode
-  await dashboardServer.stop();         // Stop dashboard server
-  closeServices(services);              // Save vector index and close all services
-  rl.close();                           // Close readline interface
+  try {
+    // Skip session analysis during shutdown (it makes LLM calls which can hang)
+    // Just clear the current session
+    if (services.context['currentSession']) {
+      services.context['currentSession'] = null;
+    }
+    console.log('[DEBUG] Session cleared, stopping dashboard');
+    info('Stopping dashboard...');
+
+    // Stop dashboard with timeout
+    await Promise.race([
+      dashboardServer.stop(),
+      new Promise(resolve => setTimeout(resolve, 3000))
+    ]);
+    info('Dashboard stopped');
+  } catch (err) {
+    warn('Shutdown error', { error: String(err) });
+  }
+
+  // Always close services to save state
+  info('Closing services...');
+  closeServices(services);
+  info('Services closed');
+
+  rl.close();
+  console.log('[DEBUG] About to call process.exit(0)');
   process.exit(0);
 }

@@ -5,7 +5,7 @@ import { ServiceContainer } from '../services/index.js';
 import { SemanticMatcher } from './semantic.js';
 import { Complexity } from '../services/llm.js';
 import type { RoutingDecision } from '../llm/enhanced-router.js';
-import { debug, info } from '../utils/logger.js';
+import { debug, info, warn } from '../utils/logger.js';
 
 export interface RouterResult {
   /** How the request was handled */
@@ -30,9 +30,16 @@ export class CommandRouter {
   async initialize(services: ServiceContainer): Promise<void> {
     this.services = services;
 
-    // Initialize semantic matcher if embeddings available
+    // Initialize semantic matcher if embeddings available (with timeout)
     this.semantic = new SemanticMatcher(services.embeddings);
-    await this.semantic.initialize(this.tools);
+    try {
+      await Promise.race([
+        this.semantic.initialize(this.tools),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Semantic matcher initialization timeout')), 10000))
+      ]);
+    } catch (err) {
+      warn('Semantic matcher initialization failed or timed out', { error: String(err) });
+    }
 
     info(`CommandRouter initialized with ${this.tools.length} tools`);
   }

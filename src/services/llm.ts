@@ -49,14 +49,17 @@ export class LLMService {
       router: new OpenAI({
         baseURL: config.llm.router.url,
         apiKey,
+        timeout: 30000, // 30 second timeout for quick classification
       }),
       fast: new OpenAI({
         baseURL: config.llm.fast.url,
         apiKey,
+        timeout: 60000, // 60 second timeout for general responses
       }),
       thinking: new OpenAI({
         baseURL: config.llm.thinking.url,
         apiKey,
+        timeout: 90000, // 90 second timeout for complex reasoning
       }),
     };
   }
