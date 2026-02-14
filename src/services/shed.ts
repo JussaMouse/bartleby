@@ -433,12 +433,12 @@ Example response: {"title": "Deep Work", "author": "Cal Newport"}`;
       contextLength: context.length,
     });
 
-    // Generate answer with timeout
+    // Generate answer with timeout using streaming (fixes connection termination bug)
     const startTime = Date.now();
-    info('Starting LLM call for shed query');
+    info('Starting LLM streaming call for shed query');
     try {
-      const response = await Promise.race([
-        this.llm.chat([
+      const streamPromise = (async () => {
+        const stream = this.llm.chatStream([
           {
             role: 'system',
             content: `You are a helpful assistant. Answer the question based ONLY on the provided context. If the context doesn't contain enough information to answer, say so. Always cite your sources using [Source: title] format.`,
@@ -447,14 +447,24 @@ Example response: {"title": "Deep Work", "author": "Cal Newport"}`;
             role: 'user',
             content: `Context:\n${context}\n\n---\n\nQuestion: ${question}`,
           },
-        ], { tier: 'fast' }),
+        ], { tier: 'fast' });
+
+        let fullResponse = '';
+        for await (const chunk of stream) {
+          fullResponse += chunk; // chatStream yields delta chunks
+        }
+        return fullResponse;
+      })();
+
+      const response = await Promise.race([
+        streamPromise,
         new Promise<string>((_, reject) =>
           setTimeout(() => reject(new Error('LLM query timeout after 60s')), 60000)
         ),
       ]);
 
       const duration = Date.now() - startTime;
-      info('LLM call completed', { duration: `${duration}ms`, responseLength: response.length });
+      info('LLM streaming call completed', { duration: `${duration}ms`, responseLength: response.length });
       return response;
     } catch (err) {
       const duration = Date.now() - startTime;
