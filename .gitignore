@@ -8,13 +8,8 @@ dist/
 .env
 .env.local
 
-# Databases
-database/*.sqlite3
-database/*.sqlite3-shm
-database/*.sqlite3-wal
-database/*.hnsw
-database/*.json
-database/history.txt
+# Databases - exclude entire directory
+database/
 
 # Logs
 logs/
@@ -32,8 +27,18 @@ Thumbs.db
 
 # User data - auto-generated from database
 garden/
-shed/sources/
-shed/chunks/
+shed/
+
+# Configuration files (use examples instead)
+settings.toml
+import-rules.json
+!*.example.json
+
+# Test and diagnostic files
+test-*.ts
+test-*.js
+check-connectivity.js
+diagnose-llm.js
 
 # Developer notes and testing
 devs-notes/
