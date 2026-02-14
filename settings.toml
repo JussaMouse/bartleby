@@ -1,0 +1,81 @@
+# vice-server Configuration File
+#
+# This is an example configuration. Copy this file to 'settings.toml'
+# in the same directory and edit it to match your setup.
+# The 'settings.toml' file is ignored by Git and should be backed up.
+#
+
+[server]
+# The public domain name for this server (e.g., "mlx-box.mydomain.com").
+# This is REQUIRED for obtaining an SSL certificate with Let's Encrypt.
+domain_name = "vice.higfamily.net"
+# The email address to use for Let's Encrypt SSL registration and recovery.
+letsencrypt_email = "nosucka@gmail.com"
+
+# The host IP the application services will bind to.
+# For a secure, internet-facing server using a reverse proxy,
+# this MUST be "127.0.0.1".
+host = "127.0.0.1"
+
+api_keys = [
+  "7420cdec4d6d06f1bbfdd87dcef8b2635030e3a0fa06f3b5653af72192034f3c",
+  "508c809d29897a71470e61132c94de5961cdfe75031fb592a7570a162ff937fd"
+]
+
+[services]
+  # Configuration for the secure shell (SSH) service.
+  [services.ssh]
+  port = 333
+
+  # --- 3-Tier Intelligent Routing Configuration ---
+  
+  # Tier 0: Router Service
+  # Lightweight model for request classification and trivial queries
+  [services.router]
+  port = 8080
+  backend_port = 8090
+  model = "mlx-community/Qwen3-0.6B-4bit"
+  max_tokens = 100
+
+  # Tier 1 & 2: Fast Service
+  # General purpose, low-latency model for most queries and simple tools
+  [services.fast]
+  port = 8081
+  backend_port = 8091
+  model = "mlx-community/Qwen3-30B-A3B-4bit"
+  max_tokens = 4096
+
+  # Tier 3: Thinking Service
+  # High-reasoning model for complex tasks, coding, and planning
+  [services.thinking]
+  port = 8083
+  backend_port = 8093
+  model = "mlx-community/Qwen3-30B-A3B-Thinking-2507-4bit"
+  max_tokens = 8192
+  thinking_budget = 4096
+
+  # --- Embedding Service ---
+  
+  # Configuration for the Embedding service.
+  [services.embedding]
+  port = 8084
+  backend_port = 8094
+  # The SentenceTransformer model to use for embeddings.
+  model = "Qwen/Qwen3-Embedding-8B"
+  batch_size = 64
+
+# --- OCR (Vision Chat) Service ---
+#
+# OpenAI-compatible /v1/chat/completions endpoint for vision OCR using an MLX VLM.
+# Intended for screenshots, receipts, scanned docs, etc.
+[services.ocr]
+port = 8085
+backend_port = 8095
+model = "mlx-community/olmOCR-2-7B-1025-mlx-8bit"
+# Optional: tune server behavior (passed through to mlx-openai-server if set)
+# context_length = 8192
+max_concurrency = 1
+
+# Configuration for the Frontend web service.
+[services.frontend]
+port = 8000

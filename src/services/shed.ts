@@ -434,6 +434,8 @@ Example response: {"title": "Deep Work", "author": "Cal Newport"}`;
     });
 
     // Generate answer with timeout
+    const startTime = Date.now();
+    debug('Starting LLM call for shed query');
     try {
       const response = await Promise.race([
         this.llm.chat([
@@ -451,12 +453,21 @@ Example response: {"title": "Deep Work", "author": "Cal Newport"}`;
         ),
       ]);
 
+      const duration = Date.now() - startTime;
+      debug('LLM call completed', { duration: `${duration}ms`, responseLength: response.length });
       return response;
     } catch (err) {
+      const duration = Date.now() - startTime;
       if (err instanceof Error && err.message.includes('timeout')) {
-        warn('Shed query timeout', { question: question.substring(0, 50) });
+        warn('Shed query timeout', { question: question.substring(0, 50), duration: `${duration}ms` });
         return 'The query took too long to process. Try asking a more specific question.';
       }
+      error('Shed query failed', {
+        question: question.substring(0, 50),
+        duration: `${duration}ms`,
+        error: String(err),
+        errorType: err instanceof Error ? err.constructor.name : typeof err
+      });
       throw err;
     }
   }
