@@ -17,6 +17,7 @@ import { AuditService } from './audit.js';
 import { LearningService } from './learning.js';
 import { BackgroundAnalysis } from './background-analysis.js';
 import { EmbeddingRelationships } from './embedding-relationships.js';
+import { ReflectionService } from './reflection.js';
 import { info } from '../utils/logger.js';
 
 export interface ServiceContainer {
@@ -32,6 +33,7 @@ export interface ServiceContainer {
   // Context - Bartleby's memory of you
   context: ContextService;
   learning: LearningService; // Unified entity-observation-relationship system
+  reflection: ReflectionService; // Continuous learning from interactions
 
   // Presence - Bartleby's initiative layer (decides when to speak unprompted)
   presence: PresenceService;
@@ -86,6 +88,9 @@ export async function initServices(config: Config): Promise<ServiceContainer> {
 
   // Create learning service (shares garden database)
   const learning = new LearningService(garden.getDatabase());
+
+  // Create reflection service (depends on learning and llm)
+  const reflection = new ReflectionService(learning, llm);
 
   // Wire up learning service to garden for unified FactsService backend
   garden.setLearningService(learning);
@@ -144,6 +149,7 @@ export async function initServices(config: Config): Promise<ServiceContainer> {
     data,
     context,
     learning,
+    reflection,
     presence,
     llm,
     embeddings,
@@ -177,6 +183,7 @@ export { GardenService } from './garden.js';
 export { CalendarService } from './calendar.js';
 export { ContextService } from './context.js';
 export { LearningService } from './learning.js';
+export { ReflectionService } from './reflection.js';
 export { PresenceService } from './presence.js';
 export { LLMService } from './llm.js';
 export { EmbeddingService } from './embeddings.js';
@@ -196,6 +203,7 @@ export type { GardenRecord, RecordType, RecordStatus, TaskFilters } from './gard
 export type { CalendarEntry, CalendarEvent, EntryType, SourceType } from './calendar.js';
 export type { Episode } from './context.js';
 export type { Entity, Observation, Relationship, UserProfile, WorkContext, SessionSummary, CommandRecord, CommandStats } from './learning.js';
+export type { ConversationTurn, ReflectionInsight } from './reflection.js';
 export type { PresenceConfig, MomentType } from './presence.js';
 export type { Tier, Complexity } from './llm.js';
 export type { VectorMetadata } from './vectors.js';

@@ -1,6 +1,6 @@
 // src/agent/index.ts
 import OpenAI from 'openai';
-import { ServiceContainer } from '../services/index.js';
+import { ServiceContainer, ConversationTurn } from '../services/index.js';
 import { allTools, getToolByName, getToolDescriptions } from '../tools/index.js';
 import { Tool, ToolContext } from '../tools/types.js';
 import { buildSimplePrompt, buildComplexPrompt } from './prompts.js';
@@ -107,6 +107,23 @@ export class Agent {
   }
 
   /**
+   * Trigger reflection on conversation turn (async, non-blocking)
+   */
+  private triggerReflection(input: string, response: string, success: boolean): void {
+    const turn: ConversationTurn = {
+      userInput: input,
+      agentResponse: response,
+      timestamp: new Date(),
+      success,
+    };
+
+    // Run reflection asynchronously - don't await to avoid blocking
+    this.services.reflection.reflect(turn).catch(err => {
+      debug('Background reflection failed', { error: String(err) });
+    });
+  }
+
+  /**
    * Handle a simple request using Fast model with single tool call
    */
   async handleSimple(input: string): Promise<string> {
@@ -114,6 +131,9 @@ export class Agent {
 
     const tools = getToolDescriptions();
     const systemPrompt = buildSimplePrompt(tools, profile, contextStr);
+
+    let finalResponse: string;
+    let success = true;
 
     try {
       const rawResponse = await this.services.llm.chat([
@@ -145,22 +165,33 @@ export class Agent {
           const context: ToolContext = { input, services: this.services };
           debug('Simple agent tool call', { tool: toolName, args });
           const result = await tool.execute(args, context);
-          return result ?? '';
+          finalResponse = result ?? '';
         } else {
           warn('Agent referenced unknown tool', { tool: toolName });
+          success = false;
+          finalResponse = response
+            .replace(/TOOL:.*$/gim, '')
+            .replace(/ARGS:.*$/gim, '')
+            .trim();
         }
+      } else {
+        // No tool call - return conversational response (already cleaned)
+        finalResponse = response
+          .replace(/TOOL:.*$/gim, '')
+          .replace(/ARGS:.*$/gim, '')
+          .trim() || "I'm not sure how to help with that. Try 'help' for commands.";
       }
-
-      // No tool call - return conversational response (already cleaned)
-      return response
-        .replace(/TOOL:.*$/gim, '')
-        .replace(/ARGS:.*$/gim, '')
-        .trim() || "I'm not sure how to help with that. Try 'help' for commands.";
 
     } catch (err) {
       warn('Simple LLM call failed', { error: String(err) });
-      return "I'm having trouble connecting. Try a simpler command or 'help'.";
+      success = false;
+      finalResponse = "I'm having trouble connecting. Try a simpler command or 'help'.";
     }
+
+    // Trigger background reflection (non-blocking)
+    this.triggerReflection(input, finalResponse, success);
+
+    return finalResponse;
   }
 
   /**
@@ -179,6 +210,9 @@ export class Agent {
     ];
 
     info('Starting agentic loop', { input: input.slice(0, 50), maxIterations });
+
+    let finalResponse: string;
+    let success = true;
 
     try {
       for (let iteration = 0; iteration < maxIterations; iteration++) {
@@ -210,7 +244,7 @@ export class Agent {
               try {
                 const args = JSON.parse(toolCall.function.arguments || '{}');
                 const context: ToolContext = { input, services: this.services };
-                
+
                 debug('Agentic tool call', { tool: toolName, args, iteration });
                 result = await tool.execute(args, context) ?? '';
               } catch (err) {
@@ -230,21 +264,30 @@ export class Agent {
             });
           }
         } else {
-          // No tool calls - model is done, return final response
-          const finalResponse = cleanLLMOutput(response.content || "I've completed the task.", this.llmVerbose);
+          // No tool calls - model is done
+          finalResponse = cleanLLMOutput(response.content || "I've completed the task.", this.llmVerbose);
           info('Agentic loop complete', { iterations: iteration + 1 });
+
+          // Trigger reflection before returning
+          this.triggerReflection(input, finalResponse, success);
           return finalResponse;
         }
       }
 
       // Max iterations reached
       warn('Agentic loop hit max iterations', { maxIterations });
-      return "I wasn't able to complete that task within the allowed steps. Please try breaking it down into smaller requests.";
+      success = false;
+      finalResponse = "I wasn't able to complete that task within the allowed steps. Please try breaking it down into smaller requests.";
 
     } catch (err) {
       error('Agentic loop failed', { error: String(err) });
-      return "I encountered an error while working on your request. Please try again or simplify the request.";
+      success = false;
+      finalResponse = "I encountered an error while working on your request. Please try again or simplify the request.";
     }
+
+    // Trigger reflection before returning
+    this.triggerReflection(input, finalResponse, success);
+    return finalResponse;
   }
 
   /**

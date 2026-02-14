@@ -517,6 +517,15 @@ relationships (from_entity, to_entity, relation_type, strength)
 - Validates all tool parameters before execution
 - Provides clear error messages for invalid requests
 
+**Continuous Learning (Reflection Service):**
+- Automatically analyzes every conversation turn
+- Detects user preferences ("I prefer X", "I like Y")
+- Identifies behavioral patterns (time-based habits, routines)
+- Learns from corrections ("No, I meant X", "Actually...")
+- Tracks goals and intentions ("I want to X", "My goal is Y")
+- Runs asynchronously to avoid blocking responses
+- All insights stored with confidence scores in learning system
+
 ---
 
 ## Data Tools
