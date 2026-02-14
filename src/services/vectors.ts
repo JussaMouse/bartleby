@@ -131,7 +131,36 @@ export class VectorService {
     const id = uuidv4();
     const label = this.nextLabel++;
 
-    this.index.addPoint(embedding, label);
+    try {
+      // Validate embedding
+      if (!Array.isArray(embedding) || embedding.length !== this.dimensions) {
+        error('Invalid embedding dimensions', {
+          expected: this.dimensions,
+          received: embedding.length,
+          type: metadata.type
+        });
+        throw new Error(`Embedding dimension mismatch: expected ${this.dimensions}, got ${embedding.length}`);
+      }
+
+      // Add to HNSW index
+      this.index.addPoint(embedding, label);
+
+      debug('Vector added to index', {
+        id,
+        label,
+        type: metadata.type,
+        dimensions: embedding.length
+      });
+    } catch (err) {
+      error('Failed to add vector to index', {
+        error: String(err),
+        label,
+        type: metadata.type,
+        embeddingLength: embedding?.length,
+        expectedDimensions: this.dimensions
+      });
+      throw err;
+    }
 
     const fullMetadata: VectorMetadata = { ...metadata, id } as VectorMetadata;
     this.metadata.set(label, fullMetadata);
@@ -139,10 +168,10 @@ export class VectorService {
 
     // Save periodically
     if (this.nextLabel % 100 === 0) {
+      info('Saving vector index', { vectorCount: this.nextLabel });
       this.save();
     }
 
-    debug('Vector added', { id, type: metadata.type });
     return id;
   }
 

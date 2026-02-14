@@ -662,7 +662,7 @@ export async function startRepl(
     }
     info('Session ended');
     await services.context.endSession();
-    dashboardServer.stop();
+    await dashboardServer.stop();
     closeServices(services);  // Save vector index and close all services
     process.exit(0);
   });
@@ -708,7 +708,7 @@ async function handleShutdown(
 
   // Graceful shutdown sequence
   await services.context.endSession();  // End session and save episode
-  dashboardServer.stop();               // Stop dashboard server
+  await dashboardServer.stop();         // Stop dashboard server
   closeServices(services);              // Save vector index and close all services
   rl.close();                           // Close readline interface
   process.exit(0);

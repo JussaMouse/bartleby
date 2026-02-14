@@ -1762,7 +1762,22 @@ export class DashboardServer {
     });
   }
 
-  stop() {
-    this.server.close();
+  stop(): Promise<void> {
+    return new Promise((resolve) => {
+      // Force close after 2 seconds if graceful close doesn't complete
+      const timeout = setTimeout(() => {
+        resolve();
+      }, 2000);
+
+      this.server.close(() => {
+        clearTimeout(timeout);
+        resolve();
+      });
+
+      // Also close all active connections
+      this.wss.clients.forEach((client) => {
+        client.terminate();
+      });
+    });
   }
 }
