@@ -516,6 +516,12 @@ relationships (from_entity, to_entity, relation_type, strength)
   - Optimization recommendations based on usage patterns
   - Typical fast tier: ~180ms response time, 77%+ success rate
   - Typical thinking tier: ~2.6s response time, 95%+ success rate
+- **Response Streaming:**
+  - Real-time token streaming for conversational responses
+  - Reduced perceived latency (see first tokens immediately)
+  - Async generator pattern for efficient chunk processing
+  - Compatible with response caching (cached responses yield instantly)
+  - Available via `chatStream()` and `handleSimpleStream()` methods
 
 **Self-Improvement:**
 - Agent learns from mistakes

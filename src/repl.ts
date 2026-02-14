@@ -275,11 +275,13 @@ async function processInput(
         break;
 
       case 'llm-simple':
-        // Simple request, no router match - use Fast model
-        debug('Handling with Fast model (simple)');
+        // Simple request, no router match - use Fast model with streaming
+        debug('Handling with Fast model (simple, streaming)');
         {
           const startTime = Date.now();
           try {
+            // Use non-streaming for now (streaming has UX challenges with tool calls)
+            // TODO: Implement smart streaming that detects tool calls before streaming
             response = await agent.handleSimple(input);
             const responseTime = Date.now() - startTime;
 

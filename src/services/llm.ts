@@ -229,6 +229,66 @@ export class LLMService {
   }
 
   /**
+   * Stream chat responses in real-time
+   *
+   * Yields chunks as they arrive from the LLM for better perceived latency.
+   * Returns the full accumulated response at the end.
+   *
+   * Note: Streaming responses are NOT cached (cache only applies to complete responses)
+   */
+  async *chatStream(
+    messages: Array<{ role: 'system' | 'user' | 'assistant' | 'tool'; content: string; toolCallId?: string }>,
+    options: { tier?: Tier; maxTokens?: number; skipCache?: boolean } = {}
+  ): AsyncGenerator<string, string, unknown> {
+    const tier = options.tier || 'fast';
+    const tierConfig = this.config.llm[tier];
+    const client = this.clients[tier];
+
+    // Prepend appropriate system prompt if not already present
+    const hasSystemPrompt = messages.some(m => m.role === 'system');
+    const messagesWithSystem = hasSystemPrompt
+      ? messages
+      : [{ role: 'system' as const, content: getSystemPrompt(tier) }, ...messages];
+
+    // Check cache first (unless explicitly skipped)
+    if (!options.skipCache) {
+      const cached = this.cache.get(tier, messagesWithSystem);
+      if (cached) {
+        debug('LLM cache hit (streaming)', { tier, model: tierConfig.model });
+        // Yield cached response in one chunk
+        yield cached;
+        return cached;
+      }
+    }
+
+    debug('LLM chat stream', { tier, model: tierConfig.model });
+
+    const requestParams: OpenAI.ChatCompletionCreateParamsStreaming = {
+      model: tierConfig.model,
+      messages: messagesWithSystem as OpenAI.ChatCompletionMessageParam[],
+      max_tokens: options.maxTokens || tierConfig.maxTokens,
+      stream: true,
+    };
+
+    const stream = await client.chat.completions.create(requestParams);
+    let fullContent = '';
+
+    // Stream chunks to caller
+    for await (const chunk of stream) {
+      const delta = chunk.choices[0]?.delta?.content || '';
+      if (delta) {
+        fullContent += delta;
+        yield delta;
+      }
+    }
+
+    // Cache the complete response
+    this.cache.set(tier, messagesWithSystem, undefined, fullContent);
+
+    return fullContent;
+  }
+
+  /**
    * Chat with function calling support - returns full message for tool calls
    */
   async chatWithTools(

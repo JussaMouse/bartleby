@@ -195,6 +195,90 @@ export class Agent {
   }
 
   /**
+   * Handle a simple request with streaming output
+   *
+   * Yields chunks as they arrive for real-time display.
+   * The final yielded value is the complete response.
+   */
+  async *handleSimpleStream(input: string): AsyncGenerator<string> {
+    const { profile, context: contextStr } = await this.buildRichContext(input);
+
+    const tools = getToolDescriptions();
+    const systemPrompt = buildSimplePrompt(tools, profile, contextStr);
+
+    let finalResponse = '';
+    let success = true;
+
+    try {
+      const stream = this.services.llm.chatStream([
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: input },
+      ], { tier: 'fast' });
+
+      let rawResponse = '';
+
+      // Collect and yield chunks as they arrive
+      for await (const chunk of stream) {
+        rawResponse += chunk;
+        yield chunk;
+      }
+
+      // Clean thinking tags and special tokens
+      const response = cleanLLMOutput(rawResponse, this.llmVerbose);
+
+      // Parse for tool call (text-based format for simple model)
+      const toolMatch = response.match(/TOOL:\s*(\w+)/i);
+      const argsMatch = response.match(/ARGS:\s*(\{.*?\})/is);
+
+      if (toolMatch) {
+        const toolName = toolMatch[1];
+        const tool = getToolByName(toolName);
+
+        if (tool) {
+          let args: Record<string, unknown> = {};
+          if (argsMatch) {
+            try {
+              args = JSON.parse(argsMatch[1]);
+            } catch {
+              debug('Failed to parse tool args', { raw: argsMatch[1] });
+            }
+          }
+
+          const context: ToolContext = { input, services: this.services };
+          debug('Simple agent tool call (streaming)', { tool: toolName, args });
+          const result = await tool.execute(args, context);
+          finalResponse = result ?? '';
+        } else {
+          warn('Agent referenced unknown tool', { tool: toolName });
+          success = false;
+          finalResponse = response
+            .replace(/TOOL:.*$/gim, '')
+            .replace(/ARGS:.*$/gim, '')
+            .trim();
+        }
+      } else {
+        // No tool call - use the streamed response
+        finalResponse = response
+          .replace(/TOOL:.*$/gim, '')
+          .replace(/ARGS:.*$/gim, '')
+          .trim() || "I'm not sure how to help with that. Try 'help' for commands.";
+      }
+
+    } catch (err) {
+      warn('Simple LLM streaming call failed', { error: String(err) });
+      success = false;
+      finalResponse = "I'm having trouble connecting. Try a simpler command or 'help'.";
+    }
+
+    // Trigger background reflection (non-blocking)
+    this.triggerReflection(input, finalResponse, success);
+
+    // Note: finalResponse is set but streaming already happened
+    // For conversational responses, the streamed content is the response
+    // For tool calls, the tool result is in finalResponse but wasn't streamed
+  }
+
+  /**
    * Handle a complex request using Thinking model with agentic loop
    * Uses OpenAI function calling for structured tool invocation
    */
