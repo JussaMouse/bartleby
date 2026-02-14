@@ -142,8 +142,13 @@ export const askShed: Tool = {
   routing: {
     patterns: [
       /^ask\s+shed\s+(.+)$/i,
+      /^shed\s+query\s+(.+)$/i,
       /^shed\s+(.+)$/i,
       /^what\s+do\s+(my\s+)?(documents?|notes?|files?)\s+say\s+about\s+(.+)$/i,
+      // Help queries - catch "how do i", "how can i", "how to", etc.
+      /^how\s+(do|can|to)\s+i\s+(.+)$/i,
+      /^what('s| is)\s+the\s+(best\s+)?way\s+to\s+(.+)$/i,
+      /^how\s+to\s+(.+)$/i,
     ],
     keywords: {
       verbs: ['ask', 'query', 'search'],
@@ -153,8 +158,10 @@ export const askShed: Tool = {
       'ask shed about machine learning',
       'what do my documents say about project management',
       'shed what are the main themes',
+      'how do i import files',
+      'how to set up weather',
     ],
-    priority: 75,
+    priority: 85,  // Higher priority to catch help queries before command tools
   },
 
   parameters: {
