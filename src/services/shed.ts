@@ -402,11 +402,11 @@ Example response: {"title": "Deep Work", "author": "Cal Newport"}`;
 
   // === RAG Query ===
 
-  async query(question: string, topK = 5): Promise<string> {
+  async query(question: string, topK = 3): Promise<string> {
     // Get query embedding
     const queryEmbedding = await this.embeddings.embed(question);
 
-    // Find similar chunks
+    // Find similar chunks (reduced to 3 for faster responses)
     const results = await this.vectors.search(queryEmbedding, topK, {
       type: 'shed_chunk',
     });
@@ -427,19 +427,38 @@ Example response: {"title": "Deep Work", "author": "Cal Newport"}`;
 
     const context = contextParts.join('\n\n---\n\n');
 
-    // Generate answer
-    const response = await this.llm.chat([
-      {
-        role: 'system',
-        content: `You are a helpful assistant. Answer the question based ONLY on the provided context. If the context doesn't contain enough information to answer, say so. Always cite your sources using [Source: title] format.`,
-      },
-      {
-        role: 'user',
-        content: `Context:\n${context}\n\n---\n\nQuestion: ${question}`,
-      },
-    ], { tier: 'thinking' });
+    info('Shed query', {
+      question: question.substring(0, 50),
+      chunks: results.length,
+      contextLength: context.length,
+    });
 
-    return response;
+    // Generate answer with timeout
+    try {
+      const response = await Promise.race([
+        this.llm.chat([
+          {
+            role: 'system',
+            content: `You are a helpful assistant. Answer the question based ONLY on the provided context. If the context doesn't contain enough information to answer, say so. Always cite your sources using [Source: title] format.`,
+          },
+          {
+            role: 'user',
+            content: `Context:\n${context}\n\n---\n\nQuestion: ${question}`,
+          },
+        ], { tier: 'thinking' }),
+        new Promise<string>((_, reject) =>
+          setTimeout(() => reject(new Error('LLM query timeout after 30s')), 30000)
+        ),
+      ]);
+
+      return response;
+    } catch (err) {
+      if (err instanceof Error && err.message.includes('timeout')) {
+        warn('Shed query timeout', { question: question.substring(0, 50) });
+        return 'The query took too long to process. Try asking a more specific question.';
+      }
+      throw err;
+    }
   }
 
   // === CRUD ===
