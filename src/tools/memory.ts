@@ -1,6 +1,12 @@
 // src/tools/memory.ts
 import { Tool } from './types.js';
 import { MemoryTools } from './memory-tools.js';
+import {
+  StoreObservationSchema,
+  RetrieveContextSchema,
+  UpdateObservationSchema,
+  ForgetObservationSchema,
+} from './schemas.js';
 
 /**
  * Memory management tools for agent-controlled learning
@@ -12,6 +18,7 @@ import { MemoryTools } from './memory-tools.js';
 export const storeObservation: Tool = {
   name: 'storeObservation',
   description: 'Store a fact or observation about an entity in memory',
+  schema: StoreObservationSchema,
 
   routing: {
     patterns: [
@@ -73,6 +80,7 @@ export const storeObservation: Tool = {
 export const retrieveContext: Tool = {
   name: 'retrieveContext',
   description: 'Retrieve observations and context about an entity from memory',
+  schema: RetrieveContextSchema,
 
   routing: {
     patterns: [
@@ -143,6 +151,7 @@ export const retrieveContext: Tool = {
 export const updateObservation: Tool = {
   name: 'updateObservation',
   description: 'Update an existing observation with new information',
+  schema: UpdateObservationSchema,
 
   routing: {
     patterns: [
@@ -191,6 +200,7 @@ export const updateObservation: Tool = {
 export const forgetObservation: Tool = {
   name: 'forgetObservation',
   description: 'Mark an observation as no longer relevant',
+  schema: ForgetObservationSchema,
 
   routing: {
     patterns: [

@@ -1,5 +1,6 @@
 // src/tools/types.ts
 import { ServiceContainer } from '../services/index.js';
+import type { z } from 'zod';
 
 export interface ToolRouting {
   /** Regex patterns for exact matching (Layer 1) */
@@ -23,6 +24,8 @@ export interface Tool {
   description: string;
   routing?: ToolRouting;
   parameters?: Record<string, unknown>;
+  /** Zod schema for parameter validation (preferred over parameters) */
+  schema?: z.ZodSchema;
   parseArgs?: (input: string, match: RegExpMatchArray | null) => Record<string, unknown>;
   /** Optional async check for context-dependent matching (e.g., pending state) */
   shouldHandle?: (input: string, context: ToolContext) => Promise<boolean>;
