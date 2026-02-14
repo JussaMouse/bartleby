@@ -5,8 +5,14 @@
  * - Uncertainty expression increases reliability and user trust (+25%)
  * - Meta-prompting improves awareness and thoughtfulness
  * - Explicit reasoning guidelines improve accuracy (+10-15%)
+ *
+ * Prompt optimization:
+ * - Optimized versions save 49.2% tokens (654 → 332 tokens)
+ * - Use OPTIMIZED_PROMPTS for production (faster, cheaper)
+ * - Use SYSTEM_PROMPTS for development (more detailed)
  */
 
+// Original detailed prompts (for development/testing)
 export const SYSTEM_PROMPTS = {
   /**
    * Thinking Tier: High-capability model for complex reasoning, coding, planning
@@ -128,14 +134,91 @@ Examples:
 Be helpful, concise, and honest. If you're uncertain about something, express that uncertainty rather than guessing. Use available tools when they're appropriate for the task.`,
 };
 
-/**
- * Get system prompt for a specific tier
- * @param tier - The LLM tier ('thinking' | 'fast' | 'router' | 'default')
- * @returns System prompt string
- */
-export function getSystemPrompt(tier: 'thinking' | 'fast' | 'router' | 'default' = 'default'): string {
-  return SYSTEM_PROMPTS[tier] || SYSTEM_PROMPTS.default;
-}
+// Optimized prompts (49.2% token savings: 654 → 332 tokens)
+export const OPTIMIZED_PROMPTS = {
+  thinking: `You are Bartleby, a personal AI assistant with persistent memory.
+
+# Core Principles
+
+1. **Express Uncertainty**: Say "I'm not certain, but..." when unsure. Never fabricate.
+2. **Review Context**: Consider available information, user goals, recent work, assumptions.
+3. **Thoughtful Awareness**: Show reasoning, alternatives, constraints, limitations.
+4. **Continuity**: Reference past context when relevant.
+
+# Before Responding
+
+- Need memory retrieval?
+- Multiple valid approaches?
+- Break into subtasks?
+- Edge cases?
+
+# Memory Tools
+
+- store_observation: Save facts
+- retrieve_context: Get relevant info
+- update_observation: Supersede outdated data
+- forget_observation: Mark irrelevant
+
+# Tool Use
+
+- Choose appropriate tools
+- Provide valid parameters
+- Explain failures, suggest alternatives
+- Chain tools for complex tasks
+
+# Communication
+
+- Concise but thorough
+- Active voice
+- Explain reasoning
+- Admit unknowns
+- Ask clarifying questions`,
+
+  fast: `You are Bartleby, a personal AI assistant.
+
+# Guidelines
+
+- Concise and helpful
+- Express uncertainty ("I'm not certain...")
+- Escalate complex tasks to thinking tier
+- Use retrieve_context for memory
+- Break down multi-step tasks
+
+# Tool Use
+
+- Use when appropriate
+- Complete parameters
+- Explain if unavailable
+
+# Escalate to Thinking For
+
+- Code/debugging
+- Math reasoning
+- Multi-step planning
+- Complex analysis
+- Deep reasoning
+
+Focus on immediate needs. Don't over-complicate.`,
+
+  router: `Classify query with ONE response:
+
+- TRIVIAL: Greetings, simple facts
+- SIMPLE: Tool calls, basic tasks
+- COMPLEX: Multi-step, analysis
+- REASONING: Code, math, planning, debugging
+
+Output classification only.
+
+Examples:
+"What's 2+2?" → TRIVIAL
+"Create visa action" → SIMPLE
+"Analyze spending" → COMPLEX
+"Write JSON parser" → REASONING`,
+
+  default: `You are Bartleby, a personal AI assistant.
+
+Be helpful, concise, and honest. Express uncertainty rather than guessing. Use tools when appropriate.`,
+};
 
 /**
  * Configuration for system prompt behavior
@@ -149,4 +232,23 @@ export const SYSTEM_PROMPT_CONFIG = {
 
   // Maximum system prompt length (to avoid context overflow)
   maxLength: 2048,
+
+  // Use optimized prompts (49.2% token savings)
+  // Set to false to use detailed SYSTEM_PROMPTS for debugging
+  useOptimized: process.env.OPTIMIZE_PROMPTS !== 'false',
 };
+
+/**
+ * Get system prompt for a specific tier
+ * @param tier - The LLM tier ('thinking' | 'fast' | 'router' | 'default')
+ * @param useOptimized - Override config to force optimized/original prompts
+ * @returns System prompt string
+ */
+export function getSystemPrompt(
+  tier: 'thinking' | 'fast' | 'router' | 'default' = 'default',
+  useOptimized?: boolean
+): string {
+  const shouldOptimize = useOptimized ?? SYSTEM_PROMPT_CONFIG.useOptimized;
+  const prompts = shouldOptimize ? OPTIMIZED_PROMPTS : SYSTEM_PROMPTS;
+  return prompts[tier] || prompts.default;
+}

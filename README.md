@@ -522,6 +522,15 @@ relationships (from_entity, to_entity, relation_type, strength)
   - Async generator pattern for efficient chunk processing
   - Compatible with response caching (cached responses yield instantly)
   - Available via `chatStream()` and `handleSimpleStream()` methods
+- **Prompt Optimization (49.2% token savings):**
+  - Optimized system prompts: 654 → 332 tokens
+  - Thinking tier: 384 → 171 tokens (55.5% savings)
+  - Fast tier: 162 → 98 tokens (39.5% savings)
+  - Router tier: 108 → 63 tokens (41.7% savings)
+  - Dynamic prompt building (include only relevant sections)
+  - Automatic redundancy removal (verbose phrases, intensifiers)
+  - Better caching effectiveness (more stable prompts)
+  - Set `OPTIMIZE_PROMPTS=false` to use detailed prompts for debugging
 
 **Self-Improvement:**
 - Agent learns from mistakes
