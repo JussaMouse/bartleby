@@ -14,6 +14,7 @@ database/*.sqlite3-shm
 database/*.sqlite3-wal
 database/*.hnsw
 database/*.json
+database/history.txt
 
 # Logs
 logs/
@@ -29,9 +30,10 @@ Thumbs.db
 *.swp
 *.swo
 
-# User data (optional - you may want to track garden/)
-# garden/
-# shed/
+# User data - auto-generated from database
+garden/
+shed/sources/
+shed/chunks/
 
 # Developer notes and testing
 devs-notes/
