@@ -3,6 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import { parse } from 'csv-parse/sync';
 import pdfParse from 'pdf-parse';
+import * as XLSX from 'xlsx';
 import { FileType } from './file-type-detection.js';
 import type { OCRService } from '../services/ocr.js';
 
@@ -125,6 +126,69 @@ export async function parseCsv(filePath: string): Promise<ProcessingResult> {
 }
 
 /**
+ * Parse and analyze an Excel (.xlsx) file
+ *
+ * @param filePath - Path to Excel file
+ * @returns Processing result with Excel analysis
+ */
+export async function parseExcel(filePath: string): Promise<ProcessingResult> {
+  try {
+    const workbook = XLSX.readFile(filePath);
+
+    let summary = `## Excel Workbook\n`;
+    summary += `- Sheets: ${workbook.SheetNames.length} (${workbook.SheetNames.join(', ')})\n\n`;
+
+    // Process each sheet
+    for (const sheetName of workbook.SheetNames.slice(0, 3)) { // Limit to first 3 sheets
+      const worksheet = workbook.Sheets[sheetName];
+      const data = XLSX.utils.sheet_to_json(worksheet, { header: 1 }) as any[][];
+
+      if (data.length === 0) {
+        summary += `### ${sheetName}\n_Empty sheet_\n\n`;
+        continue;
+      }
+
+      const headers = data[0] as string[];
+      const dataRows = data.slice(1);
+      const sampleRows = dataRows.slice(0, 5);
+
+      summary += `### ${sheetName}\n`;
+      summary += `- Rows: ${dataRows.length}\n`;
+      summary += `- Columns: ${headers.length}\n\n`;
+
+      if (sampleRows.length > 0) {
+        summary += `**Sample Data (first ${sampleRows.length} rows):**\n`;
+        summary += '| ' + headers.join(' | ') + ' |\n';
+        summary += '|' + headers.map(() => '---').join('|') + '|\n';
+
+        for (const row of sampleRows) {
+          summary += '| ' + (row as any[]).map(cell => cell ?? '').join(' | ') + ' |\n';
+        }
+        summary += '\n';
+      }
+    }
+
+    if (workbook.SheetNames.length > 3) {
+      summary += `_... and ${workbook.SheetNames.length - 3} more sheets_\n`;
+    }
+
+    return {
+      success: true,
+      content: summary,
+      metadata: {
+        sheets: workbook.SheetNames.length,
+        sheetNames: workbook.SheetNames,
+      },
+    };
+  } catch (err) {
+    return {
+      success: false,
+      error: `Excel parsing failed: ${String(err)}`,
+    };
+  }
+}
+
+/**
  * Read content from a text file
  *
  * @param filePath - Path to text file
@@ -227,6 +291,11 @@ export async function processFile(
     return await parseCsv(filePath);
   }
 
+  // Excel processing
+  if (fileType === FileType.SPREADSHEET && (ext === '.xlsx' || ext === '.xls')) {
+    return await parseExcel(filePath);
+  }
+
   // Text file processing
   if (fileType === FileType.TEXT) {
     return await readTextFile(filePath);
@@ -277,6 +346,8 @@ export function buildRecordContent(
         content += '\n\n[... text truncated, see source file for full content]';
       }
     } else if (ext === '.csv' || ext === '.tsv') {
+      content += processingResult.content;
+    } else if (ext === '.xlsx' || ext === '.xls') {
       content += processingResult.content;
     } else if (fileType === 'text') {
       content += `## File Content\n`;

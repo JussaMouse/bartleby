@@ -19,6 +19,7 @@ import { historyTools } from './history.js';
 import { importTools } from './import.js';
 import { importRuleTools } from './import-rules-tool.js';
 import { batchImportTools } from './import-batch.js';
+import { urlImportTools } from './import-url.js';
 
 // Aggregate all tools
 // promptHandler MUST be first for Layer 0 contextual routing
@@ -37,6 +38,7 @@ export const allTools: Tool[] = [
   ...importTools,
   ...importRuleTools,
   ...batchImportTools,
+  ...urlImportTools,
   ...schedulerTools,
   ...weatherTools,
   ...systemTools,

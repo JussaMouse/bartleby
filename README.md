@@ -243,9 +243,15 @@ Example: Create `new action book flights +thailand-trip` and it immediately appe
 new page <title>        Create a wiki page (prompts for content)
 new note <title>        Create a note
 import <path> [name]    Import single image/file
+import url <url>        Import web page from URL
 import files            Import all files from inbox directory
+import all              Import all files at once (skip confirmation)
+import only <type>      Import only specific file type
 show inbox              View files staged for import
+show inbox <type>       View specific file type in inbox
+show import rules       View active import rules
 confirm import          Process and import staged files
+clear inbox             Delete all staged files
 open <title>            View any page
 show pages              List all pages
 show notes              List all notes
@@ -1318,6 +1324,25 @@ Images appear as thumbnails on project pages. Click to view full-size.
 > ocr ~/Desktop/screenshot.png
 ```
 
+### Web Page Import
+
+Import articles, blog posts, or any web page:
+
+```
+> import url https://example.com/article
+✓ Imported web page: "Article Title"
+
+Source: https://example.com/article
+Content: 8,432 characters
+
+Saved as note: "Article Title"
+```
+
+- Fetches the URL and extracts text content
+- Removes scripts, ads, navigation
+- Stores as note with source URL
+- Content limited to 10,000 characters
+
 ### File Import Workflow
 
 Import multiple files at once using the inbox directory:
@@ -1402,13 +1427,14 @@ Inbox: 5 files (2.4 MB)
 - Records include `source_file` reference to the imported file
 
 **Supported file types:**
-- **Documents**: PDF, DOC, DOCX, ODT, RTF
-- **Spreadsheets**: XLS, XLSX, CSV, TSV, ODS
-- **Images**: PNG, JPG, JPEG, GIF, BMP, SVG, WEBP, HEIC
-- **Text**: TXT, MD, JSON, XML, YAML, LOG
+- **Documents**: PDF (text extraction), DOC, DOCX, ODT, RTF
+- **Spreadsheets**: XLSX (multi-sheet parsing), XLS, CSV (structure analysis), TSV, ODS
+- **Images**: PNG, JPG, JPEG, GIF, BMP, SVG, WEBP, HEIC (OCR with --ocr)
+- **Text**: TXT, MD, JSON, XML, YAML, LOG (content extraction)
 - **Archives**: ZIP, TAR, GZ, 7Z, RAR
 - **Email**: EML, MSG, MBOX
 - **Web**: HTML, HTM, MHTML
+- **URLs**: Any web page (text extraction)
 
 **Import Rules (Automatic Organization):**
 
