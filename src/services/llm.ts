@@ -2,28 +2,14 @@
 import OpenAI from 'openai';
 import { Config } from '../config.js';
 import { info, warn, debug } from '../utils/logger.js';
+import { getSystemPrompt, SYSTEM_PROMPTS } from '../llm/system-prompts.js';
 
 export type Tier = 'router' | 'fast' | 'thinking';
 export type Complexity = 'SIMPLE' | 'COMPLEX';
 
-// Prompt for complexity classification
-const ROUTER_PROMPT = `Classify this request as SIMPLE or COMPLEX.
-
-SIMPLE: Single action, direct command, one tool needed
-- "show my tasks"
-- "add milk to list"
-- "weather"
-- "what time is it"
-
-COMPLEX: Multiple steps, references needing lookup, code, planning
-- "email Sarah about tomorrow's meeting" (needs contact + calendar lookup)
-- "write a function to parse CSV"
-- "help me plan my week"
-- "compare my tasks with my calendar"
-
-Request: "{input}"
-
-Answer with one word (SIMPLE or COMPLEX):`;
+// NOTE: Router system prompt is now defined in system-prompts.ts
+// This classification format is for backwards compatibility
+const ROUTER_CLASSIFICATION_PROMPT = `Classify this request: "{input}"`;
 
 // Heuristic fallback patterns for when router model is unavailable
 const COMPLEX_PATTERNS = [
@@ -108,15 +94,18 @@ export class LLMService {
     // Try router model first
     if (this.healthy['router']) {
       try {
-        const prompt = ROUTER_PROMPT.replace('{input}', input);
+        // Use new router system prompt (includes classification instructions)
+        const prompt = ROUTER_CLASSIFICATION_PROMPT.replace('{input}', input);
         const response = await this.chat(
           [{ role: 'user', content: prompt }],
-          { tier: 'router', maxTokens: 10 }
+          { tier: 'router', maxTokens: 20 }  // Increased for new format
         );
 
         const normalized = response.trim().toUpperCase();
-        if (normalized.includes('COMPLEX')) return 'COMPLEX';
-        if (normalized.includes('SIMPLE')) return 'SIMPLE';
+
+        // New format: TRIVIAL/SIMPLE → SIMPLE, COMPLEX/REASONING → COMPLEX
+        if (normalized.includes('TRIVIAL') || normalized.includes('SIMPLE')) return 'SIMPLE';
+        if (normalized.includes('COMPLEX') || normalized.includes('REASONING')) return 'COMPLEX';
 
         debug('Router model returned ambiguous response', { response });
       } catch (err) {
@@ -178,9 +167,15 @@ export class LLMService {
 
     debug('LLM chat', { tier, model: tierConfig.model });
 
+    // Prepend appropriate system prompt if not already present
+    const hasSystemPrompt = messages.some(m => m.role === 'system');
+    const messagesWithSystem = hasSystemPrompt
+      ? messages
+      : [{ role: 'system' as const, content: getSystemPrompt(tier) }, ...messages];
+
     const requestParams: OpenAI.ChatCompletionCreateParamsNonStreaming = {
       model: tierConfig.model,
-      messages: messages as OpenAI.ChatCompletionMessageParam[],
+      messages: messagesWithSystem as OpenAI.ChatCompletionMessageParam[],
       max_tokens: options.maxTokens || tierConfig.maxTokens,
     };
 
@@ -208,9 +203,15 @@ export class LLMService {
 
     debug('LLM chat with tools', { tier, model: tierConfig.model, toolCount: tools.length });
 
+    // Prepend appropriate system prompt if not already present
+    const hasSystemPrompt = messages.some(m => m.role === 'system');
+    const messagesWithSystem = hasSystemPrompt
+      ? messages
+      : [{ role: 'system', content: getSystemPrompt(tier) }, ...messages];
+
     const response = await client.chat.completions.create({
       model: tierConfig.model,
-      messages,
+      messages: messagesWithSystem,
       tools,
       tool_choice: 'auto',
       max_tokens: tierConfig.maxTokens,
