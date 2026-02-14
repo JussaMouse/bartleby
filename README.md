@@ -6,6 +6,7 @@ The personal exocortex, locally.
 - [Quick Start](#quick-start)
 - [First 10 Minutes](#first-10-minutes)
 - [Your Data](#your-data)
+- [Memory & Learning](#memory--learning)
 - [Data Tools](#data-tools)
 - [GTD Workflow](#gtd-workflow)
 - [The Time System](#the-time-system)
@@ -383,6 +384,134 @@ pnpm profile import <file>   Restore from backup
 - **+ Graph** button - Visualize relationship graph between records
 
 **Data location:** `./database/garden.sqlite3` (unified SQLite database with garden records, learning system, and command history)
+
+---
+
+## Memory & Learning
+
+Bartleby learns from every interaction and maintains persistent memory across sessions using the **Entity-Observation-Relationship (EOR)** system.
+
+### How Memory Works
+
+**Three core concepts:**
+
+| Concept | What it is | Example |
+|---------|------------|---------|
+| **Entity** | A person, project, session, or command | `user`, `project-123`, `session-456` |
+| **Observation** | A fact about an entity | `user prefers dark mode` |
+| **Relationship** | A connection between entities | `user works_on project-123` |
+
+**Data structure:**
+```
+entities/           # Things in your world
+  └─ observations/  # Facts about each entity
+       └─ confidence (0.0-1.0)
+       └─ expires_at (optional TTL)
+       └─ supersedes (update chain)
+```
+
+### Agent-Controlled Memory
+
+Bartleby can now manage its own memory through natural language commands:
+
+**Store observations:**
+```
+> remember that I prefer dark mode
+✓ Remembered: preference.theme = dark
+
+> note that project deadline is March 15
+✓ Remembered: project.deadline = 2026-03-15
+
+> remember for 7 days that I'm working from home
+✓ Remembered (expires in 7 days): status = working from home
+```
+
+**Retrieve context:**
+```
+> what do you know about me?
+**Context for user:**
+
+**Observations:**
+- preference.theme: dark (confidence: 90%)
+- name: Alex (confidence: 95%)
+- preferred_tool: vim (confidence: 85%)
+
+**Relationships:**
+- works_on → project-website
+- manages → team-design
+```
+
+**Update information:**
+```
+> I changed my mind, I prefer light mode now
+✓ Updated: preference.theme = light
+(Creates superseding observation, maintains history)
+```
+
+**Forget outdated information:**
+```
+> forget that I'm working from home
+✓ Marked observation as forgotten
+```
+
+### Memory Features
+
+**Confidence Scoring:**
+- Bartleby tracks confidence (0.0-1.0) for each fact
+- Agent-inferred facts default to 0.9 confidence
+- Updates maintain confidence levels
+- Low confidence facts can be filtered out
+
+**Superseding Chain:**
+- When information changes, new observations supersede old ones
+- History is preserved for analysis
+- Most recent superseding observation is considered current
+
+**Time-To-Live (TTL):**
+- Observations can expire automatically
+- Useful for temporary status ("on vacation until...")
+- Expired observations are filtered from queries
+
+**Source Types:**
+- `stated` - User explicitly said it
+- `inferred` - Agent learned from conversation
+- `computed` - Derived from calculations
+- `extracted` - Pulled from documents
+
+### Dashboard Integration
+
+View all learned facts in the dashboard:
+```
+> dashboard
+```
+
+Click **+ Memory** to see:
+- **Preferences:** User settings and choices
+- **Patterns:** Learned behavioral patterns
+- **Context:** Current working state
+- **Goals:** Tracked objectives
+
+### Technical Details
+
+**Storage:** All observations stored in `database/bartleby.db` (SQLite)
+
+**Schema:**
+```sql
+entities (id, type, created_at, data)
+observations (id, entity_id, key, value, confidence, expires_at, supersedes)
+relationships (from_entity, to_entity, relation_type, strength)
+```
+
+**Optimizations:**
+- 7 database indexes for sub-2ms query times
+- Automatic cleanup of expired observations (daily)
+- FTS5 full-text search on observation content
+
+**Self-Improvement:**
+- Agent learns from mistakes
+- Updates understanding based on corrections
+- Builds context over multiple sessions
+- Personalizes responses based on preferences
 
 ---
 
