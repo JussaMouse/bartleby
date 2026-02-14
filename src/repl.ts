@@ -5,6 +5,7 @@ import path from 'path';
 import { CommandRouter } from './router/index.js';
 import { Agent } from './agent/index.js';
 import { ServiceContainer, closeServices } from './services/index.js';
+import { DashboardServer } from './server/index.js';
 import { info, warn, error, debug } from './utils/logger.js';
 import { getDbPath, ensureDir } from './config.js';
 
@@ -253,7 +254,8 @@ async function processInput(
   rl: readline.Interface,
   router: CommandRouter,
   agent: Agent,
-  services: ServiceContainer
+  services: ServiceContainer,
+  dashboardServer: DashboardServer
 ): Promise<void> {
   // Record user message in personal context
   services.context.recordMessage(input, true);
@@ -351,7 +353,7 @@ async function processInput(
 
     // Check for exit
     if (response === '__EXIT__') {
-      await handleShutdown(rl, services);
+      await handleShutdown(rl, services, dashboardServer);
       return;
     }
 
@@ -530,7 +532,8 @@ function createCompleter(services: ServiceContainer) {
 export async function startRepl(
   router: CommandRouter,
   agent: Agent,
-  services: ServiceContainer
+  services: ServiceContainer,
+  dashboardServer: DashboardServer
 ): Promise<void> {
   // Load persistent command history
   const historyPath = getDbPath(services.config, 'history.txt');
@@ -628,7 +631,7 @@ export async function startRepl(
       appendToHistory(historyPath, pastedInput);
 
       // Process the pasted content
-      await processInput(pastedInput, rl, router, agent, services);
+      await processInput(pastedInput, rl, router, agent, services, dashboardServer);
       return;
     }
 
@@ -649,7 +652,7 @@ export async function startRepl(
     // Save command to history
     appendToHistory(historyPath, input);
 
-    await processInput(input, rl, router, agent, services);
+    await processInput(input, rl, router, agent, services, dashboardServer);
   });
 
   rl.on('close', async () => {
@@ -659,22 +662,29 @@ export async function startRepl(
     }
     info('Session ended');
     await services.context.endSession();
+    dashboardServer.stop();
     closeServices(services);  // Save vector index and close all services
     process.exit(0);
   });
 
-  // Handle Ctrl+C
-  process.on('SIGINT', async () => {
-    await handleShutdown(rl, services);
-  });
+  // Handle shutdown signals (Ctrl+C, kill, etc.)
+  const signalHandler = async () => {
+    await handleShutdown(rl, services, dashboardServer);
+  };
+
+  process.on('SIGINT', signalHandler);   // Ctrl+C
+  process.on('SIGTERM', signalHandler);  // kill command
 }
 
 /**
  * Handle graceful shutdown with presence message
+ *
+ * Used by: quit command, SIGINT (Ctrl+C), SIGTERM (kill)
  */
 async function handleShutdown(
   rl: readline.Interface,
-  services: ServiceContainer
+  services: ServiceContainer,
+  dashboardServer: DashboardServer
 ): Promise<void> {
   // Disable bracketed paste mode
   if (process.stdin.isTTY) {
@@ -694,8 +704,12 @@ async function handleShutdown(
   }
 
   console.log('\nGoodbye! 👋\n');
-  await services.context.endSession();
-  closeServices(services);  // Save vector index and close all services
-  rl.close();
+  info('Shutting down...');
+
+  // Graceful shutdown sequence
+  await services.context.endSession();  // End session and save episode
+  dashboardServer.stop();               // Stop dashboard server
+  closeServices(services);              // Save vector index and close all services
+  rl.close();                           // Close readline interface
   process.exit(0);
 }

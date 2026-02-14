@@ -156,19 +156,8 @@ async function main(): Promise<void> {
   dashboardServer.start(dashboardPort, dashboardHost);
   info(`Dashboard server started at http://${dashboardHost}:${dashboardPort}`);
 
-  // 6. Handle shutdown
-  const shutdown = async () => {
-    info('Shutting down...');
-    dashboardServer.stop();
-    closeServices(services);
-    process.exit(0);
-  };
-
-  process.on('SIGTERM', shutdown);
-  process.on('SIGINT', shutdown);
-
-  // 7. Start REPL
-  await startRepl(router, agent, services);
+  // 6. Start REPL (handles its own shutdown via quit command and SIGINT/SIGTERM)
+  await startRepl(router, agent, services, dashboardServer);
 }
 
 main().catch((err) => {
