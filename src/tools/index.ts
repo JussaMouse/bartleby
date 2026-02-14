@@ -5,6 +5,7 @@ import { gtdTools } from './gtd.js';
 import { calendarTools } from './calendar.js';
 import { contactTools } from './contacts.js';
 import { contextTools } from './context.js';
+import { memoryTools } from './memory.js';
 import { shedTools } from './shed.js';
 import { schedulerTools } from './scheduler.js';
 import { weatherTools } from './weather.js';
@@ -24,6 +25,7 @@ export const allTools: Tool[] = [
   ...calendarTools,
   ...contactTools,
   ...contextTools,
+  ...memoryTools,  // Agent-controlled memory operations
   ...insightsTools,
   ...relatedTools,
   ...historyTools,
