@@ -11,6 +11,7 @@ import {
   FileType,
 } from '../utils/file-type-detection.js';
 import { sanitizeFilename } from '../utils/markdown.js';
+import { processFile, buildRecordContent } from '../utils/content-processors.js';
 
 /**
  * Import files from inbox directory
@@ -42,15 +43,20 @@ export const importFiles: Tool = {
 
   parameters: {
     type: 'object',
-    properties: {},
+    properties: {
+      enableOcr: { type: 'boolean', description: 'Enable OCR for images' },
+    },
   },
 
-  parseArgs: () => {
-    return {};
+  parseArgs: (input) => {
+    // Check for --ocr flag
+    const enableOcr = input.includes('--ocr');
+    return { enableOcr };
   },
 
   execute: async (args, context) => {
     const { config, inbox } = context.services;
+    const { enableOcr = false } = args as { enableOcr?: boolean };
 
     try {
       // Get inbox path
@@ -97,7 +103,11 @@ export const importFiles: Tool = {
 
       // Store pending import state
       const itemIds = capturedItems.map(item => item.id);
-      context.services.context.setFact('system', 'pendingImport', JSON.stringify({ itemIds, inboxPath }));
+      context.services.context.setFact('system', 'pendingImport', JSON.stringify({
+        itemIds,
+        inboxPath,
+        enableOcr
+      }));
 
       // Build summary
       const filesByType: Record<string, number> = {};
@@ -177,7 +187,7 @@ export const confirmImport: Tool = {
   },
 
   execute: async (args, context) => {
-    const { config, inbox, garden } = context.services;
+    const { config, inbox, garden, ocr } = context.services;
 
     try {
       // Check for pending import state
@@ -186,7 +196,7 @@ export const confirmImport: Tool = {
         return 'No pending import found. Run "import files" first.';
       }
 
-      const { itemIds, inboxPath } = JSON.parse(pendingFact);
+      const { itemIds, inboxPath, enableOcr = false } = JSON.parse(pendingFact);
 
       if (!Array.isArray(itemIds) || itemIds.length === 0) {
         context.services.context.clearFact('system', 'pendingImport');
@@ -231,6 +241,12 @@ export const confirmImport: Tool = {
 
           fs.copyFileSync(item.file_path, finalTargetPath);
 
+          // Process file content
+          const processingResult = await processFile(finalTargetPath, item.file_type, {
+            enableOcr,
+            ocrService: ocr,
+          });
+
           // Create Garden record based on file type
           let recordType: 'note' | 'event' | 'media' = 'media';
           let title = path.basename(item.file_name, path.extname(item.file_name));
@@ -248,11 +264,20 @@ export const confirmImport: Tool = {
             recordType = 'media';
           }
 
+          // Build enriched content
+          const content = buildRecordContent(
+            item.file_name,
+            item.file_type,
+            formatFileSize(item.file_size),
+            finalTargetPath,
+            processingResult
+          );
+
           // Create record with source_file reference
           const record = garden.create({
             type: recordType,
             title: `Imported: ${title}`,
-            content: `File: ${item.file_name}\nType: ${item.file_type}\nSize: ${formatFileSize(item.file_size)}\nImported: ${new Date().toISOString()}\n\nPath: ${finalTargetPath}`,
+            content,
             status: 'active',
           });
 

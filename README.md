@@ -1332,7 +1332,8 @@ cp ~/Pictures/*.jpg ./inbox/
 
 **2. Review and import:**
 ```
-> import files
+> import files              # Scan inbox
+> import files --ocr        # Enable OCR for images
 Found 5 files in inbox:
 
 📄 DOCUMENT (2):
@@ -1375,7 +1376,12 @@ Inbox: 5 files (2.4 MB)
 
 **What happens on import:**
 - Files are copied to `garden/imports/YYYY-MM-DD/`
-- Garden records are created (notes for documents/text, media for images)
+- **Content is automatically extracted:**
+  - **PDFs** → Full text extraction
+  - **CSVs** → Structure analysis (rows, columns, sample data)
+  - **Text files** → Content reading
+  - **Images** → OCR text extraction (with `--ocr` flag)
+- Garden records are created with enriched content
 - Original files are removed from inbox
 - Records include `source_file` reference to the imported file
 

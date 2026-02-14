@@ -16,6 +16,8 @@ export interface InboxItem {
   mime_type: string | null;
   created_at: string;
   captured_at: string;
+  processing_status?: 'pending' | 'processed' | 'failed' | 'skipped';
+  processing_metadata?: string; // JSON string
 }
 
 /**
@@ -45,7 +47,8 @@ CREATE INDEX IF NOT EXISTS idx_inbox_captured
  * Migrations for existing databases
  */
 const MIGRATIONS: string[] = [
-  // Future migrations will go here
+  `ALTER TABLE inbox_items ADD COLUMN processing_status TEXT DEFAULT 'pending'`,
+  `ALTER TABLE inbox_items ADD COLUMN processing_metadata TEXT`,
 ];
 
 /**
