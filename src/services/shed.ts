@@ -447,7 +447,7 @@ Example response: {"title": "Deep Work", "author": "Cal Newport"}`;
           },
         ], { tier: 'thinking' }),
         new Promise<string>((_, reject) =>
-          setTimeout(() => reject(new Error('LLM query timeout after 30s')), 30000)
+          setTimeout(() => reject(new Error('LLM query timeout after 60s')), 60000)
         ),
       ]);
 
