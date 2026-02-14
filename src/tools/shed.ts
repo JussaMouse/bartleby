@@ -145,10 +145,11 @@ export const askShed: Tool = {
       /^shed\s+query\s+(.+)$/i,
       /^shed\s+(.+)$/i,
       /^what\s+do\s+(my\s+)?(documents?|notes?|files?)\s+say\s+about\s+(.+)$/i,
-      // Help queries - catch "how do i", "how can i", "how to", etc.
-      /^how\s+(do|can|to)\s+i\s+(.+)$/i,
+      // Help queries - catch "how do i/you", "how can i/you", "how to", "how does", etc.
+      /^how\s+(do|can|does)\s+(i|you|one)\s+(.+)$/i,
       /^what('s| is)\s+the\s+(best\s+)?way\s+to\s+(.+)$/i,
       /^how\s+to\s+(.+)$/i,
+      /^how\s+(do|does)\s+(.+)$/i,  // Catch "how do/does X work"
     ],
     keywords: {
       verbs: ['ask', 'query', 'search'],
