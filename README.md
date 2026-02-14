@@ -1394,6 +1394,37 @@ Inbox: 5 files (2.4 MB)
 - **Email**: EML, MSG, MBOX
 - **Web**: HTML, HTM, MHTML
 
+**Import Rules (Automatic Organization):**
+
+Create `import-rules.json` to automatically organize imports:
+```json
+{
+  "rules": [
+    {
+      "name": "Financial Documents",
+      "match": {
+        "filenamePattern": "(invoice|receipt|statement)",
+        "fileTypes": ["document", "text"]
+      },
+      "actions": {
+        "project": "finances",
+        "context": "admin",
+        "tags": ["financial", "records"]
+      },
+      "priority": 100
+    }
+  ]
+}
+```
+
+View active rules:
+```
+> show import rules
+> import rules
+```
+
+Rules are automatically applied during import confirmation. Higher priority rules are evaluated first.
+
 **Configuration:**
 ```env
 # .env

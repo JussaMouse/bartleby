@@ -12,6 +12,7 @@ import {
 } from '../utils/file-type-detection.js';
 import { sanitizeFilename } from '../utils/markdown.js';
 import { processFile, buildRecordContent } from '../utils/content-processors.js';
+import { ImportRulesManager } from '../utils/import-rules.js';
 
 /**
  * Import files from inbox directory
@@ -273,12 +274,29 @@ export const confirmImport: Tool = {
             processingResult
           );
 
-          // Create record with source_file reference
+          // Apply import rules
+          const rulesManager = new ImportRulesManager();
+          const ruleMatches = rulesManager.matchRules(
+            item.file_name,
+            item.file_type,
+            processingResult?.content
+          );
+
+          // Build record metadata with rules applied
+          let recordMetadata: any = {};
+          if (ruleMatches.length > 0) {
+            recordMetadata = rulesManager.applyRules({}, ruleMatches);
+          }
+
+          // Create record with source_file reference and rule-based metadata
           const record = garden.create({
             type: recordType,
             title: `Imported: ${title}`,
             content,
             status: 'active',
+            project: recordMetadata.project,
+            context: recordMetadata.context,
+            privacy: recordMetadata.privacy,
           });
 
           // Update record with source_file using direct SQL
