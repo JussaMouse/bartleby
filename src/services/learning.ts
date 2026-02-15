@@ -416,7 +416,19 @@ export class LearningService {
     };
   }
 
+  /**
+   * Sanitize FTS5 query by escaping special characters.
+   * FTS5 special chars: " ' . , ? : ; ( ) [ ] { } ! @ # $ % ^ & * + - = < > / \ |
+   */
+  private sanitizeFTS5Query(query: string): string {
+    // Escape double quotes by doubling them
+    const escaped = query.replace(/"/g, '""');
+    // Wrap in double quotes to treat as a phrase (allows special chars)
+    return `"${escaped}"`;
+  }
+
   searchObservations(query: string, limit: number = 10): Observation[] {
+    const sanitizedQuery = this.sanitizeFTS5Query(query);
     const rows = this.db.prepare(`
       SELECT o.id, o.entity_id, o.key, o.value, o.value_type,
              o.source_type, o.source_id, o.confidence,
@@ -427,7 +439,7 @@ export class LearningService {
       AND (o.expires_at IS NULL OR datetime(o.expires_at) > datetime('now'))
       ORDER BY rank
       LIMIT ?
-    `).all(query, limit) as any[];
+    `).all(sanitizedQuery, limit) as any[];
 
     return rows.map(row => ({
       id: row.id,
