@@ -158,6 +158,181 @@ new event picnic when sunday noon who nicole leena where lakeside 1h reminder
 
 ---
 
+## Import System
+
+### File Import
+
+| Command | Description |
+|---------|-------------|
+| `import files` | Import files from inbox directory |
+| `import files --ocr` | Import with OCR enabled |
+| `confirm import` | Confirm pending imports |
+| `show inbox` | List files in inbox awaiting import |
+| `clear inbox` | Remove all files from inbox |
+
+### Batch Import
+
+| Command | Description |
+|---------|-------------|
+| `import all` | Import all inbox files with rule matching |
+| `import all --dry-run` | Preview imports without executing |
+| `import only images` | Import only image files |
+| `import only documents` | Import only document files |
+| `import only <type>` | Import specific file type |
+
+### Import History
+
+| Command | Description |
+|---------|-------------|
+| `import history` | View recent import history |
+| `import history <limit>` | View last N imports |
+| `search imports <query>` | Search import history |
+| `import stats` | View import statistics by type |
+
+### Import Rules
+
+| Command | Description |
+|---------|-------------|
+| `show import rules` | List all import rules |
+| `create import rule` | Interactive rule creation wizard |
+| `edit import rule <name>` | Modify existing rule |
+| `delete import rule <name>` | Remove rule |
+| `test import rule <name>` | Dry-run test rule against inbox |
+
+**Rule Creation Wizard Flow:**
+1. Enter rule name
+2. Choose file types to match (document, image, text, etc.)
+3. Enter filename pattern (optional, regex supported)
+4. Set auto-apply actions (project, context, privacy, tags)
+5. Set priority (0-1000, higher = first)
+6. Preview and save
+
+**Example Rules:**
+```
+Rule: Financial Documents
+  Match: *.pdf with filename containing "invoice" or "receipt"
+  Actions: +finances, @admin, privacy:private, tags:[financial]
+  Priority: 100
+
+Rule: Work Photos
+  Match: image files in work-photos/
+  Actions: +work, privacy:confidential, tags:[work,photo]
+  Priority: 50
+```
+
+### Import Profiles
+
+| Command | Description |
+|---------|-------------|
+| `import profiles` | List available import profiles |
+| `import with profile <name>` | Import using named profile |
+| `create import profile` | Interactive profile creation |
+| `edit import profile <name>` | Modify profile settings |
+| `delete import profile <name>` | Remove profile |
+
+**Profile Settings:**
+- Default project, context, privacy
+- OCR enabled/disabled
+- Auto-confirm (skip confirmation prompt)
+- Duplicate action (skip, prompt, or reimport)
+- Rules enabled/disabled
+
+**Example Profiles:**
+```
+work-documents
+  → +work, @admin, privacy:confidential, OCR on, auto-confirm off
+
+personal-photos
+  → +memories, privacy:private, OCR off, auto-confirm on, skip duplicates
+
+receipts
+  → +finances, @admin, privacy:private, OCR on, tag:[receipt]
+```
+
+**Import Examples:**
+```
+import files                           # Interactive import
+import all --dry-run                   # Preview batch import
+import with profile work-documents     # Use profile
+test import rule "Financial Docs"      # Test rule matching
+```
+
+---
+
+## Settings
+
+### View Settings
+
+| Command | Description |
+|---------|-------------|
+| `settings` | Show all settings grouped by category |
+| `settings <category>` | Show specific category settings |
+| `settings stats` | View settings statistics |
+
+**Categories:** `llm`, `embeddings`, `calendar`, `presence`, `import`, `defaults`, `content`, `ocr`, `weather`, `signal`, `scheduler`, `dashboard`
+
+### Modify Settings
+
+| Command | Description |
+|---------|-------------|
+| `set <key> to <value>` | Quick set a setting |
+| `edit settings` | Interactive wizard for all categories |
+| `edit <category> settings` | Interactive wizard for specific category |
+| `reset settings` | Reset all settings to defaults |
+| `reset settings <category>` | Reset category to defaults |
+
+**Quick Set Examples:**
+```
+set calendar.timezone to America/New_York
+set import.ocr-enabled to true
+set llm.router-model to claude-opus-4-6
+set defaults.privacy to private
+```
+
+### Setup & Migration
+
+| Command | Description |
+|---------|-------------|
+| `setup wizard` | Run first-run setup wizard |
+| `setup llm` | LLM configuration wizard |
+| `setup calendar` | Calendar configuration wizard |
+| `setup presence` | Presence configuration wizard |
+| `setup import` | Import behavior wizard |
+| `migrate settings` | Migrate .env to database (one-time) |
+
+**First-Run Wizard Flow:**
+1. Welcome message
+2. LLM configuration (auto-detect models, choose tier strategy)
+3. Embeddings setup (optional)
+4. Calendar basics (timezone, date format)
+5. Optional features (OCR, weather, presence)
+6. Save all settings to database
+
+**Migration for Existing Users:**
+
+If you're upgrading from a version that used `.env` for all settings:
+
+```bash
+> migrate settings
+# Reads your current .env
+# Categorizes and saves settings to database
+# Backs up .env to .env.backup
+# Creates minimal bootstrap .env
+# Done! Settings now managed via commands
+```
+
+**Settings Examples:**
+```
+settings                               # Show all settings
+settings llm                          # Show LLM category
+set calendar.timezone to Europe/London
+edit calendar settings                 # Interactive wizard
+reset settings presence               # Reset presence category
+migrate settings                      # One-time migration from .env
+```
+
+---
+
 ## Context (Memory)
 
 | Command | Description |
