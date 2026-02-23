@@ -57,10 +57,9 @@ export const importAll: Tool = {
 
       // Dry-run mode: preview without importing
       if (dryRun) {
-        const { ImportRulesManager } = await import('../utils/import-rules.js');
         const { formatFileSize, getFileTypeIcon } = await import('../utils/file-type-detection.js');
 
-        const rulesManager = new ImportRulesManager();
+        const importConfig = context.services.importConfig;
         let output = `🔍 Dry-run mode: Previewing ${items.length} file${items.length === 1 ? '' : 's'}\n\n`;
 
         let wouldImport = 0;
@@ -78,7 +77,7 @@ export const importAll: Tool = {
           }
 
           // Check rule matches
-          const ruleMatches = rulesManager.matchRules(item.file_name, item.file_type);
+          const ruleMatches = importConfig.matchRules(item.file_name, item.file_type);
 
           output += `✓ ${item.file_name} (${formatFileSize(item.file_size)})\n`;
           output += `  → Type: ${item.file_type}`;
@@ -283,7 +282,7 @@ export const importOnly: Tool = {
 
       // Dry-run mode: preview without importing
       if (dryRun) {
-        const rulesManager = new ImportRulesManager();
+        const importConfig = context.services.importConfig;
         let output = `🔍 Dry-run mode: Previewing ${items.length} ${fileType} file${items.length === 1 ? '' : 's'}\n\n`;
 
         let wouldImport = 0;
@@ -301,7 +300,7 @@ export const importOnly: Tool = {
           }
 
           // Check rule matches
-          const ruleMatches = rulesManager.matchRules(item.file_name, item.file_type);
+          const ruleMatches = importConfig.matchRules(item.file_name, item.file_type);
 
           output += `✓ ${item.file_name} (${formatFileSize(item.file_size)})\n`;
           output += `  → Type: ${item.file_type}`;
@@ -396,8 +395,7 @@ export const importOnly: Tool = {
           );
 
           // Apply import rules
-          const rulesManager = new ImportRulesManager();
-          const ruleMatches = rulesManager.matchRules(
+          const ruleMatches = context.services.importConfig.matchRules(
             item.file_name,
             item.file_type,
             processingResult?.content
@@ -406,7 +404,7 @@ export const importOnly: Tool = {
           // Build record metadata with rules applied
           let recordMetadata: any = {};
           if (ruleMatches.length > 0) {
-            recordMetadata = rulesManager.applyRules({}, ruleMatches);
+            recordMetadata = context.services.importConfig.applyRules({}, ruleMatches);
           }
 
           // Create record

@@ -28,6 +28,7 @@ Thumbs.db
 # User data - auto-generated from database
 garden/
 shed/
+inbox/
 
 # Configuration files (use examples instead)
 settings.toml
@@ -43,6 +44,7 @@ diagnose-llm.js
 # Developer notes and testing
 devs-notes/
 testing/
+test/
 
 # Scripts directory (user-facing scripts in package.json instead)
 scripts/

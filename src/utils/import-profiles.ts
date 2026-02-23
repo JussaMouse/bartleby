@@ -32,110 +32,88 @@ type ProfilesFile = z.infer<typeof ProfilesFileSchema>;
  * Import Profile Manager
  *
  * Manages named import profiles with preset configurations.
+ *
+ * @deprecated This class is now a compatibility wrapper around ImportConfigService.
+ * Access the service directly via context.services.importConfig for new code.
  */
 export class ImportProfileManager {
+  private service: any; // ImportConfigService (avoiding circular dependency)
   private profilesPath: string;
-  private profiles: Map<string, ImportProfile>;
 
   constructor(profilesPath: string = './import-profiles.json') {
     this.profilesPath = profilesPath;
-    this.profiles = new Map();
-    this.load();
+
+    if (profilesPath !== './import-profiles.json') {
+      console.warn('ImportProfileManager profilesPath parameter is deprecated. Profiles are now stored in database.');
+    }
+
+    // Service will be injected via setService method
   }
 
   /**
-   * Load profiles from file
+   * Set the ImportConfigService instance (called from tools)
    */
-  private load(): void {
-    if (!existsSync(this.profilesPath)) {
-      // Create empty profiles file
-      this.save();
-      return;
-    }
-
-    try {
-      const content = readFileSync(this.profilesPath, 'utf-8');
-      const data = JSON.parse(content) as ProfilesFile;
-      const validated = ProfilesFileSchema.parse(data);
-
-      this.profiles.clear();
-      for (const profile of validated.profiles) {
-        this.profiles.set(profile.name, profile);
-      }
-    } catch (err) {
-      throw new Error(`Failed to load import profiles: ${String(err)}`);
-    }
-  }
-
-  /**
-   * Save profiles to file
-   */
-  private save(): void {
-    const data: ProfilesFile = {
-      profiles: Array.from(this.profiles.values()),
-    };
-
-    writeFileSync(this.profilesPath, JSON.stringify(data, null, 2));
+  setService(service: any): void {
+    this.service = service;
   }
 
   /**
    * Get a profile by name
    */
   get(name: string): ImportProfile | undefined {
-    return this.profiles.get(name);
+    if (!this.service) {
+      console.warn('ImportProfileManager: service not set');
+      return undefined;
+    }
+    return this.service.getProfile(name);
   }
 
   /**
    * List all profiles
    */
   list(): ImportProfile[] {
-    return Array.from(this.profiles.values());
+    if (!this.service) {
+      console.warn('ImportProfileManager: service not set, returning empty list');
+      return [];
+    }
+    return this.service.getProfiles();
   }
 
   /**
    * Create a new profile
    */
   create(profile: ImportProfile): void {
-    if (this.profiles.has(profile.name)) {
-      throw new Error(`Profile already exists: ${profile.name}`);
+    if (!this.service) {
+      throw new Error('ImportProfileManager: service not set');
     }
-
-    // Validate
-    const validated = ImportProfileSchema.parse(profile);
-    this.profiles.set(validated.name, validated);
-    this.save();
+    this.service.createProfile(profile);
   }
 
   /**
    * Update an existing profile
    */
   update(name: string, updates: Partial<Omit<ImportProfile, 'name'>>): void {
-    const existing = this.profiles.get(name);
-    if (!existing) {
-      throw new Error(`Profile not found: ${name}`);
+    if (!this.service) {
+      throw new Error('ImportProfileManager: service not set');
     }
-
-    const updated = { ...existing, ...updates };
-    const validated = ImportProfileSchema.parse(updated);
-    this.profiles.set(name, validated);
-    this.save();
+    this.service.updateProfile(name, updates);
   }
 
   /**
    * Delete a profile
    */
   delete(name: string): boolean {
-    const deleted = this.profiles.delete(name);
-    if (deleted) {
-      this.save();
+    if (!this.service) {
+      console.warn('ImportProfileManager: service not set');
+      return false;
     }
-    return deleted;
+    return this.service.deleteProfile(name);
   }
 
   /**
    * Check if a profile exists
    */
   exists(name: string): boolean {
-    return this.profiles.has(name);
+    return this.get(name) !== undefined;
   }
 }

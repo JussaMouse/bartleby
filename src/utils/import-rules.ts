@@ -101,64 +101,50 @@ export function validateRegexPattern(pattern: string): { valid: boolean; error?:
 
 /**
  * ImportRules manager for loading and evaluating rules
+ *
+ * @deprecated This class is now a compatibility wrapper around ImportConfigService.
+ * Access the service directly via context.services.importConfig for new code.
  */
 export class ImportRulesManager {
-  private rules: ImportRule[] = [];
+  private service: any; // ImportConfigService (avoiding circular dependency)
   private rulesPath: string;
 
   constructor(rulesPath?: string) {
     this.rulesPath = rulesPath || path.join(process.cwd(), 'import-rules.json');
-    this.loadRules();
-  }
 
-  /**
-   * Load rules from configuration file
-   */
-  private loadRules(): void {
-    try {
-      if (!fs.existsSync(this.rulesPath)) {
-        debug('No import rules file found', { path: this.rulesPath });
-        return;
-      }
-
-      const content = fs.readFileSync(this.rulesPath, 'utf-8');
-      const config: ImportRulesConfig = JSON.parse(content);
-
-      if (!config.rules || !Array.isArray(config.rules)) {
-        warn('Invalid import rules format', { path: this.rulesPath });
-        return;
-      }
-
-      // Filter enabled rules and sort by priority
-      this.rules = config.rules
-        .filter(rule => rule.enabled !== false)
-        .sort((a, b) => (b.priority || 0) - (a.priority || 0));
-
-      debug('Import rules loaded', {
-        path: this.rulesPath,
-        count: this.rules.length,
-      });
-    } catch (err) {
-      warn('Failed to load import rules', {
-        path: this.rulesPath,
-        error: String(err),
-      });
+    if (rulesPath) {
+      warn('ImportRulesManager rulesPath parameter is deprecated. Rules are now stored in database.');
     }
+
+    // Service will be injected via setService method
+    // For backward compatibility, we'll lazy-load from global context
   }
 
   /**
-   * Reload rules from file
+   * Set the ImportConfigService instance (called from tools)
+   */
+  setService(service: any): void {
+    this.service = service;
+  }
+
+  /**
+   * Reload rules from database (deprecated, kept for compatibility)
    */
   reload(): void {
-    this.rules = [];
-    this.loadRules();
+    if (this.service) {
+      this.service.clearCache();
+    }
   }
 
   /**
    * Get all loaded rules
    */
   getRules(): ImportRule[] {
-    return [...this.rules];
+    if (!this.service) {
+      warn('ImportRulesManager: service not set, returning empty rules');
+      return [];
+    }
+    return this.service.getRules();
   }
 
   /**
@@ -174,66 +160,11 @@ export class ImportRulesManager {
     fileType: FileType,
     content?: string
   ): RuleMatch[] {
-    const matches: RuleMatch[] = [];
-
-    for (const rule of this.rules) {
-      let confidence = 0;
-      let matchCount = 0;
-      let checkCount = 0;
-
-      // Check filename pattern (case-insensitive by default)
-      if (rule.match.filenamePattern) {
-        checkCount++;
-        try {
-          const regex = new RegExp(rule.match.filenamePattern, 'i');
-          if (regex.test(fileName)) {
-            matchCount++;
-            confidence += 0.5;
-          }
-        } catch (err) {
-          warn('Invalid filename pattern in rule', {
-            rule: rule.name,
-            pattern: rule.match.filenamePattern,
-          });
-        }
-      }
-
-      // Check file type
-      if (rule.match.fileTypes && rule.match.fileTypes.length > 0) {
-        checkCount++;
-        if (rule.match.fileTypes.includes(fileType)) {
-          matchCount++;
-          confidence += 0.3;
-        }
-      }
-
-      // Check content pattern (if content provided, case-insensitive)
-      if (rule.match.contentPattern && content) {
-        checkCount++;
-        try {
-          const regex = new RegExp(rule.match.contentPattern, 'i');
-          if (regex.test(content)) {
-            matchCount++;
-            confidence += 0.2;
-          }
-        } catch (err) {
-          warn('Invalid content pattern in rule', {
-            rule: rule.name,
-            pattern: rule.match.contentPattern,
-          });
-        }
-      }
-
-      // Rule matches if any condition is met
-      if (matchCount > 0) {
-        // Normalize confidence based on checks performed
-        confidence = checkCount > 0 ? confidence / checkCount : 0;
-        matches.push({ rule, confidence });
-      }
+    if (!this.service) {
+      warn('ImportRulesManager: service not set, returning empty matches');
+      return [];
     }
-
-    // Sort by confidence (highest first)
-    return matches.sort((a, b) => b.confidence - a.confidence);
+    return this.service.matchRules(fileName, fileType, content);
   }
 
   /**
@@ -252,126 +183,52 @@ export class ImportRulesManager {
     }>,
     ruleMatches: RuleMatch[]
   ): typeof metadata {
-    const result = { ...metadata };
-
-    // Apply highest priority rule first (first match wins for single values)
-    for (const { rule, confidence } of ruleMatches) {
-      // Apply project (only if not already set)
-      if (rule.actions.project && !result.project) {
-        result.project = rule.actions.project;
-        debug('Rule applied project', { rule: rule.name, project: result.project });
-      }
-
-      // Apply context (only if not already set)
-      if (rule.actions.context && !result.context) {
-        result.context = rule.actions.context;
-        debug('Rule applied context', { rule: rule.name, context: result.context });
-      }
-
-      // Apply privacy (only if not already set)
-      if (rule.actions.privacy && !result.privacy) {
-        result.privacy = rule.actions.privacy;
-        debug('Rule applied privacy', { rule: rule.name, privacy: result.privacy });
-      }
-
-      // Accumulate tags from all matching rules
-      if (rule.actions.tags && rule.actions.tags.length > 0) {
-        result.tags = result.tags || [];
-        for (const tag of rule.actions.tags) {
-          if (!result.tags.includes(tag)) {
-            result.tags.push(tag);
-          }
-        }
-        debug('Rule applied tags', { rule: rule.name, tags: rule.actions.tags });
-      }
+    if (!this.service) {
+      warn('ImportRulesManager: service not set, returning unchanged metadata');
+      return metadata;
     }
-
-    return result;
+    return this.service.applyRules(metadata, ruleMatches);
   }
 
   /**
    * Add a new rule (with validation)
    */
   addRule(rule: ImportRule): { success: boolean; error?: string } {
-    // Validate rule
-    const validation = validateRule(rule);
-    if (!validation.success) {
-      return { success: false, error: validation.error };
+    if (!this.service) {
+      return { success: false, error: 'ImportRulesManager: service not set' };
     }
-
-    // Check for duplicate rule names
-    if (this.rules.some(r => r.name === rule.name)) {
-      return { success: false, error: `Rule with name "${rule.name}" already exists` };
-    }
-
-    this.rules.push(validation.data);
-    this.rules.sort((a, b) => (b.priority || 0) - (a.priority || 0));
-    this.saveRules();
-
-    return { success: true };
+    return this.service.addRule(rule);
   }
 
   /**
    * Update an existing rule
    */
   updateRule(name: string, updates: Partial<ImportRule>): { success: boolean; error?: string } {
-    const ruleIndex = this.rules.findIndex(r => r.name === name);
-
-    if (ruleIndex === -1) {
-      return { success: false, error: `Rule "${name}" not found` };
+    if (!this.service) {
+      return { success: false, error: 'ImportRulesManager: service not set' };
     }
-
-    // Merge updates with existing rule
-    const updatedRule = { ...this.rules[ruleIndex], ...updates };
-
-    // Validate updated rule
-    const validation = validateRule(updatedRule);
-    if (!validation.success) {
-      return { success: false, error: validation.error };
-    }
-
-    this.rules[ruleIndex] = validation.data;
-    this.rules.sort((a, b) => (b.priority || 0) - (a.priority || 0));
-    this.saveRules();
-
-    return { success: true };
+    return this.service.updateRule(name, updates);
   }
 
   /**
    * Get a rule by name
    */
   getRule(name: string): ImportRule | undefined {
-    return this.rules.find(r => r.name === name);
+    if (!this.service) {
+      warn('ImportRulesManager: service not set');
+      return undefined;
+    }
+    return this.service.getRule(name);
   }
 
   /**
    * Remove a rule by name
    */
   removeRule(name: string): boolean {
-    const initialLength = this.rules.length;
-    this.rules = this.rules.filter(r => r.name !== name);
-
-    if (this.rules.length < initialLength) {
-      this.saveRules();
-      return true;
+    if (!this.service) {
+      warn('ImportRulesManager: service not set');
+      return false;
     }
-
-    return false;
-  }
-
-  /**
-   * Save rules to file
-   */
-  private saveRules(): void {
-    try {
-      const config: ImportRulesConfig = { rules: this.rules };
-      fs.writeFileSync(this.rulesPath, JSON.stringify(config, null, 2), 'utf-8');
-      debug('Import rules saved', { path: this.rulesPath });
-    } catch (err) {
-      warn('Failed to save import rules', {
-        path: this.rulesPath,
-        error: String(err),
-      });
-    }
+    return this.service.removeRule(name);
   }
 }

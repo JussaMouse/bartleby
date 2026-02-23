@@ -303,8 +303,7 @@ export const confirmImport: Tool = {
           );
 
           // Apply import rules
-          const rulesManager = new ImportRulesManager();
-          const ruleMatches = rulesManager.matchRules(
+          const ruleMatches = context.services.importConfig.matchRules(
             item.file_name,
             item.file_type,
             processingResult?.content
@@ -313,7 +312,7 @@ export const confirmImport: Tool = {
           // Build record metadata with rules applied
           let recordMetadata: any = {};
           if (ruleMatches.length > 0) {
-            recordMetadata = rulesManager.applyRules({}, ruleMatches);
+            recordMetadata = context.services.importConfig.applyRules({}, ruleMatches);
           }
 
           // Create record with source_file reference and rule-based metadata

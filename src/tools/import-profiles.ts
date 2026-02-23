@@ -1,8 +1,6 @@
 // src/tools/import-profiles.ts
 import { Tool } from './types.js';
-import { ImportProfileManager, ImportProfile } from '../utils/import-profiles.js';
-
-const profileManager = new ImportProfileManager();
+import { ImportProfile } from '../utils/import-profiles.js';
 
 /**
  * List all import profiles
@@ -35,8 +33,8 @@ export const listImportProfiles: Tool = {
 
   parseArgs: () => ({}),
 
-  execute: async () => {
-    const profiles = profileManager.list();
+  execute: async (args, context) => {
+    const profiles = context.services.importConfig.getProfiles();
 
     if (profiles.length === 0) {
       return 'No import profiles defined.\n\nCreate one with: create import profile';
@@ -107,7 +105,7 @@ export const createImportProfile: Tool = {
 
   parseArgs: () => ({}),
 
-  execute: async (args) => {
+  execute: async (args, context) => {
     const {
       name,
       description,
@@ -146,7 +144,7 @@ export const createImportProfile: Tool = {
         rulesEnabled,
       };
 
-      profileManager.create(profile);
+      context.services.importConfig.createProfile(profile);
 
       let output = `✓ Created import profile: ${name}\n\n`;
       output += `${description}\n\n`;
@@ -211,7 +209,7 @@ export const editImportProfile: Tool = {
     return { name: match?.[1]?.trim() };
   },
 
-  execute: async (args) => {
+  execute: async (args, context) => {
     const { name, ...updates } = args as Partial<ImportProfile> & { name: string };
 
     if (!name) {
@@ -221,9 +219,9 @@ export const editImportProfile: Tool = {
     }
 
     try {
-      const existing = profileManager.get(name);
+      const existing = context.services.importConfig.getProfile(name);
       if (!existing) {
-        return `Profile not found: ${name}\n\nAvailable profiles:\n${profileManager.list().map(p => `  - ${p.name}`).join('\n')}`;
+        return `Profile not found: ${name}\n\nAvailable profiles:\n${context.services.importConfig.getProfiles().map(p => `  - ${p.name}`).join('\n')}`;
       }
 
       // Only update provided fields
@@ -246,7 +244,7 @@ export const editImportProfile: Tool = {
         return output;
       }
 
-      profileManager.update(name, filteredUpdates);
+      context.services.importConfig.updateProfile(name, filteredUpdates);
 
       return `✓ Updated import profile: ${name}\n\nUpdated fields: ${Object.keys(filteredUpdates).join(', ')}`;
     } catch (err) {
@@ -293,7 +291,7 @@ export const deleteImportProfile: Tool = {
     return { name: match?.[1]?.trim(), confirm: false };
   },
 
-  execute: async (args) => {
+  execute: async (args, context) => {
     const { name, confirm = false } = args as { name?: string; confirm?: boolean };
 
     if (!name) {
@@ -301,7 +299,7 @@ export const deleteImportProfile: Tool = {
     }
 
     try {
-      const existing = profileManager.get(name);
+      const existing = context.services.importConfig.getProfile(name);
       if (!existing) {
         return `Profile not found: ${name}`;
       }
@@ -313,7 +311,7 @@ export const deleteImportProfile: Tool = {
           'To confirm, use parameter: confirm: true';
       }
 
-      profileManager.delete(name);
+      context.services.importConfig.deleteProfile(name);
       return `✓ Deleted import profile: ${name}`;
     } catch (err) {
       return `Error deleting profile: ${String(err)}`;
@@ -365,9 +363,9 @@ export const importWithProfile: Tool = {
     }
 
     try {
-      const profile = profileManager.get(profileName);
+      const profile = context.services.importConfig.getProfile(profileName);
       if (!profile) {
-        return `Profile not found: ${profileName}\n\nAvailable profiles:\n${profileManager.list().map(p => `  - ${p.name}`).join('\n')}`;
+        return `Profile not found: ${profileName}\n\nAvailable profiles:\n${context.services.importConfig.getProfiles().map(p => `  - ${p.name}`).join('\n')}`;
       }
 
       // Get importFiles tool

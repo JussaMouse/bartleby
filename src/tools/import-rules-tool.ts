@@ -38,8 +38,8 @@ export const showImportRules: Tool = {
 
   execute: async (args, context) => {
     try {
-      const rulesManager = new ImportRulesManager();
-      const rules = rulesManager.getRules();
+      const importConfig = context.services.importConfig;
+      const rules = importConfig.getRules();
 
       if (rules.length === 0) {
         return `No import rules configured.

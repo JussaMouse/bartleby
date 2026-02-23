@@ -44,7 +44,7 @@ export const createImportRule: Tool = {
   parseArgs: () => ({}),
 
   execute: async (args, context) => {
-    const rulesManager = new ImportRulesManager();
+    const importConfig = context.services.importConfig;
 
     try {
       const params = args as Partial<{
@@ -86,7 +86,7 @@ export const createImportRule: Tool = {
       }
 
       // Add rule
-      const result = rulesManager.addRule(rule);
+      const result = importConfig.addRule(rule);
 
       if (!result.success) {
         return `Error creating rule: ${result.error}`;
@@ -173,8 +173,8 @@ export const editImportRule: Tool = {
       return 'Error: Rule name is required. Usage: edit import rule <name>';
     }
 
-    const rulesManager = new ImportRulesManager();
-    const existingRule = rulesManager.getRule(ruleName);
+    const importConfig = context.services.importConfig;
+    const existingRule = importConfig.getRule(ruleName);
 
     if (!existingRule) {
       return `Error: Rule "${ruleName}" not found. Use "show import rules" to see available rules.`;
@@ -257,8 +257,8 @@ export const deleteImportRule: Tool = {
       return 'Error: Rule name is required. Usage: delete import rule <name>';
     }
 
-    const rulesManager = new ImportRulesManager();
-    const deleted = rulesManager.removeRule(ruleName);
+    const importConfig = context.services.importConfig;
+    const deleted = importConfig.removeRule(ruleName);
 
     if (deleted) {
       return `✓ Import rule "${ruleName}" deleted successfully.`;
@@ -312,8 +312,8 @@ export const testImportRule: Tool = {
       return 'Error: Rule name is required. Usage: test import rule <name>';
     }
 
-    const rulesManager = new ImportRulesManager();
-    const rule = rulesManager.getRule(ruleName);
+    const importConfig = context.services.importConfig;
+    const rule = importConfig.getRule(ruleName);
 
     if (!rule) {
       return `Error: Rule "${ruleName}" not found. Use "show import rules" to see available rules.`;
@@ -331,7 +331,7 @@ export const testImportRule: Tool = {
     const nonMatches = [];
 
     for (const item of items) {
-      const ruleMatches = rulesManager.matchRules(item.file_name, item.file_type);
+      const ruleMatches = importConfig.matchRules(item.file_name, item.file_type);
       const thisRuleMatch = ruleMatches.find(m => m.rule.name === ruleName);
 
       if (thisRuleMatch) {
