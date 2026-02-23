@@ -348,6 +348,18 @@ migrate settings                      # One-time migration from .env
 - `I like/love/hate <thing>`
 - `my <relation> <name>` (wife, friend, boss, etc.)
 
+**Memory Management (CLI only):**
+```bash
+# Monitor memory system
+pnpm monitor                              # Database stats and health
+pnpm optimize                             # Clean expired data and optimize
+pnpm exec tsx scripts/verify-phase5.ts    # Verify Phase 5 enhancements
+
+# Backup and restore
+pnpm profile export                       # Export learning data to JSON
+pnpm profile import <file>                # Restore from backup
+```
+
 ---
 
 ## Weather

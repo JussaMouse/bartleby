@@ -225,12 +225,62 @@ export class LearningService {
   constructor(db: Database.Database) {
     this.db = db;
     this.initSchema();
+    this.migrateActivationTracking();
     this.ensureUserEntity();
   }
 
   private initSchema(): void {
     this.db.exec(SCHEMA);
     info('LearningService schema initialized');
+  }
+
+  /**
+   * Migrate schema to add activation tracking columns if they don't exist.
+   * Runs on service initialization to ensure backward compatibility.
+   */
+  private migrateActivationTracking(): void {
+    try {
+      // Check if columns already exist
+      const tableInfo = this.db.prepare('PRAGMA table_info(observations)').all() as Array<{ name: string }>;
+      const hasActivation = tableInfo.some(col => col.name === 'activation_score');
+
+      if (!hasActivation) {
+        info('Migrating observations table for activation tracking');
+
+        // Add activation tracking columns
+        this.db.exec(`
+          ALTER TABLE observations ADD COLUMN last_accessed_at TEXT;
+          ALTER TABLE observations ADD COLUMN access_count INTEGER DEFAULT 0;
+          ALTER TABLE observations ADD COLUMN activation_score REAL DEFAULT 0.5;
+        `);
+
+        // Create index for activation queries
+        this.db.exec(`
+          CREATE INDEX IF NOT EXISTS idx_observations_activation
+          ON observations(entity_id, activation_score DESC);
+        `);
+
+        // Initialize activation scores for existing observations based on age
+        // Recent observations (< 30 days) get higher initial scores
+        this.db.exec(`
+          UPDATE observations
+          SET activation_score = CASE
+            WHEN observed_at > datetime('now', '-7 days') THEN 0.7
+            WHEN observed_at > datetime('now', '-30 days') THEN 0.5
+            ELSE 0.3
+          END,
+          last_accessed_at = observed_at,
+          access_count = 0
+          WHERE activation_score IS NULL;
+        `);
+
+        info('Activation tracking migration complete');
+      } else {
+        debug('Activation tracking columns already exist');
+      }
+    } catch (err) {
+      warn('Activation tracking migration failed', { error: String(err) });
+    }
   }
 
   private ensureUserEntity(): void {
@@ -642,8 +692,16 @@ export class LearningService {
   // High-Level Queries
   // ==========================================================================
 
-  getUserProfile(): UserProfile {
-    const observations = this.getObservations(this.userId, { notExpired: true });
+  getUserProfile(tier: 'hot' | 'warm' | 'all' = 'all'): UserProfile {
+    // Use activation-based filtering for hot/warm tiers
+    const observations = tier === 'all'
+      ? this.getObservations(this.userId, { notExpired: true })
+      : this.getObservationsByActivation(this.userId, tier);
+
+    // Track access for activation scoring
+    for (const obs of observations) {
+      this.updateActivation(obs.id);
+    }
 
     const preferences: Record<string, any> = {};
     const patterns: Record<string, any> = {};
@@ -1130,6 +1188,282 @@ export class LearningService {
       source: data.source,
       errorMessage: obs.find(o => o.key === 'error_message')?.value
     };
+  }
+
+  // ==========================================================================
+  // Phase 5: Memory System Enhancements
+  // ==========================================================================
+
+  /**
+   * Get observations filtered by activation tier.
+   * Hot tier (>0.7): Frequently accessed, recent, high confidence
+   * Warm tier (0.4-0.7): Moderately accessed
+   * Cold tier (<0.4): Rarely accessed
+   */
+  getObservationsByActivation(entityId: string, tier: 'hot' | 'warm' | 'cold'): Observation[] {
+    const thresholds = {
+      hot: 0.7,
+      warm: 0.4,
+      cold: 0.0
+    };
+
+    const minScore = thresholds[tier];
+    const maxScore = tier === 'hot' ? 1.0 : (tier === 'warm' ? 0.7 : 0.4);
+
+    const query = `
+      SELECT id, entity_id, key, value, value_type,
+             source_type, source_id, confidence,
+             observed_at, expires_at, supersedes, search_text
+      FROM observations
+      WHERE entity_id = ?
+      AND (expires_at IS NULL OR datetime(expires_at) > datetime('now'))
+      AND activation_score >= ?
+      AND activation_score < ?
+      ORDER BY activation_score DESC, observed_at DESC
+    `;
+
+    const rows = this.db.prepare(query).all(entityId, minScore, maxScore) as any[];
+
+    return rows.map(row => ({
+      id: row.id,
+      entityId: row.entity_id,
+      key: row.key,
+      value: row.value,
+      valueType: row.value_type,
+      sourceType: row.source_type,
+      sourceId: row.source_id,
+      confidence: row.confidence,
+      observedAt: row.observed_at,
+      expiresAt: row.expires_at,
+      supersedes: row.supersedes,
+      searchText: row.search_text
+    }));
+  }
+
+  /**
+   * Update activation score when an observation is accessed.
+   * Activation formula: (0.4 × recency) + (0.3 × frequency) + (0.3 × confidence)
+   * - recency: exponential decay (half-life 30 days)
+   * - frequency: log scale (10 accesses = 1.0)
+   */
+  updateActivation(observationId: string): void {
+    try {
+      // Get current observation data
+      const obs = this.db.prepare(`
+        SELECT confidence, observed_at, access_count, last_accessed_at
+        FROM observations
+        WHERE id = ?
+      `).get(observationId) as any;
+
+      if (!obs) return;
+
+      const now = new Date();
+      const observedAt = new Date(obs.observed_at);
+      const daysSinceObserved = (now.getTime() - observedAt.getTime()) / (1000 * 60 * 60 * 24);
+
+      // Calculate recency component (exponential decay, half-life 30 days)
+      const recency = Math.exp(-0.693 * daysSinceObserved / 30);
+
+      // Calculate frequency component (log scale, 10 accesses = 1.0)
+      const newAccessCount = (obs.access_count || 0) + 1;
+      const frequency = Math.min(1.0, Math.log10(newAccessCount + 1) / Math.log10(11));
+
+      // Confidence component (already normalized 0-1)
+      const confidence = obs.confidence;
+
+      // Combined activation score
+      const activation = (0.4 * recency) + (0.3 * frequency) + (0.3 * confidence);
+
+      // Update database
+      this.db.prepare(`
+        UPDATE observations
+        SET access_count = ?,
+            last_accessed_at = datetime('now'),
+            activation_score = ?
+        WHERE id = ?
+      `).run(newAccessCount, activation, observationId);
+
+      debug('Updated activation', {
+        id: observationId.slice(0, 8),
+        activation: Math.round(activation * 100) / 100,
+        accessCount: newAccessCount
+      });
+    } catch (err) {
+      warn('Failed to update activation', { error: String(err) });
+    }
+  }
+
+  /**
+   * Decay activation scores for all observations.
+   * Reduces activation by 1% daily for observations not accessed recently.
+   * This prevents the system from being overwhelmed by old memories.
+   */
+  decayActivationScores(): number {
+    const decayFactor = 0.99; // 1% decay per day
+
+    const result = this.db.prepare(`
+      UPDATE observations
+      SET activation_score = activation_score * ?
+      WHERE last_accessed_at IS NULL
+         OR datetime(last_accessed_at) < datetime('now', '-1 day')
+    `).run(decayFactor);
+
+    if (result.changes > 0) {
+      info('Decayed activation scores', { count: result.changes, factor: decayFactor });
+    }
+
+    return result.changes;
+  }
+
+  /**
+   * Find similar observations for consolidation.
+   * Groups observations by key where values are very similar.
+   */
+  findSimilarObservations(entityId: string): Array<{ key: string; observations: Observation[] }> {
+    const allObs = this.getObservations(entityId, { notExpired: true });
+
+    // Group by key
+    const grouped = new Map<string, Observation[]>();
+    for (const obs of allObs) {
+      const existing = grouped.get(obs.key) || [];
+      existing.push(obs);
+      grouped.set(obs.key, existing);
+    }
+
+    // Find keys with 3+ similar observations
+    const candidates: Array<{ key: string; observations: Observation[] }> = [];
+    for (const [key, observations] of grouped.entries()) {
+      if (observations.length >= 3) {
+        // Check if values are similar (exact match for now)
+        const values = new Set(observations.map(o => o.value));
+        if (values.size === 1) {
+          // All observations have the same value - perfect consolidation candidate
+          candidates.push({ key, observations });
+        }
+      }
+    }
+
+    return candidates;
+  }
+
+  /**
+   * Consolidate similar observations into a single high-confidence observation.
+   * Uses supersedes chains to preserve history.
+   */
+  consolidateObservations(entityId: string): number {
+    const candidates = this.findSimilarObservations(entityId);
+    let consolidated = 0;
+
+    for (const { key, observations } of candidates) {
+      // Sort by observed_at to get the most recent
+      const sorted = observations.sort((a, b) =>
+        new Date(b.observedAt).getTime() - new Date(a.observedAt).getTime()
+      );
+
+      const latest = sorted[0];
+      const older = sorted.slice(1);
+
+      // Boost confidence based on multiple confirmations
+      const boostedConfidence = Math.min(0.95, latest.confidence + (older.length * 0.05));
+
+      // Create consolidated observation that supersedes the latest
+      // The consolidated observation inherits the supersedes chain from the latest
+      this.recordObservation({
+        entityId,
+        key,
+        value: latest.value,
+        valueType: latest.valueType,
+        sourceType: 'computed',
+        confidence: boostedConfidence,
+        supersedes: latest.id
+      });
+
+      // Expire older parallel observations so they don't appear in queries
+      // This handles the case where we have multiple independent observations
+      // rather than a proper supersedes chain
+      for (const old of older) {
+        this.db.prepare(`
+          UPDATE observations
+          SET expires_at = datetime('now', '-1 second')
+          WHERE id = ?
+        `).run(old.id);
+      }
+
+      consolidated++;
+      info('Consolidated observations', {
+        key,
+        count: observations.length,
+        newConfidence: boostedConfidence
+      });
+    }
+
+    return consolidated;
+  }
+
+  /**
+   * Search observations with relationship-aware context enrichment.
+   * Follows relationship chains to include related observations.
+   */
+  searchObservationsWithRelationships(
+    query: string,
+    limit: number = 10,
+    maxDepth: number = 2
+  ): Array<Observation & { relatedContext?: string[] }> {
+    // First, do standard FTS search
+    const baseResults = this.searchObservations(query, limit);
+
+    // Enrich with relationship context
+    const enriched = baseResults.map(obs => {
+      const relatedContext = this.getRelationshipContext(obs.entityId, maxDepth);
+      return {
+        ...obs,
+        relatedContext: relatedContext.length > 0 ? relatedContext : undefined
+      };
+    });
+
+    // Sort by relevance (relationship count boosts score)
+    return enriched.sort((a, b) => {
+      const aScore = (a.relatedContext?.length || 0) * 0.1 + a.confidence;
+      const bScore = (b.relatedContext?.length || 0) * 0.1 + b.confidence;
+      return bScore - aScore;
+    });
+  }
+
+  /**
+   * Get relationship context for an entity by following relationship chains.
+   * Returns hot observations from related entities (max depth = 2 hops).
+   */
+  getRelationshipContext(entityId: string, maxDepth: number = 2): string[] {
+    const context: string[] = [];
+    const visited = new Set<string>([entityId]);
+
+    const traverse = (currentId: string, depth: number) => {
+      if (depth >= maxDepth) return;
+
+      // Get relationships for current entity
+      const relationships = this.getRelationships(currentId);
+
+      for (const rel of relationships) {
+        // Determine the related entity (could be from or to)
+        const relatedId = rel.fromEntity === currentId ? rel.toEntity : rel.fromEntity;
+
+        if (visited.has(relatedId)) continue;
+        visited.add(relatedId);
+
+        // Get hot observations from related entity
+        const relatedObs = this.getObservationsByActivation(relatedId, 'hot').slice(0, 3);
+
+        for (const obs of relatedObs) {
+          context.push(`[${rel.relationType}] ${obs.key}: ${obs.value.slice(0, 60)}`);
+        }
+
+        // Recurse for next level
+        traverse(relatedId, depth + 1);
+      }
+    };
+
+    traverse(entityId, 0);
+    return context;
   }
 
   close(): void {

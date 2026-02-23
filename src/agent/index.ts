@@ -22,6 +22,7 @@ export class Agent {
 
   /**
    * Build rich context from learning system for LLM prompts
+   * Phase 5: Uses hot tier and relationship-aware search for efficiency
    */
   private async buildRichContext(input: string): Promise<{ profile: string; context: string }> {
     if (!this.services.learning) {
@@ -29,9 +30,12 @@ export class Agent {
     }
 
     try {
-      const userProfile = this.services.learning.getUserProfile();
+      // Use hot tier for profile (most accessed/relevant observations only)
+      const userProfile = this.services.learning.getUserProfile('hot');
       const recentWork = this.services.learning.getRecentWorkContext(7);
-      const relevantObs = this.services.learning.searchObservations(input, 5);
+
+      // Use relationship-aware search for richer context
+      const relevantObs = this.services.learning.searchObservationsWithRelationships(input, 5);
 
       // Build profile section
       const profileParts: string[] = [];
@@ -89,6 +93,13 @@ export class Agent {
         contextParts.push(`\n**Relevant Context:**`);
         for (const obs of relevantObs) {
           contextParts.push(`- ${obs.key}: ${obs.value.slice(0, 60)}`);
+
+          // Include relationship context if available
+          if (obs.relatedContext && obs.relatedContext.length > 0) {
+            for (const related of obs.relatedContext.slice(0, 2)) {
+              contextParts.push(`  └─ ${related}`);
+            }
+          }
         }
       }
 

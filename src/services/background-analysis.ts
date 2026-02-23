@@ -33,6 +33,8 @@ export class BackgroundAnalysis {
     await this.analyzeWorkflowPatterns();
     await this.analyzeGardenRecordImportance();
     await this.discoverSemanticRelationships();
+    await this.consolidateMemory();
+    await this.decayActivation();
     await this.cleanupExpiredData();
 
     info('Background analysis complete');
@@ -286,5 +288,39 @@ export class BackgroundAnalysis {
     }
 
     debug('Garden record importance analyzed', { recordCount: records.length });
+  }
+
+  /**
+   * Consolidate redundant observations to prevent memory bloat.
+   * Merges similar observations into high-confidence consolidated observations.
+   * Phase 5 enhancement: Memory Consolidation
+   */
+  private async consolidateMemory(): Promise<void> {
+    // Consolidate user observations
+    const userConsolidated = this.learning.consolidateObservations('user');
+
+    if (userConsolidated > 0) {
+      info('Memory consolidation complete', {
+        entity: 'user',
+        consolidatedGroups: userConsolidated
+      });
+    } else {
+      debug('No observations to consolidate');
+    }
+
+    // Could extend to consolidate session/record observations if needed
+  }
+
+  /**
+   * Decay activation scores for observations not accessed recently.
+   * Prevents old memories from consuming context space.
+   * Phase 5 enhancement: Activation Decay
+   */
+  private async decayActivation(): Promise<void> {
+    const decayed = this.learning.decayActivationScores();
+
+    if (decayed > 0) {
+      debug('Activation decay complete', { observationsDecayed: decayed });
+    }
   }
 }

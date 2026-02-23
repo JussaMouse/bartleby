@@ -587,6 +587,412 @@ test('Can get complete entity view', () => {
 });
 
 // ============================================================================
+// Phase 5: Memory System Enhancement Tests
+// ============================================================================
+
+test('Activation tracking columns are added via migration', () => {
+  const db = createTestDb();
+  const learning = new LearningService(db);
+
+  const tableInfo = db.prepare('PRAGMA table_info(observations)').all() as Array<{ name: string }>;
+  const columnNames = tableInfo.map(col => col.name);
+
+  assert.ok(columnNames.includes('activation_score'), 'Should have activation_score column');
+  assert.ok(columnNames.includes('access_count'), 'Should have access_count column');
+  assert.ok(columnNames.includes('last_accessed_at'), 'Should have last_accessed_at column');
+
+  db.close();
+});
+
+test('Can filter observations by activation tier', () => {
+  const db = createTestDb();
+  const learning = new LearningService(db);
+
+  // Manually set activation scores for testing
+  const obs1 = learning.recordObservation({
+    entityId: 'user',
+    key: 'hot_observation',
+    value: 'very important',
+    sourceType: 'stated',
+    confidence: 0.9
+  });
+
+  const obs2 = learning.recordObservation({
+    entityId: 'user',
+    key: 'warm_observation',
+    value: 'moderately important',
+    sourceType: 'inferred',
+    confidence: 0.7
+  });
+
+  const obs3 = learning.recordObservation({
+    entityId: 'user',
+    key: 'cold_observation',
+    value: 'rarely used',
+    sourceType: 'computed',
+    confidence: 0.5
+  });
+
+  // Set activation scores manually
+  db.prepare('UPDATE observations SET activation_score = 0.8 WHERE id = ?').run(obs1);
+  db.prepare('UPDATE observations SET activation_score = 0.5 WHERE id = ?').run(obs2);
+  db.prepare('UPDATE observations SET activation_score = 0.2 WHERE id = ?').run(obs3);
+
+  const hot = learning.getObservationsByActivation('user', 'hot');
+  assert.strictEqual(hot.length, 1, 'Should have 1 hot observation');
+  assert.strictEqual(hot[0].key, 'hot_observation');
+
+  const warm = learning.getObservationsByActivation('user', 'warm');
+  assert.strictEqual(warm.length, 1, 'Should have 1 warm observation');
+  assert.strictEqual(warm[0].key, 'warm_observation');
+
+  const cold = learning.getObservationsByActivation('user', 'cold');
+  assert.strictEqual(cold.length, 1, 'Should have 1 cold observation');
+  assert.strictEqual(cold[0].key, 'cold_observation');
+
+  db.close();
+});
+
+test('Activation score updates on access', () => {
+  const db = createTestDb();
+  const learning = new LearningService(db);
+
+  const obsId = learning.recordObservation({
+    entityId: 'user',
+    key: 'test_fact',
+    value: 'testing',
+    sourceType: 'stated',
+    confidence: 0.8
+  });
+
+  // Initial state
+  const before = db.prepare('SELECT activation_score, access_count FROM observations WHERE id = ?').get(obsId) as any;
+  const initialScore = before.activation_score;
+  assert.strictEqual(before.access_count, 0, 'Initial access count should be 0');
+
+  // Update activation (simulates access)
+  learning.updateActivation(obsId);
+
+  // After access
+  const after = db.prepare('SELECT activation_score, access_count FROM observations WHERE id = ?').get(obsId) as any;
+  assert.strictEqual(after.access_count, 1, 'Access count should increment to 1');
+  assert.ok(after.activation_score !== initialScore, 'Activation score should change');
+
+  // Access again
+  learning.updateActivation(obsId);
+  const after2 = db.prepare('SELECT activation_score, access_count FROM observations WHERE id = ?').get(obsId) as any;
+  assert.strictEqual(after2.access_count, 2, 'Access count should increment to 2');
+
+  db.close();
+});
+
+test('Activation decay reduces scores over time', () => {
+  const db = createTestDb();
+  const learning = new LearningService(db);
+
+  const obsId = learning.recordObservation({
+    entityId: 'user',
+    key: 'old_fact',
+    value: 'not accessed recently',
+    sourceType: 'stated',
+    confidence: 0.8
+  });
+
+  // Set to a known activation score
+  db.prepare("UPDATE observations SET activation_score = 0.8, last_accessed_at = datetime('now', '-2 days') WHERE id = ?").run(obsId);
+
+  const before = db.prepare('SELECT activation_score FROM observations WHERE id = ?').get(obsId) as any;
+  assert.strictEqual(before.activation_score, 0.8);
+
+  // Run decay
+  const decayed = learning.decayActivationScores();
+  assert.ok(decayed > 0, 'Should decay at least one observation');
+
+  const after = db.prepare('SELECT activation_score FROM observations WHERE id = ?').get(obsId) as any;
+  assert.ok(after.activation_score < 0.8, 'Activation score should decrease');
+  assert.ok(after.activation_score > 0.7, 'Should decay by ~1% (0.99 factor)');
+
+  db.close();
+});
+
+test('Can find similar observations for consolidation', () => {
+  const db = createTestDb();
+  const learning = new LearningService(db);
+
+  // Create multiple identical observations
+  learning.recordObservation({
+    entityId: 'user',
+    key: 'preference.package_manager',
+    value: 'pnpm',
+    sourceType: 'stated',
+    confidence: 0.7
+  });
+
+  learning.recordObservation({
+    entityId: 'user',
+    key: 'preference.package_manager',
+    value: 'pnpm',
+    sourceType: 'inferred',
+    confidence: 0.8
+  });
+
+  learning.recordObservation({
+    entityId: 'user',
+    key: 'preference.package_manager',
+    value: 'pnpm',
+    sourceType: 'stated',
+    confidence: 0.9
+  });
+
+  const similar = learning.findSimilarObservations('user');
+  assert.ok(similar.length > 0, 'Should find similar observations');
+  assert.strictEqual(similar[0].key, 'preference.package_manager');
+  assert.strictEqual(similar[0].observations.length, 3, 'Should group all 3 observations');
+
+  db.close();
+});
+
+test('Can consolidate observations', () => {
+  const db = createTestDb();
+  const learning = new LearningService(db);
+
+  // Create multiple identical observations
+  learning.recordObservation({
+    entityId: 'user',
+    key: 'preference.editor',
+    value: 'vim',
+    sourceType: 'stated',
+    confidence: 0.7
+  });
+
+  learning.recordObservation({
+    entityId: 'user',
+    key: 'preference.editor',
+    value: 'vim',
+    sourceType: 'stated',
+    confidence: 0.7
+  });
+
+  learning.recordObservation({
+    entityId: 'user',
+    key: 'preference.editor',
+    value: 'vim',
+    sourceType: 'stated',
+    confidence: 0.7
+  });
+
+  const beforeCount = learning.getObservations('user').length;
+  assert.strictEqual(beforeCount, 3, 'Should start with 3 observations');
+
+  const consolidated = learning.consolidateObservations('user');
+  assert.strictEqual(consolidated, 1, 'Should consolidate 1 group');
+
+  // Check that a new high-confidence observation was created
+  const latest = learning.getObservation('user', 'preference.editor');
+
+  if (!latest) {
+    console.log('All observations:', learning.getObservations('user'));
+    throw new Error('latest is null - no observation found!');
+  }
+
+  console.log('Latest observation:', latest);
+  assert.ok(latest, 'Should have a latest observation');
+  assert.ok(latest.confidence >= 0.75, `Consolidated observation should have higher confidence, got ${latest.confidence}`);
+  assert.strictEqual(latest.sourceType, 'computed', 'Should be marked as computed');
+
+  db.close();
+});
+
+test('Consolidation preserves history via supersedes chains', () => {
+  const db = createTestDb();
+  const learning = new LearningService(db);
+
+  learning.recordObservation({
+    entityId: 'user',
+    key: 'test_key',
+    value: 'test_value',
+    sourceType: 'stated',
+    confidence: 0.7
+  });
+
+  learning.recordObservation({
+    entityId: 'user',
+    key: 'test_key',
+    value: 'test_value',
+    sourceType: 'stated',
+    confidence: 0.7
+  });
+
+  learning.recordObservation({
+    entityId: 'user',
+    key: 'test_key',
+    value: 'test_value',
+    sourceType: 'stated',
+    confidence: 0.7
+  });
+
+  learning.consolidateObservations('user');
+
+  const history = learning.getObservationHistory('user', 'test_key');
+  assert.ok(history.length >= 2, 'Should preserve history through consolidation');
+
+  db.close();
+});
+
+test('Can search observations with relationship context', () => {
+  const db = createTestDb();
+  const learning = new LearningService(db);
+
+  const record1 = learning.createEntity('record');
+  const record2 = learning.createEntity('record');
+
+  // Create observations
+  learning.recordObservation({
+    entityId: record1,
+    key: 'topic',
+    value: 'package management with pnpm',
+    sourceType: 'extracted',
+    confidence: 0.9
+  });
+
+  learning.recordObservation({
+    entityId: record2,
+    key: 'topic',
+    value: 'npm vs yarn comparison',
+    sourceType: 'extracted',
+    confidence: 0.85
+  });
+
+  // Create relationship
+  learning.recordRelationship({
+    fromEntity: record1,
+    toEntity: record2,
+    relationType: 'related_to',
+    strength: 0.8
+  });
+
+  // Set activation scores so they're "hot"
+  db.prepare('UPDATE observations SET activation_score = 0.8').run();
+
+  const results = learning.searchObservationsWithRelationships('pnpm', 5);
+  assert.ok(results.length > 0, 'Should find search results');
+
+  // The first result should have relationship context
+  const firstResult = results[0];
+  if (firstResult.relatedContext) {
+    assert.ok(firstResult.relatedContext.length > 0, 'Should include related context');
+  }
+
+  db.close();
+});
+
+test('Can get relationship context with multi-hop traversal', () => {
+  const db = createTestDb();
+  const learning = new LearningService(db);
+
+  const entity1 = learning.createEntity('record');
+  const entity2 = learning.createEntity('record');
+  const entity3 = learning.createEntity('record');
+
+  // Create a chain: entity1 -> entity2 -> entity3
+  learning.recordRelationship({
+    fromEntity: entity1,
+    toEntity: entity2,
+    relationType: 'relates_to'
+  });
+
+  learning.recordRelationship({
+    fromEntity: entity2,
+    toEntity: entity3,
+    relationType: 'extends'
+  });
+
+  // Add hot observations to each entity
+  learning.recordObservation({
+    entityId: entity1,
+    key: 'topic',
+    value: 'topic A',
+    sourceType: 'extracted',
+    confidence: 0.9
+  });
+
+  learning.recordObservation({
+    entityId: entity2,
+    key: 'topic',
+    value: 'topic B',
+    sourceType: 'extracted',
+    confidence: 0.9
+  });
+
+  learning.recordObservation({
+    entityId: entity3,
+    key: 'topic',
+    value: 'topic C',
+    sourceType: 'extracted',
+    confidence: 0.9
+  });
+
+  // Set activation scores
+  db.prepare('UPDATE observations SET activation_score = 0.8').run();
+
+  const context = learning.getRelationshipContext(entity1, 2);
+  assert.ok(context.length > 0, 'Should find relationship context');
+  assert.ok(context.some(c => c.includes('topic B')), 'Should include 1-hop related observation');
+
+  // With maxDepth=2, should also find entity3
+  assert.ok(context.some(c => c.includes('topic C')), 'Should include 2-hop related observation');
+
+  db.close();
+});
+
+test('getUserProfile respects tier parameter', () => {
+  const db = createTestDb();
+  const learning = new LearningService(db);
+
+  // Create observations with different activation scores
+  const hot = learning.recordObservation({
+    entityId: 'user',
+    key: 'preference.hot',
+    value: 'frequently used',
+    sourceType: 'stated',
+    confidence: 0.9
+  });
+
+  const warm = learning.recordObservation({
+    entityId: 'user',
+    key: 'preference.warm',
+    value: 'occasionally used',
+    sourceType: 'stated',
+    confidence: 0.7
+  });
+
+  const cold = learning.recordObservation({
+    entityId: 'user',
+    key: 'preference.cold',
+    value: 'rarely used',
+    sourceType: 'stated',
+    confidence: 0.5
+  });
+
+  // Set activation scores
+  db.prepare('UPDATE observations SET activation_score = 0.8 WHERE id = ?').run(hot);
+  db.prepare('UPDATE observations SET activation_score = 0.5 WHERE id = ?').run(warm);
+  db.prepare('UPDATE observations SET activation_score = 0.2 WHERE id = ?').run(cold);
+
+  const hotProfile = learning.getUserProfile('hot');
+  assert.ok(hotProfile.preferences.hot, 'Hot profile should include hot observations');
+  assert.ok(!hotProfile.preferences.warm, 'Hot profile should not include warm observations');
+  assert.ok(!hotProfile.preferences.cold, 'Hot profile should not include cold observations');
+
+  const allProfile = learning.getUserProfile('all');
+  assert.ok(allProfile.preferences.hot, 'All profile should include hot');
+  assert.ok(allProfile.preferences.warm, 'All profile should include warm');
+  assert.ok(allProfile.preferences.cold, 'All profile should include cold');
+
+  db.close();
+});
+
+// ============================================================================
 // Run Tests
 // ============================================================================
 
