@@ -900,7 +900,7 @@ Found 5 files...
 - `receipts` - Financial documents with strict organization
 - `research-papers` - Academic papers with full processing
 
-See `import-profiles.example.json` for more examples.
+Create profiles interactively with `create import profile`.
 
 ---
 
@@ -1674,31 +1674,22 @@ Inbox: 5 files (2.4 MB)
 
 **Import Rules (Automatic Organization):**
 
-Create `import-rules.json` to automatically organize imports:
-```json
-{
-  "rules": [
-    {
-      "name": "Financial Documents",
-      "match": {
-        "filenamePattern": "(invoice|receipt|statement)",
-        "fileTypes": ["document", "text"]
-      },
-      "actions": {
-        "project": "finances",
-        "context": "admin",
-        "tags": ["financial", "records"]
-      },
-      "priority": 100
-    }
-  ]
-}
+Create rules interactively to automatically organize imports:
+```
+> create import rule
 ```
 
-View active rules:
+Example rule:
+- **Name:** Financial Documents
+- **Match:** Filename pattern `(invoice|receipt|statement)` + file types `document, text`
+- **Actions:** Apply project `finances`, context `admin`, tags `financial, records`
+- **Priority:** 100 (higher = evaluated first)
+
+View and manage rules:
 ```
-> show import rules
-> import rules
+> show import rules       # List all rules
+> edit import rule <name> # Modify a rule
+> delete import rule <name> # Remove a rule
 ```
 
 Rules are automatically applied during import confirmation. Higher priority rules are evaluated first.
