@@ -32,6 +32,7 @@ Type commands in the CLI or speak them in the mobile app. One agent with many wa
 **Smart Import System**
 - Automatic duplicate detection (SHA256 hashing)
 - Import rules for auto-organization
+- Import profiles for different workflows
 - Dry-run mode for safe previews
 - Full import history tracking
 
@@ -42,9 +43,9 @@ Type commands in the CLI or speak them in the mobile app. One agent with many wa
 - Settings migration tool
 
 **Developer Experience**
-- Structured error handling
+- Structured error handling (Result types)
 - Type-safe parameters (Zod schemas)
-- Comprehensive test suite (45 tests)
+- Comprehensive test suite (25 integration tests)
 
 ---
 
@@ -2018,41 +2019,53 @@ The tunnel must stay open while running. Multiple instances can share the same b
 ## Configuration
 
 Bartleby uses a **hybrid configuration system**:
-- **Bootstrap settings** (`.env`) — Minimal configuration to start (LLM URLs, paths, logging)
-- **Runtime settings** (database) — Everything else, configurable without restart
+- **Bootstrap** (`.env`) — Minimal configuration to start: LLM URL, storage paths, logging
+- **Runtime** (database) — All other settings: models, calendar, presence, etc.
 
 ### Quick Setup
 
-**New users:** Run Bartleby and follow the interactive wizard on first launch.
+**New installations:**
+1. Create minimal `.env` with just `LLM_URL`
+2. Run `pnpm start`
+3. Follow the interactive setup wizard
 
-**Existing users:** Your current `.env` works as-is. Optionally migrate to the new system:
+**Existing installations:**
+Your current `.env` works as-is. To migrate to the new system:
 ```bash
 > migrate settings
 ```
 
+This moves all settings to the database while keeping your configuration intact.
+
 ### Settings Commands
 
 ```bash
-# View all settings
-> settings
+# View settings
+> settings                       # Show all settings by category
+> settings calendar              # Show calendar settings
+> settings llm                   # Show LLM configuration
 
-# View specific category
-> settings calendar
-> settings llm
-
-# Change a setting
+# Change settings (no restart needed)
 > set calendar.timezone to America/New_York
 > set llm.router-model to qwen3:1b
+> set presence.startup to false
 
-# Reset settings
-> reset settings calendar
+# Statistics
+> settings stats                 # View settings count by category
+
+# Reset to defaults
+> reset settings calendar        # Reset one category
+> reset settings                 # Reset all (with confirmation)
+
+# Reconfigure
+> setup wizard                   # Run first-run wizard again
 ```
 
-**No restart required** — most settings take effect immediately.
+**Settings take effect immediately** — no restart required (except for bootstrap settings in `.env`).
 
 ### LLM Models
 
-Bartleby uses a 4-tier model system:
+Bartleby uses a 3-tier model system for intelligent workload distribution:
 
 | Tier | Size | Purpose | Speed |
 |------|------|---------|-------|
@@ -2061,39 +2074,52 @@ Bartleby uses a 4-tier model system:
 | Thinking | 30B+ | Multi-step reasoning | 2-10s |
 | Embedding | ~1B | Text to vectors | ~100ms |
 
+**Configure via settings:**
+
+```bash
+# View current configuration
+> settings llm
+
+# Change models
+> set llm.router-model to qwen3:0.6b
+> set llm.fast-model to qwen3:7b
+> set llm.thinking-model to qwen3:32b
+
+# Adjust timeouts and limits
+> set llm.health-timeout to 35000
+> set llm.agent-max-iterations to 10
+```
+
+**Bootstrap (`.env` only):**
 ```env
-# Router — Complexity classification
-ROUTER_MODEL=mlx-community/Qwen3-0.6B-4bit
-ROUTER_URL=http://127.0.0.1:8080/v1
+# LLM URL (required)
+LLM_URL=http://127.0.0.1:8080/v1
 
-# Fast — Simple queries
-FAST_MODEL=mlx-community/Qwen3-8B-4bit
-FAST_URL=http://127.0.0.1:8080/v1
-
-# Thinking — Complex reasoning
-THINKING_MODEL=mlx-community/Qwen3-30B-A3B-4bit
-THINKING_URL=http://127.0.0.1:8080/v1
-
-# Embeddings — Semantic search
-EMBEDDINGS_MODEL=nomic-ai/nomic-embed-text-v1.5
+# Optional: Separate embeddings server
 EMBEDDINGS_URL=http://127.0.0.1:8081/v1
 ```
 
+The first-run wizard auto-detects available models and configures sensible defaults.
+
 ### OCR (Optional)
 
-Extract text from images using a vision-language model like olmOCR:
+Extract text from images using a vision-language model like olmOCR.
 
-```env
-OCR_URL=http://127.0.0.1:8085/v1
-OCR_MODEL=olmocr
-OCR_MAX_TOKENS=4096
+**Configure:**
+```bash
+> settings ocr
+
+# Enable OCR
+> set ocr.enabled to true
+> set ocr.url to http://127.0.0.1:8085/v1
+> set ocr.model to olmocr
+> set ocr.max-tokens to 4096
 ```
 
 **Recommended model:** `olmOCR-2-7B-1025-MLX-8bit` — optimized for text extraction, runs on Apple Silicon.
 
 **Usage:**
-
-```
+```bash
 > ocr ~/Desktop/receipt.png
 **Text from receipt.png:**
 
@@ -2102,6 +2128,7 @@ COSTCO WHOLESALE
 ...
 TOTAL: $127.43
 
+# Import with automatic OCR
 > import ~/Desktop/screenshot.png meeting notes
 📎 Media imported: meeting notes
   📁 screenshot.png
@@ -2112,47 +2139,59 @@ When OCR is enabled, imported images automatically have their text extracted and
 
 ### Calendar
 
-```env
-CALENDAR_TIMEZONE=America/Los_Angeles
-CALENDAR_DEFAULT_DURATION=60
-CALENDAR_AMBIGUOUS_TIME=afternoon    # morning|afternoon|ask
-CALENDAR_WEEK_START=sunday           # sunday|monday
-CALENDAR_DATE_FORMAT=mdy             # mdy (1/15=Jan 15) | dmy (1/15=15 Jan)
-CALENDAR_EVENT_REMINDER_MINUTES=15   # 0 to disable
+**Configure:**
+```bash
+> settings calendar
+
+# Change individual settings
+> set calendar.timezone to America/Los_Angeles
+> set calendar.default-duration to 60
+> set calendar.ambiguous-time to afternoon
+> set calendar.week-start to sunday
+> set calendar.date-format to mdy
+> set calendar.reminder-minutes to 15
 ```
 
-Or configure interactively:
-```
-> change calendar settings
-```
+**Options:**
+- `ambiguous-time`: `morning` | `afternoon` | `ask`
+- `week-start`: `sunday` | `monday`
+- `date-format`: `mdy` (1/15=Jan 15) | `dmy` (1/15=15 Jan)
+- `reminder-minutes`: `0` to disable default reminders
 
 ### Notifications (Signal)
 
-Get notifications on your phone via Signal:
+Get notifications on your phone via Signal.
 
-```env
-SIGNAL_ENABLED=true
-SIGNAL_CLI_PATH=/usr/local/bin/signal-cli
-SIGNAL_NUMBER=+1234567890      # Your Signal number
-SIGNAL_RECIPIENT=+0987654321   # Where to send notifications
-```
-
-**Signal Setup:**
+**Setup:**
 1. Install [signal-cli](https://github.com/AsamK/signal-cli)
 2. Register/link your number
-3. Configure the settings above
+3. Configure in Bartleby:
+   ```bash
+   > set signal.enabled to true
+   > set signal.cli-path to /usr/local/bin/signal-cli
+   > set signal.number to +1234567890
+   > set signal.recipient to +0987654321
+   ```
 4. Test: `msg me in 1 min: test`
 
 ### Presence
 
 Control when Bartleby speaks unprompted:
 
-```env
-PRESENCE_STARTUP=true          # Show opener at startup
-PRESENCE_SHUTDOWN=true         # Show tomorrow preview at quit
-PRESENCE_SCHEDULED=true        # Morning/evening reviews
-PRESENCE_CONTEXTUAL=true       # Surface related info during chat
-PRESENCE_IDLE=false            # Nudge after idle period
+```bash
+> settings presence
+
+# Enable/disable presence moments
+> set presence.startup to true           # Greet on startup
+> set presence.shutdown to true          # Preview tomorrow on quit
+> set presence.scheduled to true         # Morning/evening check-ins
+> set presence.contextual to true        # Surface related info
+> set presence.idle to false             # Nudge after idle period
+
+# Timing
+> set presence.morning-hour to 8         # Morning moment (24h)
+> set presence.evening-hour to 18        # Evening moment (24h)
+> set presence.idle-minutes to 5         # Minutes until considered idle
 ```
 
 ### Paths
