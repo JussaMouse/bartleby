@@ -43,3 +43,6 @@ diagnose-llm.js
 # Developer notes and testing
 devs-notes/
 testing/
+
+# Scripts directory (user-facing scripts in package.json instead)
+scripts/
