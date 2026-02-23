@@ -14,8 +14,8 @@ export const importAll: Tool = {
 
   routing: {
     patterns: [
-      /^import\s+all\s*$/i,
-      /^import\s+everything\s*$/i,
+      /^import\s+all(\s+--dry-run)?\s*$/i,
+      /^import\s+everything(\s+--dry-run)?\s*$/i,
     ],
     keywords: {
       verbs: ['import'],
@@ -24,6 +24,7 @@ export const importAll: Tool = {
     examples: [
       'import all',
       'import everything',
+      'import all --dry-run',
     ],
     priority: 75,
   },
@@ -32,17 +33,79 @@ export const importAll: Tool = {
     type: 'object',
     properties: {
       enableOcr: { type: 'boolean', description: 'Enable OCR for images' },
+      dryRun: { type: 'boolean', description: 'Preview without importing' },
     },
   },
 
   parseArgs: (input) => {
     const enableOcr = input.includes('--ocr');
-    return { enableOcr };
+    const dryRun = input.includes('--dry-run');
+    return { enableOcr, dryRun };
   },
 
   execute: async (args, context) => {
+    const { enableOcr = false, dryRun = false } = args as { enableOcr?: boolean; dryRun?: boolean };
+    const { inbox } = context.services;
+
     try {
-      // Get the tools
+      // Get inbox items
+      const items = inbox.listInbox();
+
+      if (items.length === 0) {
+        return 'Inbox is empty.';
+      }
+
+      // Dry-run mode: preview without importing
+      if (dryRun) {
+        const { ImportRulesManager } = await import('../utils/import-rules.js');
+        const { formatFileSize, getFileTypeIcon } = await import('../utils/file-type-detection.js');
+
+        const rulesManager = new ImportRulesManager();
+        let output = `🔍 Dry-run mode: Previewing ${items.length} file${items.length === 1 ? '' : 's'}\n\n`;
+
+        let wouldImport = 0;
+        let wouldSkip = 0;
+
+        for (const item of items) {
+          // Check for duplicates
+          const duplicateCheck = await inbox.checkDuplicate(item.file_path);
+
+          if (duplicateCheck.isDuplicate && duplicateCheck.action === 'skip') {
+            output += `⊘ ${item.file_name} (${formatFileSize(item.file_size)})\n`;
+            output += `  → Skip: ${duplicateCheck.reason}\n\n`;
+            wouldSkip++;
+            continue;
+          }
+
+          // Check rule matches
+          const ruleMatches = rulesManager.matchRules(item.file_name, item.file_type);
+
+          output += `✓ ${item.file_name} (${formatFileSize(item.file_size)})\n`;
+          output += `  → Type: ${item.file_type}`;
+
+          if (ruleMatches.length > 0) {
+            const rule = ruleMatches[0].rule;
+            const confidence = Math.round(ruleMatches[0].confidence * 100);
+
+            if (rule.actions.project) output += ` | Project: ${rule.actions.project}`;
+            if (rule.actions.context) output += ` | Context: ${rule.actions.context}`;
+            if (rule.actions.privacy) output += ` | Privacy: ${rule.actions.privacy}`;
+            output += `\n  → Rule: "${rule.name}" (${confidence}% confidence)`;
+          }
+
+          output += '\n\n';
+          wouldImport++;
+        }
+
+        output += `Summary:\n`;
+        output += `  Would import: ${wouldImport}\n`;
+        if (wouldSkip > 0) output += `  Would skip: ${wouldSkip} (duplicates)\n`;
+        output += `\nRun without --dry-run to confirm.`;
+
+        return output;
+      }
+
+      // Normal mode: actually import
       const importFilesTool = importTools.find(t => t.name === 'importFiles');
       const confirmImportTool = importTools.find(t => t.name === 'confirmImport');
 
@@ -51,7 +114,7 @@ export const importAll: Tool = {
       }
 
       // Stage files
-      const importResult = await importFilesTool.execute(args, context);
+      const importResult = await importFilesTool.execute({ enableOcr }, context);
 
       if (!importResult) {
         return 'No result from import';
@@ -155,8 +218,8 @@ export const importOnly: Tool = {
 
   routing: {
     patterns: [
-      /^import\s+only\s+(documents?|spreadsheets?|images?|text|archives?)\s*$/i,
-      /^import\s+(documents?|spreadsheets?|images?|text|archives?)\s+only\s*$/i,
+      /^import\s+only\s+(documents?|spreadsheets?|images?|text|archives?)(\s+--dry-run)?\s*$/i,
+      /^import\s+(documents?|spreadsheets?|images?|text|archives?)\s+only(\s+--dry-run)?\s*$/i,
     ],
     keywords: {
       verbs: ['import'],
@@ -166,6 +229,7 @@ export const importOnly: Tool = {
       'import only images',
       'import only documents',
       'import documents only',
+      'import only images --dry-run',
     ],
     priority: 80,
   },
@@ -177,6 +241,7 @@ export const importOnly: Tool = {
         type: 'string',
         description: 'File type to import',
       },
+      dryRun: { type: 'boolean', description: 'Preview without importing' },
     },
   },
 
@@ -184,13 +249,18 @@ export const importOnly: Tool = {
     const typeMatch = input.match(/\b(document|spreadsheet|image|text|archive)s?\b/i);
     const fileType = typeMatch ? typeMatch[1].toLowerCase() : undefined;
     const enableOcr = input.includes('--ocr');
+    const dryRun = input.includes('--dry-run');
 
-    return { fileType, enableOcr };
+    return { fileType, enableOcr, dryRun };
   },
 
   execute: async (args, context) => {
     const { config, inbox, garden, ocr } = context.services;
-    const { fileType, enableOcr = false } = args as { fileType?: string; enableOcr?: boolean };
+    const { fileType, enableOcr = false, dryRun = false } = args as {
+      fileType?: string;
+      enableOcr?: boolean;
+      dryRun?: boolean;
+    };
 
     if (!fileType) {
       return 'Please specify a file type. Examples:\n  import only images\n  import only documents';
@@ -199,7 +269,7 @@ export const importOnly: Tool = {
     try {
       const { resolvePath } = await import('../config.js');
       const { processFile, buildRecordContent } = await import('../utils/content-processors.js');
-      const { formatFileSize, FileType } = await import('../utils/file-type-detection.js');
+      const { formatFileSize, FileType, getFileTypeIcon } = await import('../utils/file-type-detection.js');
       const { ImportRulesManager } = await import('../utils/import-rules.js');
       const fs = await import('fs');
       const path = await import('path');
@@ -209,6 +279,61 @@ export const importOnly: Tool = {
 
       if (items.length === 0) {
         return `No ${fileType} files in inbox.`;
+      }
+
+      // Dry-run mode: preview without importing
+      if (dryRun) {
+        const rulesManager = new ImportRulesManager();
+        let output = `🔍 Dry-run mode: Previewing ${items.length} ${fileType} file${items.length === 1 ? '' : 's'}\n\n`;
+
+        let wouldImport = 0;
+        let wouldSkip = 0;
+
+        for (const item of items) {
+          // Check for duplicates
+          const duplicateCheck = await inbox.checkDuplicate(item.file_path);
+
+          if (duplicateCheck.isDuplicate && duplicateCheck.action === 'skip') {
+            output += `⊘ ${item.file_name} (${formatFileSize(item.file_size)})\n`;
+            output += `  → Skip: ${duplicateCheck.reason}\n\n`;
+            wouldSkip++;
+            continue;
+          }
+
+          // Check rule matches
+          const ruleMatches = rulesManager.matchRules(item.file_name, item.file_type);
+
+          output += `✓ ${item.file_name} (${formatFileSize(item.file_size)})\n`;
+          output += `  → Type: ${item.file_type}`;
+
+          if (ruleMatches.length > 0) {
+            const rule = ruleMatches[0].rule;
+            const confidence = Math.round(ruleMatches[0].confidence * 100);
+
+            if (rule.actions.project) output += ` | Project: ${rule.actions.project}`;
+            if (rule.actions.context) output += ` | Context: ${rule.actions.context}`;
+            if (rule.actions.privacy) output += ` | Privacy: ${rule.actions.privacy}`;
+            output += `\n  → Rule: "${rule.name}" (${confidence}% confidence)`;
+          }
+
+          output += '\n\n';
+          wouldImport++;
+        }
+
+        output += `Summary:\n`;
+        output += `  Would import: ${wouldImport} ${fileType} file${wouldImport === 1 ? '' : 's'}\n`;
+        if (wouldSkip > 0) output += `  Would skip: ${wouldSkip} (duplicates)\n`;
+
+        // Check remaining files
+        const allItems = inbox.listInbox();
+        const remaining = allItems.length - items.length;
+        if (remaining > 0) {
+          output += `  Would remain in inbox: ${remaining} other file${remaining === 1 ? '' : 's'}\n`;
+        }
+
+        output += `\nRun without --dry-run to confirm.`;
+
+        return output;
       }
 
       // Create imports directory

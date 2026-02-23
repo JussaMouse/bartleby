@@ -8,6 +8,7 @@ The personal exocortex, locally.
 - [Your Data](#your-data)
 - [Memory & Learning](#memory--learning)
 - [Data Tools](#data-tools)
+- [Import System](#import-system)
 - [GTD Workflow](#gtd-workflow)
 - [The Time System](#the-time-system)
 - [Dashboard](#dashboard)
@@ -26,6 +27,25 @@ A local-first personal assistant. Runs on your machine with local LLMs.
 
 Type commands in the CLI or speak them in the mobile app. One agent with many ways to interact.
 
+### ✨ New Features (2026-02)
+
+**Smart Import System**
+- Automatic duplicate detection (SHA256 hashing)
+- Import rules for auto-organization
+- Dry-run mode for safe previews
+- Full import history tracking
+
+**Database-Backed Settings**
+- Minimal `.env` (just LLM URL + paths)
+- Runtime configuration (no restart needed)
+- Interactive setup wizard
+- Settings migration tool
+
+**Developer Experience**
+- Structured error handling
+- Type-safe parameters (Zod schemas)
+- Comprehensive test suite (45 tests)
+
 ---
 
 ## Quick Start
@@ -40,24 +60,27 @@ pnpm approve-builds
 pnpm build
 ```
 
-**2. Configure**
+**2. Configure (minimal)**
 
 ```bash
 cp .env.example .env
 ```
 
-Edit `.env` with your LLM endpoints. You'll need local models running (e.g., via [MLX](https://github.com/ml-explore/mlx), [Ollama](https://ollama.ai), or [llama.cpp](https://github.com/ggerganov/llama.cpp)).
+Edit `.env` with your LLM endpoint. You'll need local models running (e.g., via [MLX](https://github.com/ml-explore/mlx), [Ollama](https://ollama.ai), or [llama.cpp](https://github.com/ggerganov/llama.cpp)).
 
-**Minimum configuration:**
+**New minimal configuration:**
 
 ```env
-# LLM endpoints (must be local)
-FAST_MODEL=your-model-name
-FAST_URL=http://127.0.0.1:8080/v1
+# Single LLM endpoint (required)
+LLM_URL=http://127.0.0.1:8080/v1
 
-EMBEDDINGS_MODEL=your-embedding-model
-EMBEDDINGS_URL=http://127.0.0.1:8081/v1
+# Optional: Storage paths (defaults shown)
+DATABASE_PATH=./database
+GARDEN_PATH=./garden
+LOG_LEVEL=info
 ```
+
+**All other settings** (models, calendar, presence, etc.) are configured via the interactive wizard on first run or using the `settings` command.
 
 **For remote access** (accessing dashboard from other devices):
 
@@ -169,12 +192,35 @@ While in note mode, everything you type is appended verbatim — no routing, no 
 - `@context` — set context
 - `with person` — link to contact (auto-creates)
 
-### 5) Import media
+### 5) Import files with automatic organization
 
 ```
-> import ~/photos/beach.jpg vacation photo +thailand
-(or drag into the dashboard)
+# Add files to inbox directory
+> import files
+
+# Preview what would be imported
+> import all --dry-run
+
+# Import everything
+> import all
+
+# View import history
+> import history
 ```
+
+**Import Rules** — Automatically organize imports:
+```
+> create import rule
+Name: Financial Documents
+Filename pattern: invoice.*
+Project: +finances
+Privacy: confidential
+
+> test import rule Financial Documents
+✓ Would match: invoice-jan-2026.pdf (85% confidence)
+```
+
+**Duplicate Detection** — SHA256-based deduplication prevents re-importing the same files.
 
 ### 6) Add an event in one line
 
@@ -675,6 +721,115 @@ This activates tax-specific context with:
 - Source files preserved: `./data/sources/`
 - Exports: `./data/exports/`
 - Audit log: `./data/audit.log`
+
+---
+
+## Import System
+
+Import files into your Garden with automatic organization and duplicate detection.
+
+### Basic Import
+
+```bash
+# Add files to inbox directory
+mkdir inbox
+cp ~/Downloads/*.pdf inbox/
+
+# Preview what will be imported
+> import files
+Found 3 files in inbox:
+📄 DOCUMENT (2):
+  - invoice-jan-2026.pdf (245 KB)
+  - receipt.pdf (89 KB)
+
+Ready to import. Type "confirm" to process.
+
+> confirm import
+✓ Imported 2 files
+```
+
+### Batch Operations
+
+```bash
+# Import all files without confirmation
+> import all
+
+# Preview first (dry-run mode)
+> import all --dry-run
+🔍 Dry-run mode: Previewing 3 files
+
+✓ invoice-jan-2026.pdf (245 KB)
+  → Type: note | Project: +finances | Privacy: confidential
+  → Rule: "Financial Documents" (85% confidence)
+
+⊘ old-invoice.pdf
+  → Skip: Already imported (2 days ago)
+
+Summary: Would import 2, skip 1
+
+# Import specific file types only
+> import only images
+> import only documents --dry-run
+```
+
+### Import Rules
+
+Automatically organize imports based on filename patterns:
+
+```bash
+# Create a rule interactively
+> create import rule
+Name: Financial Documents
+Filename pattern: invoice.*|receipt.*
+File types: document
+Project: +finances
+Privacy: confidential
+Priority: 100
+
+✓ Rule created successfully!
+
+# Test a rule
+> test import rule Financial Documents
+✓ Would match: invoice-jan-2026.pdf (85% confidence)
+  → Project: +finances
+  → Privacy: confidential
+
+# Manage rules
+> show import rules
+> edit import rule Financial Documents
+> delete import rule Financial Documents
+```
+
+### Import History
+
+Track all imports with automatic duplicate detection:
+
+```bash
+# View history
+> import history
+
+2026-02-23:
+  • invoice-jan-2026.pdf (245 KB) - 10:30am
+    → Garden record: abc123
+    → Rule applied: Financial Documents
+
+Statistics:
+  Total imports: 247
+  Last 7 days: 12
+
+# Duplicate prevention
+> import files
+✓ Imported 1 file
+⊘ Skipped 1 duplicate: invoice-jan-2026.pdf
+  → Already imported (2026-02-23)
+```
+
+**Features:**
+- SHA256-based duplicate detection
+- Links to garden records
+- Tracks applied rules
+- Search by filename/path
+- Import statistics by type
 
 ---
 
@@ -1803,7 +1958,38 @@ The tunnel must stay open while running. Multiple instances can share the same b
 
 ## Configuration
 
-All settings live in `.env`.
+Bartleby uses a **hybrid configuration system**:
+- **Bootstrap settings** (`.env`) — Minimal configuration to start (LLM URLs, paths, logging)
+- **Runtime settings** (database) — Everything else, configurable without restart
+
+### Quick Setup
+
+**New users:** Run Bartleby and follow the interactive wizard on first launch.
+
+**Existing users:** Your current `.env` works as-is. Optionally migrate to the new system:
+```bash
+> migrate settings
+```
+
+### Settings Commands
+
+```bash
+# View all settings
+> settings
+
+# View specific category
+> settings calendar
+> settings llm
+
+# Change a setting
+> set calendar.timezone to America/New_York
+> set llm.router-model to qwen3:1b
+
+# Reset settings
+> reset settings calendar
+```
+
+**No restart required** — most settings take effect immediately.
 
 ### LLM Models
 

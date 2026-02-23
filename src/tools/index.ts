@@ -18,8 +18,12 @@ import { relatedTools } from './related.js';
 import { historyTools } from './history.js';
 import { importTools } from './import.js';
 import { importRuleTools } from './import-rules-tool.js';
+import { importRuleMgmtTools } from './import-rules-mgmt.js';
 import { batchImportTools } from './import-batch.js';
 import { urlImportTools } from './import-url.js';
+import { settingsTools } from './settings.js';
+import { firstRunTools } from './first-run-wizard.js';
+import { settingsMigrationTools } from './settings-migration.js';
 
 // Aggregate all tools
 // promptHandler MUST be first for Layer 0 contextual routing
@@ -37,11 +41,15 @@ export const allTools: Tool[] = [
   ...mediaTools,
   ...importTools,
   ...importRuleTools,
+  ...importRuleMgmtTools,
   ...batchImportTools,
   ...urlImportTools,
   ...schedulerTools,
   ...weatherTools,
   ...systemTools,
+  ...settingsTools,
+  ...firstRunTools,
+  ...settingsMigrationTools,
   ...ocrTools,
   ...dataTools,
 ];

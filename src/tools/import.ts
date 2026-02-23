@@ -13,6 +13,13 @@ import {
 import { sanitizeFilename } from '../utils/markdown.js';
 import { processFile, buildRecordContent } from '../utils/content-processors.js';
 import { ImportRulesManager } from '../utils/import-rules.js';
+import { Result, Ok, Err } from '../utils/result.js';
+import {
+  DuplicateError,
+  ImportError,
+  ValidationError,
+  formatError,
+} from '../utils/errors.js';
 
 /**
  * Import files from inbox directory
@@ -225,8 +232,29 @@ export const confirmImport: Tool = {
 
       // Process each item
       const processedRecords = [];
+      const skippedDuplicates = [];
+
       for (const item of items) {
         try {
+          // Check for duplicate imports
+          const duplicateCheck = await inbox.checkDuplicate(item.file_path);
+
+          if (duplicateCheck.isDuplicate && duplicateCheck.action === 'skip') {
+            skippedDuplicates.push({
+              filename: item.file_name,
+              reason: duplicateCheck.reason || 'Already imported',
+              importedAt: duplicateCheck.existingRecord?.imported_at,
+            });
+
+            // Delete from inbox but don't reimport
+            inbox.deleteItem(item.id);
+            if (fs.existsSync(item.file_path)) {
+              fs.unlinkSync(item.file_path);
+            }
+
+            continue; // Skip to next file
+          }
+
           // Copy file to imports directory
           const targetPath = path.join(importDir, item.file_name);
 
@@ -307,6 +335,22 @@ export const confirmImport: Tool = {
             record.id
           );
 
+          // Record import in history
+          const appliedRuleName = ruleMatches.length > 0 ? ruleMatches[0].rule.name : null;
+          inbox.recordImport(
+            item.file_path,
+            item.file_name,
+            item.file_type,
+            item.file_size,
+            record.id,
+            appliedRuleName,
+            {
+              targetPath: finalTargetPath,
+              recordType: recordType,
+              recordTitle: record.title,
+            }
+          );
+
           processedRecords.push({
             record,
             filename: item.file_name,
@@ -330,14 +374,33 @@ export const confirmImport: Tool = {
       context.services.context.clearFact('system', 'pendingImport');
 
       // Build summary
-      let summary = `✓ Imported ${processedRecords.length} file${processedRecords.length === 1 ? '' : 's'}:\n\n`;
+      let summary = '';
 
-      for (const { record, filename, path: filePath } of processedRecords) {
-        const relPath = filePath.replace(gardenPath, 'garden');
-        summary += `  • ${filename}\n    → ${record.type}: "${record.title}"\n    → ${relPath}\n`;
+      if (processedRecords.length > 0) {
+        summary += `✓ Imported ${processedRecords.length} file${processedRecords.length === 1 ? '' : 's'}:\n\n`;
+
+        for (const { record, filename, path: filePath } of processedRecords) {
+          const relPath = filePath.replace(gardenPath, 'garden');
+          summary += `  • ${filename}\n    → ${record.type}: "${record.title}"\n    → ${relPath}\n`;
+        }
+
+        summary += `\nFiles stored in: ${importDir}`;
       }
 
-      summary += `\nFiles stored in: ${importDir}`;
+      // Add information about skipped duplicates
+      if (skippedDuplicates.length > 0) {
+        if (summary) summary += '\n\n';
+        summary += `⊘ Skipped ${skippedDuplicates.length} duplicate${skippedDuplicates.length === 1 ? '' : 's'}:\n\n`;
+
+        for (const { filename, reason, importedAt } of skippedDuplicates) {
+          const date = importedAt ? new Date(importedAt).toLocaleDateString() : 'unknown';
+          summary += `  • ${filename}\n    → ${reason} (${date})\n`;
+        }
+      }
+
+      if (!processedRecords.length && !skippedDuplicates.length) {
+        summary = 'No files were processed.';
+      }
 
       return summary;
     } catch (err) {
@@ -450,6 +513,113 @@ export const showInbox: Tool = {
 };
 
 /**
+ * Show import history
+ *
+ * Lists previously imported files with metadata and linked garden records.
+ */
+export const showImportHistory: Tool = {
+  name: 'showImportHistory',
+  description: 'Show history of imported files',
+
+  routing: {
+    patterns: [
+      /^import\s+history\s*$/i,
+      /^show\s+import\s+history\s*$/i,
+      /^list\s+imports?\s*$/i,
+    ],
+    keywords: {
+      verbs: ['show', 'list', 'view'],
+      nouns: ['import', 'history', 'imports'],
+    },
+    examples: [
+      'import history',
+      'show import history',
+      'list imports',
+    ],
+    priority: 70,
+  },
+
+  parameters: {
+    type: 'object',
+    properties: {
+      limit: {
+        type: 'number',
+        description: 'Maximum number of records to show',
+      },
+    },
+  },
+
+  parseArgs: (input) => {
+    const limitMatch = input.match(/(\d+)/);
+    const limit = limitMatch ? parseInt(limitMatch[1], 10) : 20;
+    return { limit };
+  },
+
+  execute: async (args, context) => {
+    const { inbox } = context.services;
+
+    try {
+      const { limit = 20 } = args as { limit?: number };
+
+      // Get import history
+      const history = inbox.getImportHistory(limit);
+
+      if (history.length === 0) {
+        return 'No import history found. Import some files to see them here.';
+      }
+
+      // Get statistics
+      const stats = inbox.getImportStats();
+
+      let output = `Import History (${stats.total} total, showing ${history.length}):\n\n`;
+
+      // Group by date
+      const byDate: Record<string, typeof history> = {};
+      for (const record of history) {
+        const date = new Date(record.imported_at).toLocaleDateString();
+        if (!byDate[date]) byDate[date] = [];
+        byDate[date].push(record);
+      }
+
+      for (const [date, records] of Object.entries(byDate)) {
+        output += `${date}:\n`;
+        for (const record of records) {
+          const time = new Date(record.imported_at).toLocaleTimeString();
+          const size = formatFileSize(record.file_size);
+
+          output += `  • ${record.file_name} (${size}) - ${time}\n`;
+
+          if (record.garden_record_id) {
+            output += `    → Garden record: ${record.garden_record_id}\n`;
+          }
+
+          if (record.rule_applied) {
+            output += `    → Rule applied: ${record.rule_applied}\n`;
+          }
+        }
+        output += '\n';
+      }
+
+      // Add statistics
+      output += `Statistics:\n`;
+      output += `  Total imports: ${stats.total}\n`;
+      output += `  Last 7 days: ${stats.recentCount}\n`;
+
+      if (Object.keys(stats.byType).length > 0) {
+        output += `\nBy type:\n`;
+        for (const [type, count] of Object.entries(stats.byType)) {
+          output += `  ${getFileTypeIcon(type as FileType)} ${type}: ${count}\n`;
+        }
+      }
+
+      return output;
+    } catch (err) {
+      return `Error showing import history: ${String(err)}`;
+    }
+  },
+};
+
+/**
  * Export all import tools
  */
-export const importTools: Tool[] = [importFiles, confirmImport, showInbox];
+export const importTools: Tool[] = [importFiles, confirmImport, showInbox, showImportHistory];

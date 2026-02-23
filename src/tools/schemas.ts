@@ -138,6 +138,47 @@ export const GetPreferenceSchema = z.object({
 });
 
 // =============================================================================
+// Import Tools
+// =============================================================================
+
+export const ImportFilesSchema = z.object({
+  enableOcr: z.boolean().optional().default(false).describe('Enable OCR for image processing'),
+});
+
+export const ConfirmImportSchema = z.object({
+  // No parameters needed - uses pending import state
+});
+
+export const ShowInboxSchema = z.object({
+  fileType: z.enum(['document', 'spreadsheet', 'image', 'text', 'archive', 'email', 'web', 'other']).optional().describe('Filter by file type'),
+});
+
+export const ImportAllSchema = z.object({
+  enableOcr: z.boolean().optional().default(false).describe('Enable OCR for image processing'),
+  dryRun: z.boolean().optional().default(false).describe('Preview imports without executing'),
+});
+
+export const ImportOnlySchema = z.object({
+  fileType: z.enum(['document', 'spreadsheet', 'image', 'text', 'archive', 'email', 'web', 'other']).describe('File type to import'),
+  enableOcr: z.boolean().optional().default(false).describe('Enable OCR for image processing'),
+  dryRun: z.boolean().optional().default(false).describe('Preview imports without executing'),
+});
+
+export const ClearInboxSchema = z.object({
+  confirm: z.boolean().optional().default(false).describe('Confirm deletion of all inbox items'),
+});
+
+export const ImportUrlSchema = z.object({
+  url: z.string().url().describe('URL to import'),
+  title: z.string().optional().describe('Optional title for the imported content'),
+  project: z.string().optional().describe('Associated project tag'),
+});
+
+export const ShowImportHistorySchema = z.object({
+  limit: z.number().min(1).max(100).optional().default(20).describe('Maximum number of records to show'),
+});
+
+// =============================================================================
 // Schema Registry
 // =============================================================================
 
@@ -174,6 +215,16 @@ export const toolSchemas = {
   // System tools
   setPreference: SetPreferenceSchema,
   getPreference: GetPreferenceSchema,
+
+  // Import tools
+  importFiles: ImportFilesSchema,
+  confirmImport: ConfirmImportSchema,
+  showInbox: ShowInboxSchema,
+  importAll: ImportAllSchema,
+  importOnly: ImportOnlySchema,
+  clearInbox: ClearInboxSchema,
+  importUrl: ImportUrlSchema,
+  showImportHistory: ShowImportHistorySchema,
 } as const;
 
 /**

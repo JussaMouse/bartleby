@@ -19,6 +19,7 @@ import { BackgroundAnalysis } from './background-analysis.js';
 import { EmbeddingRelationships } from './embedding-relationships.js';
 import { ReflectionService } from './reflection.js';
 import { InboxService } from './inbox.js';
+import { SettingsService } from './settings.js';
 import { info } from '../utils/logger.js';
 
 export interface ServiceContainer {
@@ -31,6 +32,7 @@ export interface ServiceContainer {
   calendar: CalendarService;
   data: DataService;
   inbox: InboxService;
+  settings: SettingsService;
 
   // Context - Bartleby's memory of you
   context: ContextService;
@@ -91,6 +93,10 @@ export async function initServices(config: Config): Promise<ServiceContainer> {
   // Create inbox service (shares garden database)
   const inbox = new InboxService(garden.getDatabase());
   await inbox.initialize();
+
+  // Create settings service (shares garden database)
+  const settings = new SettingsService(garden.getDatabase());
+  await settings.initialize();
 
   // Create learning service (shares garden database)
   const learning = new LearningService(garden.getDatabase());
@@ -154,6 +160,7 @@ export async function initServices(config: Config): Promise<ServiceContainer> {
     calendar,
     data,
     inbox,
+    settings,
     context,
     learning,
     reflection,
@@ -192,6 +199,7 @@ export { ContextService } from './context.js';
 export { LearningService } from './learning.js';
 export { ReflectionService } from './reflection.js';
 export { InboxService } from './inbox.js';
+export { SettingsService } from './settings.js';
 export { PresenceService } from './presence.js';
 export { LLMService } from './llm.js';
 export { EmbeddingService } from './embeddings.js';

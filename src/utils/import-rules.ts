@@ -1,6 +1,7 @@
 // src/utils/import-rules.ts
 import fs from 'fs';
 import path from 'path';
+import { z } from 'zod';
 import { FileType } from './file-type-detection.js';
 import { debug, warn } from './logger.js';
 
@@ -38,6 +39,64 @@ export interface ImportRulesConfig {
 export interface RuleMatch {
   rule: ImportRule;
   confidence: number; // 0-1 score indicating match strength
+}
+
+/**
+ * Zod schema for import rule validation
+ */
+export const ImportRuleSchema = z.object({
+  name: z.string().min(1).max(100).describe('Rule name (unique identifier)'),
+  description: z.string().optional().describe('Optional description of what this rule does'),
+  match: z.object({
+    filenamePattern: z.string().optional().describe('Regex pattern to match filename'),
+    fileTypes: z.array(z.enum([
+      'document', 'spreadsheet', 'image', 'text',
+      'archive', 'email', 'web', 'other'
+    ] as const)).optional().describe('File types to match'),
+    contentPattern: z.string().optional().describe('Regex pattern to match in file content'),
+  }).refine(
+    (data) => data.filenamePattern || data.fileTypes || data.contentPattern,
+    { message: 'At least one match criterion (filenamePattern, fileTypes, or contentPattern) must be provided' }
+  ),
+  actions: z.object({
+    project: z.string().optional().describe('Project tag to apply (e.g., "+work")'),
+    context: z.string().optional().describe('Context tag to apply (e.g., "@computer")'),
+    privacy: z.enum(['public', 'private', 'confidential']).optional().describe('Privacy level'),
+    tags: z.array(z.string()).optional().describe('Additional tags to apply'),
+  }),
+  priority: z.number().min(0).max(1000).default(50).describe('Rule priority (higher = evaluated first)'),
+  enabled: z.boolean().default(true).describe('Whether the rule is active'),
+});
+
+/**
+ * Validate an import rule
+ */
+export function validateRule(rule: unknown): { success: true; data: ImportRule } | { success: false; error: string } {
+  const result = ImportRuleSchema.safeParse(rule);
+
+  if (result.success) {
+    return { success: true, data: result.data as ImportRule };
+  } else {
+    const errorMessage = result.error.errors
+      .map(e => `${e.path.join('.')}: ${e.message}`)
+      .join('; ');
+    return { success: false, error: errorMessage };
+  }
+}
+
+/**
+ * Test if a regex pattern is valid
+ */
+export function validateRegexPattern(pattern: string): { valid: boolean; error?: string } {
+  try {
+    new RegExp(pattern);
+    return { valid: true };
+  } catch (err) {
+    return {
+      valid: false,
+      error: err instanceof Error ? err.message : String(err),
+    };
+  }
 }
 
 /**
@@ -231,12 +290,58 @@ export class ImportRulesManager {
   }
 
   /**
-   * Add a new rule
+   * Add a new rule (with validation)
    */
-  addRule(rule: ImportRule): void {
-    this.rules.push(rule);
+  addRule(rule: ImportRule): { success: boolean; error?: string } {
+    // Validate rule
+    const validation = validateRule(rule);
+    if (!validation.success) {
+      return { success: false, error: validation.error };
+    }
+
+    // Check for duplicate rule names
+    if (this.rules.some(r => r.name === rule.name)) {
+      return { success: false, error: `Rule with name "${rule.name}" already exists` };
+    }
+
+    this.rules.push(validation.data);
     this.rules.sort((a, b) => (b.priority || 0) - (a.priority || 0));
     this.saveRules();
+
+    return { success: true };
+  }
+
+  /**
+   * Update an existing rule
+   */
+  updateRule(name: string, updates: Partial<ImportRule>): { success: boolean; error?: string } {
+    const ruleIndex = this.rules.findIndex(r => r.name === name);
+
+    if (ruleIndex === -1) {
+      return { success: false, error: `Rule "${name}" not found` };
+    }
+
+    // Merge updates with existing rule
+    const updatedRule = { ...this.rules[ruleIndex], ...updates };
+
+    // Validate updated rule
+    const validation = validateRule(updatedRule);
+    if (!validation.success) {
+      return { success: false, error: validation.error };
+    }
+
+    this.rules[ruleIndex] = validation.data;
+    this.rules.sort((a, b) => (b.priority || 0) - (a.priority || 0));
+    this.saveRules();
+
+    return { success: true };
+  }
+
+  /**
+   * Get a rule by name
+   */
+  getRule(name: string): ImportRule | undefined {
+    return this.rules.find(r => r.name === name);
   }
 
   /**

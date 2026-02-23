@@ -1,0 +1,158 @@
+# Bartleby Environment Variables Reference
+
+This file preserves the full .env configuration reference from before the Settings System migration.
+
+**Note:** After the Settings System implementation (Phase 3-4), most of these settings moved to the database.
+The `.env` file now only contains minimal bootstrap settings needed to start the application.
+
+For current configuration, use the `settings` command in Bartleby.
+
+---
+
+## Original .env.example (Pre-Settings System)
+
+```bash
+# ============================================
+# Bartleby Configuration
+# ============================================
+
+# --- LLM (any OpenAI-compatible API) ---
+# Models shown are examples - use what fits your hardware
+
+# Router tier: Complexity classification (tiny, fast)
+ROUTER_MODEL=mlx-community/Qwen3-0.6B-4bit
+ROUTER_URL=http://127.0.0.1:8080/v1
+ROUTER_MAX_TOKENS=100
+
+# Fast tier: Simple queries, single tool calls
+FAST_MODEL=mlx-community/Qwen3-30B-A3B-4bit
+FAST_URL=http://127.0.0.1:8081/v1
+FAST_MAX_TOKENS=4096
+
+# Thinking tier: Complex reasoning, multi-step tasks, code
+THINKING_MODEL=mlx-community/Qwen3-30B-A3B-Thinking-2507-4bit
+THINKING_URL=http://127.0.0.1:8083/v1
+THINKING_MAX_TOKENS=8192
+THINKING_BUDGET=4096
+
+# Health check timeout (ms) - increase for cold starts
+HEALTH_TIMEOUT=35000
+
+# Agent settings
+AGENT_MAX_ITERATIONS=10
+
+# --- Embeddings ---
+EMBEDDINGS_MODEL=Qwen/Qwen3-Embedding-8B
+EMBEDDINGS_URL=http://127.0.0.1:8084/v1
+EMBEDDINGS_DIMENSIONS=4096
+
+# --- Paths ---
+GARDEN_PATH=./garden
+SHED_PATH=./shed
+DATABASE_PATH=./database
+LOG_DIR=./logs
+
+# --- Scheduler ---
+SCHEDULER_ENABLED=true
+SCHEDULER_CHECK_INTERVAL=60000
+# What to do with reminders that fired while Bartleby was offline:
+# (leave unset for first-time wizard, or set explicitly)
+# ask  = show summary and ask what to do
+# fire = send all immediately
+# skip = dismiss silently
+# show = show summary only, don't act
+# SCHEDULER_MISSED_REMINDERS=ask
+
+# --- Calendar ---
+# Set via "change calendar settings" or manually here
+CALENDAR_TIMEZONE=America/Los_Angeles
+CALENDAR_DEFAULT_DURATION=60
+CALENDAR_AMBIGUOUS_TIME=afternoon
+CALENDAR_WEEK_START=sunday
+CALENDAR_EVENT_REMINDER_MINUTES=0
+# Date format for X/Y dates: mdy = Month/Day (US), dmy = Day/Month (intl)
+CALENDAR_DATE_FORMAT=mdy
+
+# --- Weather (optional) ---
+WEATHER_CITY=
+WEATHER_UNITS=F
+OPENWEATHERMAP_API_KEY=
+
+# --- Signal Notifications (optional) ---
+SIGNAL_ENABLED=false
+SIGNAL_CLI_PATH=/usr/local/bin/signal-cli
+SIGNAL_NUMBER=
+SIGNAL_RECIPIENT=
+SIGNAL_TIMEOUT=20000
+
+# --- Presence (Bartleby's initiative layer) ---
+# Controls when Bartleby speaks unprompted
+PRESENCE_STARTUP=true
+PRESENCE_SHUTDOWN=true
+PRESENCE_SCHEDULED=true
+PRESENCE_CONTEXTUAL=true
+PRESENCE_IDLE=false
+PRESENCE_IDLE_MINUTES=5
+
+# Scheduled moment times (24h format)
+PRESENCE_MORNING_HOUR=8
+PRESENCE_EVENING_HOUR=18
+PRESENCE_WEEKLY_DAY=0
+PRESENCE_WEEKLY_HOUR=9
+
+# --- Logging ---
+# Levels: debug, info, warn, error
+LOG_LEVEL=info
+LOG_FILE=./logs/bartleby.log
+LOG_CONSOLE=true
+# Show LLM reasoning/thinking (verbose chain-of-thought)
+LOG_LLM_VERBOSE=false
+
+# --- Dashboard (Web Interface) ---
+# Dashboard is integrated into Bartleby and starts automatically
+DASHBOARD_HOST=localhost
+DASHBOARD_PORT=3333
+
+# Authentication (required when DASHBOARD_HOST is not localhost)
+# Generate with: openssl rand -hex 32
+BARTLEBY_API_TOKEN=
+
+# IP Whitelist (optional, for multi-device access with 0.0.0.0)
+# Comma-separated IPs. Localhost (127.0.0.1, ::1) always allowed
+# Example: BARTLEBY_ALLOWED_IPS=127.0.0.1,100.64.x.x
+BARTLEBY_ALLOWED_IPS=
+
+# Host binding options:
+# - localhost (default): Most secure, local access only (use SSH tunnel for remote)
+# - 100.x.x.x: Tailscale IP (VPN-secured remote access)
+# - 0.0.0.0: All interfaces (REQUIRES IP whitelist or VPN!)
+```
+
+---
+
+## Settings Migration
+
+After implementing the Settings System, most configuration moved to the database.
+
+**Minimal .env (Bootstrap only):**
+- `LLM_URL`, `LLM_API_KEY` - Required to boot
+- `EMBEDDINGS_URL`, `EMBEDDINGS_API_KEY` - Optional
+- Path configuration - `DATABASE_PATH`, `GARDEN_PATH`, `SHED_PATH`, `LOG_DIR`
+- Logging - `LOG_LEVEL`
+
+**Database Settings (Configurable at runtime):**
+- LLM configuration (models, tiers, timeouts, agent settings)
+- Calendar settings (timezone, format, duration, reminders)
+- Presence settings (startup, scheduled, contextual, idle)
+- Import settings (OCR, duplicates, auto-confirm)
+- Default metadata (project, privacy, context)
+- Content processing (max length, structure, extraction)
+- Optional features (OCR, weather, Signal, scheduler)
+- Dashboard settings (host, port, theme)
+
+**Migration Command:**
+```
+migrate settings
+```
+
+This command migrates existing .env settings to the database and updates .env to the minimal bootstrap template.
