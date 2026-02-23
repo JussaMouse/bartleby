@@ -831,6 +831,65 @@ Statistics:
 - Search by filename/path
 - Import statistics by type
 
+### Import Profiles
+
+Create named profiles with preset import configurations for different workflows:
+
+```bash
+# List available profiles
+> import profiles
+📋 Import Profiles (3)
+
+work-documents
+  Confidential work documents with OCR
+  Project: +work | Context: @office | Privacy: confidential | OCR: enabled | Duplicate: skip
+
+personal-photos
+  Batch import personal photos without OCR
+  Project: +memories | Privacy: private | Auto-confirm: yes | Rules: disabled
+
+# Create a new profile
+> create import profile
+name: receipts
+description: Financial receipts with OCR
+defaultProject: +finances
+defaultContext: @admin
+defaultPrivacy: private
+enableOcr: true
+duplicateAction: prompt
+
+✓ Created import profile: receipts
+
+# Import using a profile
+> import with profile work-documents
+📋 Using profile: work-documents
+Confidential work documents with OCR
+
+Found 5 files...
+✓ Imported 5 files with work-documents settings
+
+# Manage profiles
+> edit import profile receipts
+> delete import profile old-profile
+```
+
+**Profile settings:**
+- `defaultProject` - Auto-tag with project
+- `defaultContext` - Set context for all imports
+- `defaultPrivacy` - Privacy level (public/private/confidential)
+- `enableOcr` - OCR images by default
+- `autoConfirm` - Skip confirmation prompts
+- `duplicateAction` - How to handle duplicates (skip/prompt/reimport)
+- `rulesEnabled` - Apply import rules
+
+**Example profiles:**
+- `work-documents` - Confidential work files with OCR and manual review
+- `personal-photos` - Quick batch import without processing
+- `receipts` - Financial documents with strict organization
+- `research-papers` - Academic papers with full processing
+
+See `import-profiles.example.json` for more examples.
+
 ---
 
 ## GTD Workflow

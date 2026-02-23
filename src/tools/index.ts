@@ -24,6 +24,7 @@ import { urlImportTools } from './import-url.js';
 import { settingsTools } from './settings.js';
 import { firstRunTools } from './first-run-wizard.js';
 import { settingsMigrationTools } from './settings-migration.js';
+import { importProfileTools } from './import-profiles.js';
 
 // Aggregate all tools
 // promptHandler MUST be first for Layer 0 contextual routing
@@ -44,6 +45,7 @@ export const allTools: Tool[] = [
   ...importRuleMgmtTools,
   ...batchImportTools,
   ...urlImportTools,
+  ...importProfileTools,
   ...schedulerTools,
   ...weatherTools,
   ...systemTools,
