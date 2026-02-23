@@ -443,7 +443,6 @@ pnpm monitor                 Database stats and health
 pnpm optimize                Clean expired data and optimize
 pnpm profile export          Backup learning data
 pnpm profile import <file>   Restore from backup
-pnpm exec tsx scripts/verify-phase5.ts    Verify Phase 5 memory system
 ```
 
 **Dashboard panels:**

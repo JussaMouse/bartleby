@@ -353,7 +353,6 @@ migrate settings                      # One-time migration from .env
 # Monitor memory system
 pnpm monitor                              # Database stats and health
 pnpm optimize                             # Clean expired data and optimize
-pnpm exec tsx scripts/verify-phase5.ts    # Verify Phase 5 enhancements
 
 # Backup and restore
 pnpm profile export                       # Export learning data to JSON
