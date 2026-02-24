@@ -7,6 +7,22 @@ import { Agent } from './agent/index.js';
 import { startRepl } from './repl.js';
 import { DashboardServer } from './server/index.js';
 
+function checkBootstrapConfig(): void {
+  const hasUrl =
+    process.env.LLM_URL ||
+    process.env.ROUTER_URL ||
+    process.env.FAST_URL ||
+    process.env.THINKING_URL;
+
+  if (!hasUrl) {
+    console.error('\n❌ Bartleby is not configured yet.\n');
+    console.error('  Copy .env.example to .env and set at minimum:\n');
+    console.error('    LLM_URL=http://your-llm-endpoint/v1\n');
+    console.error('  Then run: pnpm start\n');
+    process.exit(1);
+  }
+}
+
 function validateSecurityPosture(config: Config): void {
   const errors: string[] = [];
   const warnings: string[] = [];
@@ -106,6 +122,9 @@ function validateSecurityPosture(config: Config): void {
 }
 
 async function main(): Promise<void> {
+  // 0. Guard against missing LLM URL (dotenv already loaded at module level)
+  checkBootstrapConfig();
+
   // 1. Load config
   let config: Config;
   try {

@@ -8,6 +8,7 @@ import { ServiceContainer, closeServices } from './services/index.js';
 import { DashboardServer } from './server/index.js';
 import { info, warn, error, debug } from './utils/logger.js';
 import { getDbPath, ensureDir } from './config.js';
+import { runFirstLaunch } from './setup/first-launch.js';
 
 /**
  * Load command history from disk
@@ -570,6 +571,11 @@ export async function startRepl(
   const dashboardPort = process.env.DASHBOARD_PORT || '3333';
   console.log('\n📋 Bartleby is ready. Type "help" for commands, "quit" to exit.');
   console.log(`📊 Dashboard: http://localhost:${dashboardPort}\n`);
+
+  // === First Launch Setup ===
+  if (services.settings.isFirstRun()) {
+    await runFirstLaunch(rl, services);
+  }
 
   // === Handle Missed Reminders First ===
   await handleMissedReminders(rl, services);
