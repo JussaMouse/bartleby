@@ -29,6 +29,19 @@ Type commands in the CLI or speak them in the mobile app. One agent with many wa
 
 ### ✨ New Features (2026-02)
 
+**Persistent Standing Instructions**
+- `(remember this)` suffix saves a mandatory rule: `always use bullet points (remember this)`
+- Also: `remember this: <rule>`, `rule: <rule>`, `new rule: <rule>`
+- Rules are injected into every system prompt — the LLM must follow them, not just note them
+- `/rules` to view, `delete rule N` to remove
+
+**First-Launch Setup Flow**
+- `.env` guard: clear error if `LLM_URL` is missing before anything starts
+- Interactive intro: learns your name and what to call the assistant
+- Auto-imports README, COMMANDS, TECH_SPEC as searchable Garden pages
+- Silently migrates `.env` settings to the database
+- Optional settings wizard for weather, Signal, OCR
+
 **Smart Import System**
 - Automatic duplicate detection (SHA256 hashing)
 - Import rules for auto-organization
@@ -39,7 +52,7 @@ Type commands in the CLI or speak them in the mobile app. One agent with many wa
 **Database-Backed Settings**
 - Minimal `.env` (just LLM URL + paths)
 - Runtime configuration (no restart needed)
-- Interactive setup wizard
+- Interactive setup wizard (runs automatically on first start)
 - Settings migration tool
 
 **Developer Experience**
@@ -105,7 +118,24 @@ See [Running on a Server](#running-on-a-server) for Tailscale setup.
 pnpm start
 ```
 
-You'll see:
+**First run:** Bartleby walks you through a one-time setup flow before the prompt appears:
+
+```
+──────────────────────────────────────────────────
+Hello! I'm Bartleby, your personal AI assistant.
+
+What's your name?
+> _
+```
+
+It will:
+- Ask your name and what to call the assistant
+- Import README, COMMANDS, and TECH_SPEC as Garden pages
+- Migrate any settings from `.env` into the database
+- Configure smart defaults (models, calendar, presence)
+- Offer an optional wizard for weather, Signal, and OCR
+
+After first-run completes, normal startup:
 
 ```
 📋 Bartleby is ready. Type "help" for commands, "quit" to exit.
@@ -390,15 +420,16 @@ investment, typically $100,000-$200,000 depending on the business...
 
 **Tab Completion:** Press Tab after typing `+` to see available projects.
 
-**Self-Documentation:** On first run, Bartleby automatically ingests its own documentation (README, TECH_SPEC, COMMANDS, optimization guide) into the Shed. This enables natural language help queries:
+**Self-Documentation:** Bartleby makes its own docs available in two ways:
+
+- **Garden pages** — README, COMMANDS, and TECH_SPEC are imported as searchable wiki pages during first-launch (`open Bartleby README`, `open Bartleby Commands`)
+- **Shed** — You can also ingest the docs for natural language queries:
 
 ```
+> ingest README.md
 > ask shed how do I import files?
 > ask shed what is the learning system?
-> ask shed how do I set up weather?
 ```
-
-The bootstrap only runs once—subsequent startups detect the marker and skip re-ingestion.
 
 Location: `./shed/`
 
@@ -422,7 +453,7 @@ What Bartleby learns about you over time using the **unified learning system** �
 - Automatically discovers semantic relationships between notes
 - Tracks observation confidence and supersedes outdated facts
 
-**Teach Bartleby naturally:**
+**Teach Bartleby naturally (soft preferences):**
 ```
 > my name is Lon
 > I'm a morning person
@@ -430,11 +461,27 @@ What Bartleby learns about you over time using the **unified learning system** �
 > I prefer short meetings
 ```
 
+**Save mandatory standing instructions:**
+```
+> always use bullet points (remember this)
+> never use markdown headers (remember this)
+> remember this: keep responses under 100 words
+> rule: respond in plain text only
+```
+
+These are injected into every system prompt as binding rules — not soft hints. View and manage them:
+```
+> /rules
+> delete rule 2
+> delete rule all
+```
+
 **Commands:**
 ```
 /memory                      Show what Bartleby knows about you
 what do you know about me    (alternative to /memory)
 show profile                 (alternative to /memory)
+/rules                       View your standing instructions
 /insights                    AI insights about your garden
 /related <record>            Find records related to a given record
 /history [N]                 Show recent command history (default 20, specify N for more)
@@ -521,6 +568,41 @@ Bartleby can now manage its own memory through natural language commands:
 > forget that I'm working from home
 ✓ Marked observation as forgotten
 ```
+
+### Standing Instructions
+
+Standing instructions are mandatory rules that Bartleby follows in every response. Unlike soft preferences (which inform but don't bind), standing instructions are injected directly into every system prompt.
+
+**Save a rule:**
+```
+> always use bullet points (remember this)
+✓ Rule saved: "always use bullet points"
+Say /rules to view all your rules.
+```
+
+**Accepted patterns:**
+- `<text> (remember this)` — suffix
+- `<text> (always remember this)` — suffix
+- `remember this: <text>` — prefix
+- `rule: <text>` — prefix
+- `new rule: <text>` — prefix
+
+**View and manage:**
+```
+> /rules
+═══ Your Rules ═══
+
+1. always use bullet points
+2. keep responses under 100 words
+
+Say "delete rule 2" to remove a rule.
+Say "delete rule all" to clear all rules.
+
+> delete rule 1
+✓ Rule 1 deleted.
+```
+
+Rules persist across sessions and are stored as `instruction.*` observations in the learning system (confidence 1.0, no expiry). Deleting a rule supersedes it — the history is preserved but it's no longer active.
 
 ### Memory Features
 
@@ -2029,15 +2111,13 @@ Bartleby uses a **hybrid configuration system**:
 **New installations:**
 1. Create minimal `.env` with just `LLM_URL`
 2. Run `pnpm start`
-3. Follow the interactive setup wizard
+3. The first-launch wizard runs automatically — asks your name, configures defaults, and offers optional settings
 
 **Existing installations:**
-Your current `.env` works as-is. To migrate to the new system:
+Your current `.env` works as-is. Settings are migrated to the database automatically on first run. To trigger migration manually:
 ```bash
 > migrate settings
 ```
-
-This moves all settings to the database while keeping your configuration intact.
 
 ### Settings Commands
 
@@ -2228,9 +2308,16 @@ SCHEDULER_MISSED_REMINDERS=         # What to do with missed items:
 
 ### Weather (Optional)
 
+Configure via settings (recommended — prompted during first-launch):
+```bash
+> set weather.city to London
+> set weather.api-key to your-key
+```
+
+Or in `.env` (picked up automatically during first-launch migration):
 ```env
-WEATHER_API_KEY=your-key  # OpenWeatherMap API key
-WEATHER_CITY=London       # City for weather queries
+WEATHER_CITY=London
+OPENWEATHERMAP_API_KEY=your-key
 ```
 
 Get a free API key at [openweathermap.org](https://openweathermap.org/api).

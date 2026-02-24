@@ -65,7 +65,7 @@ Step 3: Then call ingestCsv for each file found
 ✗ Skipping listFiles and going straight to import
 
 Always explain what you're doing and ask for confirmation before taking destructive actions.
-
+{instructions}
 ## User Profile
 {profile}
 
@@ -74,18 +74,22 @@ Always explain what you're doing and ask for confirmation before taking destruct
 `;
 
 export const CONTEXT_TEMPLATE = `
-## User Profile
+{instructions}## User Profile
 {profile}
 
 ## Recent Context
 {context}
 `;
 
-export function buildSimplePrompt(tools: string, profile?: string, context?: string): string {
+export function buildSimplePrompt(tools: string, profile?: string, context?: string, instructions?: string): string {
   let prompt = SIMPLE_SYSTEM_PROMPT.replace('{tools}', tools);
 
-  if (profile || context) {
+  if (profile || context || instructions) {
+    const instructionsSection = instructions
+      ? `## Standing Instructions (MANDATORY — follow in every response)\n${instructions}\n\n`
+      : '';
     prompt += '\n' + CONTEXT_TEMPLATE
+      .replace('{instructions}', instructionsSection)
       .replace('{profile}', profile || 'No profile yet')
       .replace('{context}', context || 'First interaction');
   }
@@ -93,8 +97,12 @@ export function buildSimplePrompt(tools: string, profile?: string, context?: str
   return prompt;
 }
 
-export function buildComplexPrompt(profile?: string, context?: string): string {
+export function buildComplexPrompt(profile?: string, context?: string, instructions?: string): string {
+  const instructionsSection = instructions
+    ? `\n## Standing Instructions (MANDATORY — follow in every response)\n${instructions}\n`
+    : '';
   return COMPLEX_SYSTEM_PROMPT
+    .replace('{instructions}', instructionsSection)
     .replace('{profile}', profile || 'No profile yet')
     .replace('{context}', context || 'First interaction');
 }

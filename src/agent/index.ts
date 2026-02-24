@@ -24,7 +24,7 @@ export class Agent {
    * Build rich context from learning system for LLM prompts
    * Phase 5: Uses hot tier and relationship-aware search for efficiency
    */
-  private async buildRichContext(input: string): Promise<{ profile: string; context: string }> {
+  private async buildRichContext(input: string): Promise<{ profile: string; context: string; instructions: string }> {
     if (!this.services.learning) {
       throw new Error('Learning system not available');
     }
@@ -106,13 +106,24 @@ export class Agent {
       const profile = profileParts.length > 0 ? profileParts.join('\n') : 'No profile yet';
       const context = contextParts.length > 0 ? contextParts.join('\n') : 'First interaction';
 
-      return { profile, context };
+      // Fetch standing instructions — always loaded, not hot-tier filtered
+      const allInstructions = this.services.learning.getObservations('user', { keyPrefix: 'instruction.' });
+      const supersededIds = new Set(allInstructions.map(o => o.supersedes).filter(Boolean) as string[]);
+      const activeInstructions = allInstructions
+        .filter(o => !supersededIds.has(o.id) && o.confidence > 0)
+        .sort((a, b) => a.key.localeCompare(b.key));
+      const instructions = activeInstructions.length > 0
+        ? activeInstructions.map(o => `- ${o.value}`).join('\n')
+        : '';
+
+      return { profile, context, instructions };
     } catch (err) {
       warn('Failed to build rich context from learning system', { error: String(err) });
       // Return minimal context on error
       return {
         profile: 'No profile yet',
-        context: 'First interaction'
+        context: 'First interaction',
+        instructions: '',
       };
     }
   }
@@ -138,10 +149,10 @@ export class Agent {
    * Handle a simple request using Fast model with single tool call
    */
   async handleSimple(input: string): Promise<string> {
-    const { profile, context: contextStr } = await this.buildRichContext(input);
+    const { profile, context: contextStr, instructions } = await this.buildRichContext(input);
 
     const tools = getToolDescriptions();
-    const systemPrompt = buildSimplePrompt(tools, profile, contextStr);
+    const systemPrompt = buildSimplePrompt(tools, profile, contextStr, instructions);
 
     let finalResponse: string;
     let success = true;
@@ -212,10 +223,10 @@ export class Agent {
    * The final yielded value is the complete response.
    */
   async *handleSimpleStream(input: string): AsyncGenerator<string> {
-    const { profile, context: contextStr } = await this.buildRichContext(input);
+    const { profile, context: contextStr, instructions } = await this.buildRichContext(input);
 
     const tools = getToolDescriptions();
-    const systemPrompt = buildSimplePrompt(tools, profile, contextStr);
+    const systemPrompt = buildSimplePrompt(tools, profile, contextStr, instructions);
 
     let finalResponse = '';
     let success = true;
@@ -294,9 +305,9 @@ export class Agent {
    * Uses OpenAI function calling for structured tool invocation
    */
   async handleComplex(input: string): Promise<string> {
-    const { profile, context: contextStr } = await this.buildRichContext(input);
+    const { profile, context: contextStr, instructions } = await this.buildRichContext(input);
 
-    const systemPrompt = buildComplexPrompt(profile, contextStr);
+    const systemPrompt = buildComplexPrompt(profile, contextStr, instructions);
     const maxIterations = this.services.llm.getMaxIterations();
 
     const messages: OpenAI.ChatCompletionMessageParam[] = [

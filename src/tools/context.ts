@@ -288,9 +288,100 @@ function formatTimeAgo(date: Date): string {
   return date.toLocaleDateString();
 }
 
+export const viewRules: Tool = {
+  name: 'viewRules',
+  description: 'View and manage your standing instructions (rules)',
+
+  routing: {
+    patterns: [
+      /^\/rules$/i,
+      /^(show|list|view) (my )?rules$/i,
+      /^(show|list|view) (my )?instructions$/i,
+      /^delete rule (\d+|all)$/i,
+      /^remove rule (\d+|all)$/i,
+    ],
+    priority: 85,
+  },
+
+  parseArgs: (input) => {
+    const deleteMatch = input.match(/^(delete|remove) rule (\d+|all)$/i);
+    if (deleteMatch) {
+      return { action: 'delete', target: deleteMatch[2].toLowerCase() };
+    }
+    return { action: 'view' };
+  },
+
+  execute: async (args, context) => {
+    const learning = context.services.learning;
+    if (!learning) {
+      throw new Error('Learning system not available');
+    }
+
+    const { action, target } = args as { action: string; target?: string };
+
+    // Get all instruction observations then filter to active ones
+    const all = learning.getObservations('user', { keyPrefix: 'instruction.' });
+    const supersededIds = new Set(all.map(o => o.supersedes).filter(Boolean) as string[]);
+    const active = all
+      .filter(o => !supersededIds.has(o.id) && o.confidence > 0)
+      .sort((a, b) => a.key.localeCompare(b.key));
+
+    if (action === 'delete') {
+      if (active.length === 0) {
+        return 'No rules to delete.';
+      }
+
+      if (target === 'all') {
+        for (const obs of active) {
+          learning.recordObservation({
+            entityId: 'user',
+            key: obs.key,
+            value: '[DELETED]',
+            valueType: obs.valueType,
+            sourceType: 'stated',
+            confidence: 0,
+            supersedes: obs.id,
+          });
+        }
+        return `✓ All ${active.length} rule(s) deleted.`;
+      }
+
+      const index = parseInt(target!, 10) - 1;
+      if (index < 0 || index >= active.length) {
+        return `Rule ${target} not found. You have ${active.length} rule(s).`;
+      }
+      const obs = active[index];
+      learning.recordObservation({
+        entityId: 'user',
+        key: obs.key,
+        value: '[DELETED]',
+        valueType: obs.valueType,
+        sourceType: 'stated',
+        confidence: 0,
+        supersedes: obs.id,
+      });
+      return `✓ Rule ${target} deleted.`;
+    }
+
+    if (active.length === 0) {
+      return 'No rules saved yet.';
+    }
+
+    const lines = ['═══ Your Rules ═══', ''];
+    active.forEach((obs, i) => {
+      lines.push(`${i + 1}. ${obs.value}`);
+    });
+    lines.push('');
+    lines.push('Say "delete rule 2" to remove a rule.');
+    lines.push('Say "delete rule all" to clear all rules.');
+    return lines.join('\n');
+  },
+};
+
 export const contextTools: Tool[] = [
   recallConversation,
   setPreference,
   viewProfile,
+  viewRules,
   clearFollowup,
 ];

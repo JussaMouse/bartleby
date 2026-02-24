@@ -300,13 +300,14 @@ set defaults.privacy to private
 | `setup import` | Import behavior wizard |
 | `migrate settings` | Migrate .env to database (one-time) |
 
-**First-Run Wizard Flow:**
-1. Welcome message
-2. LLM configuration (auto-detect models, choose tier strategy)
-3. Embeddings setup (optional)
-4. Calendar basics (timezone, date format)
-5. Optional features (OCR, weather, presence)
-6. Save all settings to database
+**First-Launch Flow** (runs automatically on first `pnpm start`):
+1. Import README, COMMANDS, TECH_SPEC as Garden pages (silent)
+2. Introduction dialog — asks your name and what to call the assistant
+3. Migrate `.env` settings to database (silent, preserves existing values)
+4. Auto-configure defaults (LLM models, calendar, presence, scheduler)
+5. Optional settings wizard — configure weather city/key, Signal, OCR
+
+**`setup wizard` command** re-runs the defaults configuration step (steps 4 above) without the intro dialog.
 
 **Migration for Existing Users:**
 
@@ -340,13 +341,31 @@ migrate settings                      # One-time migration from .env
 | `what do you know about me` | Show stored facts |
 | `show profile` | Same as above |
 | `what did we talk about <topic>` | Search conversation history |
+| `/rules` | View your standing instructions |
+| `delete rule <number>` | Remove a standing instruction by number |
+| `delete rule all` | Remove all standing instructions |
 
-**Teaching Bartleby:**
+**Teaching Bartleby (soft preferences):**
 - `my name is <name>`
 - `I am a <type> person`
 - `I prefer <preference>`
 - `I like/love/hate <thing>`
 - `my <relation> <name>` (wife, friend, boss, etc.)
+
+**Standing Instructions (mandatory rules):**
+
+Append `(remember this)` to any statement to save it as a mandatory rule that Bartleby follows in every response:
+
+```
+always use bullet points (remember this)
+never use markdown headers (remember this)
+keep all responses under 100 words (remember this)
+remember this: always greet me by name
+rule: respond in plain text only
+new rule: ask before making any list longer than 5 items
+```
+
+Rules are injected into every system prompt as mandatory instructions — they're binding, not just hints. Use `/rules` to view or delete them.
 
 **Memory Management (CLI only):**
 ```bash
@@ -368,7 +387,7 @@ pnpm profile import <file>                # Restore from backup
 | `weather` | Current weather |
 | `what's the weather` | Same |
 
-*Requires `WEATHER_API_KEY` and `WEATHER_CITY` in .env*
+*Requires `weather.city` and `weather.api-key` settings — set via `set weather.city to <city>` and `set weather.api-key to <key>`, or configure during first-launch.*
 
 ---
 

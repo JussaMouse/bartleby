@@ -304,6 +304,7 @@ If nothing matches, ask the Fast model to pick a tool. If complex, use Thinking 
 | `WeatherService` | Weather API |
 | `SettingsService` | Runtime configuration, database-backed settings |
 | `InboxService` | Import history, duplicate detection |
+| `runFirstLaunch` | One-time setup flow: garden doc import, intro dialog, env migration, defaults, optional wizard (`src/setup/first-launch.ts`) |
 | `LearningService` | Entity-Observation-Relationship memory system (Phase 5: activation tracking, consolidation) |
 
 ### Tool Interface
@@ -1133,15 +1134,17 @@ class SettingsService {
 | `runSetupWizard` | Interactive first-run setup |
 | `migrateSettings` | Migrate .env to database |
 
-**First-Run Wizard:**
+**First-Launch Flow** (`src/setup/first-launch.ts`):
 
-New users are guided through interactive setup:
-1. Welcome message
-2. LLM configuration (auto-detect models, choose tier strategy)
-3. Embeddings setup (optional)
-4. Calendar basics (timezone, date format)
-5. Optional features (OCR, weather, presence)
-6. Save settings and mark complete
+Runs automatically from `repl.ts` when `settings.isFirstRun()` is true. Steps:
+1. **Garden doc import** — reads `README.md`, `COMMANDS.md`, `TECH_SPEC.md` from `cwd`; calls `garden.create()` for each (idempotent: skips if title already exists)
+2. **Intro dialog** — prompts for user's name (stored as `learning.recordObservation({entityId: 'user', key: 'preferred_name', ...})`) and assistant name (stored as `settings.setSetting('assistant.name', ...)`)
+3. **Env migration** — iterates `ENV_TO_DB` mapping; for each env var present and not yet in DB, calls `settings.setSetting()`. Reports count silently.
+4. **configureDefaults** — calls exported `configureDefaults(settings, llm)` from `first-run-wizard.ts` using `setIfUnset` pattern so step 3 values are never overwritten
+5. **Optional settings wizard** — shows numbered list of unset items from `SETTINGS_MANIFEST` (weather, signal, ocr); loops until user types "done" or Enter
+6. Calls `settings.markFirstRunComplete()`
+
+**`setup wizard` command** (`src/tools/first-run-wizard.ts`) calls `configureDefaults()` directly and also marks first run complete. Safe to re-run.
 
 **Migration for Existing Users:**
 
@@ -1570,6 +1573,24 @@ CREATE VIRTUAL TABLE observations_fts USING fts5(
 );
 ```
 
+**Observation key namespace conventions:**
+
+| Key prefix | What it stores | Source | Loaded in prompt? |
+|------------|---------------|--------|-------------------|
+| `preference.*` | Soft user preferences | Stated / inferred | Hot tier |
+| `pattern.*` | Behavioral patterns | Computed | Hot tier |
+| `context.*` | Current working state | Computed | Hot tier |
+| `goal.*` | Tracked objectives | Stated | Hot tier |
+| `instruction.*` | Standing instructions (mandatory) | Stated | Always (all) |
+
+**Standing instructions (`instruction.*`):**
+- Key format: `instruction.<timestamp_ms>` — unique, sortable
+- Confidence: `1.0`, no expiry (permanent until explicitly deleted)
+- Source type: `stated`
+- Loaded unconditionally in `buildRichContext()` (bypasses hot-tier filter)
+- Injected into every system prompt as `## Standing Instructions (MANDATORY — follow in every response)`, above the User Profile section
+- Deletion: supersedes with `confidence: 0, value: '[DELETED]'` — history preserved
+
 **Features:**
 - **Flexible entity system** - Track any type of entity (users, sessions, commands, records)
 - **Confidence scoring** - Weight reliability of observations (0.0-1.0)
@@ -1577,6 +1598,7 @@ CREATE VIRTUAL TABLE observations_fts USING fts5(
 - **Superseding chain** - Track how information changes over time
 - **Full-text search** - FTS5 index on observation values
 - **Graph relationships** - Connect entities with typed relationships
+- **Standing instructions** - `instruction.*` observations always loaded, injected as mandatory rules
 - **Phase 5 Enhancements (2026-02):**
   - **Hierarchical Memory** - Tiered loading (hot ≥0.7, warm 0.4-0.7, cold <0.4)
   - **Activation Tracking** - Score based on recency, frequency, and confidence

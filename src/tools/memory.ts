@@ -244,8 +244,69 @@ export const forgetObservation: Tool = {
   },
 };
 
+export const rememberInstruction: Tool = {
+  name: 'rememberInstruction',
+  description: 'Store a mandatory standing instruction that will be followed in every response',
+
+  routing: {
+    patterns: [
+      /^(.+?)\s*\(remember this\)\.?$/i,
+      /^(.+?)\s*\(always remember this\)\.?$/i,
+      /^remember this:\s*(.+)$/i,
+      /^new rule:\s*(.+)$/i,
+      /^rule:\s*(.+)$/i,
+    ],
+    keywords: {
+      verbs: ['remember'],
+      nouns: ['rule', 'instruction'],
+    },
+    priority: 90,
+  },
+
+  parseArgs: (input) => {
+    const patterns = [
+      /^(.+?)\s*\(remember this\)\.?$/i,
+      /^(.+?)\s*\(always remember this\)\.?$/i,
+      /^remember this:\s*(.+)$/i,
+      /^new rule:\s*(.+)$/i,
+      /^rule:\s*(.+)$/i,
+    ];
+    for (const pattern of patterns) {
+      const match = input.match(pattern);
+      if (match) {
+        return { instruction: match[1].trim() };
+      }
+    }
+    return { instruction: input.trim() };
+  },
+
+  execute: async (args, context) => {
+    const learning = context.services.learning;
+    if (!learning) {
+      throw new Error('Learning system not available');
+    }
+
+    const { instruction } = args as { instruction: string };
+    if (!instruction) {
+      return 'Please specify an instruction to remember.';
+    }
+
+    learning.recordObservation({
+      entityId: 'user',
+      key: `instruction.${Date.now()}`,
+      value: instruction,
+      valueType: 'string',
+      sourceType: 'stated',
+      confidence: 1.0,
+    });
+
+    return `✓ Rule saved: "${instruction}"\nSay /rules to view all your rules.`;
+  },
+};
+
 // Export all memory tools
 export const memoryTools: Tool[] = [
+  rememberInstruction,  // Priority 90 — must be checked before storeObservation
   storeObservation,
   retrieveContext,
   updateObservation,
