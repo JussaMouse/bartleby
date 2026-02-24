@@ -223,7 +223,7 @@ export class CommandRouter {
       }
     }
 
-    if (bestMatch && bestMatch.score >= 0.7) {
+    if (bestMatch && bestMatch.score >= 0.9) {
       const args = bestMatch.tool.parseArgs ? bestMatch.tool.parseArgs(input, null) : {};
       return {
         tool: bestMatch.tool.name,
