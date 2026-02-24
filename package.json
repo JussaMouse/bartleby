@@ -12,7 +12,8 @@
     "typecheck": "tsc --noEmit",
     "profile": "tsx scripts/export-import-profile.ts",
     "monitor": "tsx scripts/monitor-memory.ts",
-    "optimize": "tsx scripts/optimize-database.ts"
+    "optimize": "tsx scripts/optimize-database.ts",
+    "postinstall": "node -e \"require('child_process').execSync('node-gyp rebuild', {cwd: require.resolve('hnswlib-node/package.json').replace('/package.json',''), stdio:'inherit'})\""
   },
   "dependencies": {
     "better-sqlite3": "^11.7.0",
