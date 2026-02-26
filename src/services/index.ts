@@ -1,75 +1,66 @@
 // src/services/index.ts
-import { Config } from '../config.js';
-import { GardenService } from './garden.js';
-import { CalendarService } from './calendar.js';
-import { ContextService } from './context.js';
-import { PresenceService } from './presence.js';
-import { LLMService } from './llm.js';
-import { EmbeddingService } from './embeddings.js';
-import { VectorService } from './vectors.js';
-import { ShedService } from './shed.js';
-import { SchedulerService } from './scheduler.js';
-import { WeatherService } from './weather.js';
-import { SignalService } from './signal.js';
-import { OCRService } from './ocr.js';
-import { DataService } from './data.js';
-import { AuditService } from './audit.js';
-import { LearningService } from './learning.js';
-import { BackgroundAnalysis } from './background-analysis.js';
-import { EmbeddingRelationships } from './embedding-relationships.js';
-import { ReflectionService } from './reflection.js';
-import { InboxService } from './inbox.js';
-import { SettingsService } from './settings.js';
-import { ImportConfigService } from './import-config.js';
+import { Config, getDbPath } from '../config.js';
+import { GardenService }      from '../garden/GardenService.js';
+import { RelationshipService } from '../garden/RelationshipService.js';
+import { ViewService }         from '../garden/ViewService.js';
+import { ContextService }      from './context.js';
+import { LLMService }          from './llm.js';
+import { EmbeddingService }    from './embeddings.js';
+import { VectorService }       from './vectors.js';
+import { ShedService }         from './shed.js';
+import { WeatherService }      from './weather.js';
+import { SignalService }       from './signal.js';
+import { OCRService }          from './ocr.js';
+import { DataService }         from './data.js';
+import { AuditService }        from './audit.js';
+import { LearningService }     from './learning.js';
+import { ReflectionService }   from './reflection.js';
+import { SettingsService }     from './settings.js';
 import { info } from '../utils/logger.js';
 
 export interface ServiceContainer {
-  // Config (source of truth)
   config: Config;
 
-  // Core data
+  // Garden (4-layer architecture)
   garden: GardenService;
+  rels:   RelationshipService;
+  views:  ViewService;
+
+  // Memory and context
+  context:    ContextService;
+  learning:   LearningService;
+  reflection: ReflectionService;
+  settings:   SettingsService;
+
+  // Reference library
   shed: ShedService;
-  calendar: CalendarService;
-  data: DataService;
-  inbox: InboxService;
-  settings: SettingsService;
-  importConfig: ImportConfigService;
-
-  // Context - Bartleby's memory of you
-  context: ContextService;
-  learning: LearningService; // Unified entity-observation-relationship system
-  reflection: ReflectionService; // Continuous learning from interactions
-
-  // Presence - Bartleby's initiative layer (decides when to speak unprompted)
-  presence: PresenceService;
 
   // Infrastructure
-  llm: LLMService;
+  llm:        LLMService;
   embeddings: EmbeddingService;
-  vectors: VectorService;
-  scheduler: SchedulerService;
-  audit: AuditService;
+  vectors:    VectorService;
+  audit:      AuditService;
 
   // Optional integrations
   weather: WeatherService;
-  signal: SignalService;
-  ocr: OCRService;
+  signal:  SignalService;
+  ocr:     OCRService;
+  data:    DataService;
 }
 
 export async function initServices(config: Config): Promise<ServiceContainer> {
   info('Initializing services...');
 
-  // Create services (order matters for dependencies)
-  const llm = new LLMService(config);
-  const embeddings = new EmbeddingService(config);
-  const vectors = new VectorService(config);
-  const signal = new SignalService(config);
-  const weather = new WeatherService(config);
-  const ocr = new OCRService(config);
-  const audit = new AuditService(config);
+  // ── Infrastructure ──────────────────────────────────────────────────────────
 
-  // Initialize infrastructure first
+  const llm        = new LLMService(config);
+  const embeddings = new EmbeddingService(config);
+  const vectors    = new VectorService(config);
+  const signal     = new SignalService(config);
+  const weather    = new WeatherService(config);
+  const ocr        = new OCRService(config);
+  const audit      = new AuditService(config);
+
   await llm.initialize();
   await embeddings.initialize();
   await vectors.initialize();
@@ -78,119 +69,68 @@ export async function initServices(config: Config): Promise<ServiceContainer> {
   await ocr.initialize();
   audit.initialize();
 
-  // Create data services (depend on infrastructure)
-  const garden = new GardenService(config);
-  const calendar = new CalendarService(config);
-  const context = new ContextService(config);
-  const shed = new ShedService(config, embeddings, vectors, llm);
-  const scheduler = new SchedulerService(config, signal);
-  const data = new DataService(config);
+  // ── Garden (new 4-layer architecture) ───────────────────────────────────────
+  // GardenService owns the SQLite connection; all other services share getDB()
 
-  // Initialize data services (except context - needs learning first)
-  await garden.initialize();
-  await calendar.initialize();
-  await shed.initialize();
-  await scheduler.initialize();
+  const dbPath = getDbPath(config, 'bartleby.db');
+  const garden = new GardenService(dbPath);
+  const rels   = new RelationshipService(garden.getDB(), garden);
+  const views  = new ViewService(garden.getDB(), garden, rels);
 
-  // Create inbox service (shares garden database)
-  const inbox = new InboxService(garden.getDatabase());
-  await inbox.initialize();
+  // ── Settings and Learning share the same DB connection ──────────────────────
 
-  // Create settings service (shares garden database)
-  const settings = new SettingsService(garden.getDatabase());
+  const settings = new SettingsService(garden.getDB());
   await settings.initialize();
 
-  // Create import config service (shares garden database)
-  const importConfig = new ImportConfigService(garden.getDatabase());
-  await importConfig.initialize();
+  const learning = new LearningService(garden.getDB());
 
-  // Create learning service (shares garden database)
-  const learning = new LearningService(garden.getDatabase());
+  // ── Reference library (Shed) ─────────────────────────────────────────────────
 
-  // Create reflection service (depends on learning and llm)
-  const reflection = new ReflectionService(learning, llm);
+  const shed = new ShedService(config, embeddings, vectors, llm);
+  await shed.initialize();
 
-  // Wire up learning service to garden for unified FactsService backend
-  garden.setLearningService(learning);
+  // ── Context and Reflection ───────────────────────────────────────────────────
 
-  // Wire up learning and LLM to context service for automatic session analysis
+  const context = new ContextService(config);
   context.setServices(learning, llm);
-
-  // Now initialize context after learning service is wired up
   await context.initialize();
 
-  // Wire up calendar to services that need temporal index
-  garden.setCalendar(calendar);
-  scheduler.setCalendar(calendar);
-  garden.setScheduler(scheduler);
+  const reflection = new ReflectionService(learning, llm);
 
-  // Reconcile calendar temporal index with source services
-  const gardenTasks = garden.getTasksWithDueDates().map(t => ({
-    id: t.id,
-    title: t.title,
-    due_date: t.due_date!,
-  }));
-  const schedulerTasks = scheduler.list().map(t => ({
-    id: t.id,
-    actionPayload: t.actionPayload as string,
-    nextRun: t.nextRun,
-    scheduleType: t.scheduleType,
-  }));
-  await calendar.reconcile(gardenTasks, schedulerTasks);
+  // ── Data (separate DB for CSV/SQL work) ─────────────────────────────────────
 
-  // Create Presence service (depends on context, garden, calendar, weather)
-  const presence = new PresenceService(config, context, garden, calendar, weather);
-
-  // Create Background Analysis service for daily pattern detection
-  const backgroundAnalysis = new BackgroundAnalysis(learning, garden);
-
-  // Create Embedding Relationships service for semantic similarity discovery
-  const embeddingRelationships = new EmbeddingRelationships(learning, garden, embeddings);
-
-  // Wire up embedding relationships to background analysis
-  backgroundAnalysis.setEmbeddingRelationships(embeddingRelationships);
-
-  // Wire up scheduler to presence for scheduled moments
-  scheduler.setPresence(presence);
-  scheduler.setBackgroundAnalysis(backgroundAnalysis);
-
-  // Start scheduler background loop
-  scheduler.start();
+  const data = new DataService(config);
 
   info('All services initialized');
 
   return {
     config,
     garden,
-    shed,
-    calendar,
-    data,
-    inbox,
-    settings,
-    importConfig,
+    rels,
+    views,
     context,
     learning,
     reflection,
-    presence,
+    settings,
+    shed,
     llm,
     embeddings,
     vectors,
-    scheduler,
     audit,
     weather,
     signal,
     ocr,
+    data,
   };
 }
 
 export function closeServices(services: ServiceContainer): void {
   info('Closing services...');
-  services.scheduler.close();
   services.shed.close();
   services.vectors.close();
+  // learning.close() is a no-op (db managed by garden)
   services.learning.close();
-  services.garden.close();
-  services.calendar.close();
+  services.garden.close();  // closes the shared DB connection
   services.context.close();
   services.data.close();
   services.llm.close();
@@ -200,40 +140,36 @@ export function closeServices(services: ServiceContainer): void {
 }
 
 // Re-export services
-export { GardenService } from './garden.js';
-export { CalendarService } from './calendar.js';
-export { ContextService } from './context.js';
-export { LearningService } from './learning.js';
-export { ReflectionService } from './reflection.js';
-export { InboxService } from './inbox.js';
-export { SettingsService } from './settings.js';
-export { ImportConfigService } from './import-config.js';
-export { PresenceService } from './presence.js';
-export { LLMService } from './llm.js';
-export { EmbeddingService } from './embeddings.js';
-export { VectorService } from './vectors.js';
-export { ShedService } from './shed.js';
-export { SchedulerService } from './scheduler.js';
-export { WeatherService } from './weather.js';
-export { SignalService } from './signal.js';
-export { OCRService } from './ocr.js';
-export { DataService } from './data.js';
-export { AuditService } from './audit.js';
-export { BackgroundAnalysis } from './background-analysis.js';
-export { EmbeddingRelationships } from './embedding-relationships.js';
+export { GardenService }      from '../garden/GardenService.js';
+export { RelationshipService } from '../garden/RelationshipService.js';
+export { ViewService }         from '../garden/ViewService.js';
+export { ContextService }      from './context.js';
+export { LearningService }     from './learning.js';
+export { ReflectionService }   from './reflection.js';
+export { SettingsService }     from './settings.js';
+export { ShedService }         from './shed.js';
+export { LLMService }          from './llm.js';
+export { EmbeddingService }    from './embeddings.js';
+export { VectorService }       from './vectors.js';
+export { WeatherService }      from './weather.js';
+export { SignalService }       from './signal.js';
+export { OCRService }          from './ocr.js';
+export { DataService }         from './data.js';
+export { AuditService }        from './audit.js';
 
 // Re-export types
-export type { GardenRecord, RecordType, RecordStatus, TaskFilters } from './garden.js';
-export type { InboxItem } from './inbox.js';
-export type { CalendarEntry, CalendarEvent, EntryType, SourceType } from './calendar.js';
-export type { Episode } from './context.js';
-export type { Entity, Observation, Relationship, UserProfile, WorkContext, SessionSummary, CommandRecord, CommandStats } from './learning.js';
-export type { ConversationTurn, ReflectionInsight } from './reflection.js';
-export type { PresenceConfig, MomentType } from './presence.js';
-export type { Tier, Complexity } from './llm.js';
-export type { VectorMetadata } from './vectors.js';
-export type { ShedSource, ShedChunk } from './shed.js';
-export type { ScheduledTask } from './scheduler.js';
-export type { WeatherData, ForecastDay } from './weather.js';
+export type { Episode }                                                         from './context.js';
+export type { Entity, Observation, Relationship as LearningRelationship,
+              UserProfile, WorkContext, SessionSummary, CommandRecord,
+              CommandStats }                                                    from './learning.js';
+export type { ConversationTurn, ReflectionInsight }                            from './reflection.js';
+export type { Tier, Complexity }                                                from './llm.js';
+export type { VectorMetadata }                                                  from './vectors.js';
+export type { ShedSource, ShedChunk }                                          from './shed.js';
+export type { WeatherData, ForecastDay }                                       from './weather.js';
 export type { ImportResult, QueryResult, ExportResult, TableInfo, ColumnInfo } from './data.js';
-export type { AuditEvent } from './audit.js';
+export type { AuditEvent }                                                      from './audit.js';
+// Garden types re-exported from their canonical location
+export type { GardenRecord, RecordType, RecordStatus, Relationship,
+              RelType, ViewData, Section, RecordSummary, QuerySpec,
+              FilterExpr, GardenView }                                         from '../garden/types.js';

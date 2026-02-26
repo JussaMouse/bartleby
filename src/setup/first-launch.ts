@@ -186,11 +186,10 @@ function importDocsToGarden(services: ServiceContainer): void {
     try {
       const content = fs.readFileSync(filePath, 'utf-8');
       services.garden.create({
-        type: 'page',
+        type: 'note',
         title,
         status: 'active',
         content,
-        privacy: 'private',
       });
     } catch (_err) {
       // Silently skip if read/write fails

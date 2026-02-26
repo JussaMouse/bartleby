@@ -1,2654 +1,604 @@
-// Bartleby Dashboard
+// Bartleby Dashboard — app.js
+// Vanilla JS, no framework. Functions grouped by concern.
+// Render functions receive data and return HTML strings only.
+// State and data fetching at the top level.
 
-const PANEL_STORAGE_KEY = 'bartleby.panels';
-const API_TOKEN_KEY = 'bartleby.apiToken';
-const panels = new Map();
-let ws = null;
-let autocompleteData = { contexts: [], projects: [], tags: [] };
-let replMessages = [];
-let apiToken = null;
+// ─────────────────────────────────────────────────────────────────────────────
+// Auth
+// ─────────────────────────────────────────────────────────────────────────────
 
-// API token management
-function getApiToken() {
-  if (!apiToken) {
-    apiToken = localStorage.getItem(API_TOKEN_KEY);
-  }
-  return apiToken;
+function getToken() {
+  return localStorage.getItem('bartleby_token') || '';
 }
 
-function setApiToken(token) {
-  apiToken = token;
-  if (token) {
-    localStorage.setItem(API_TOKEN_KEY, token);
-  } else {
-    localStorage.removeItem(API_TOKEN_KEY);
-  }
+function setToken(token) {
+  localStorage.setItem('bartleby_token', token);
 }
 
-// Fetch wrapper that adds auth token
-async function apiFetch(url, options = {}) {
-  const token = getApiToken();
-  const headers = { ...options.headers };
+async function apiFetch(path, opts = {}) {
+  const token = getToken();
+  const headers = { 'Content-Type': 'application/json' };
+  if (token) headers['Authorization'] = `Bearer ${token}`;
 
-  if (token) {
-    headers['Authorization'] = `Bearer ${token}`;
+  const res = await fetch(path, {
+    method: opts.method || (opts.body ? 'POST' : 'GET'),
+    headers,
+    body: opts.body ? JSON.stringify(opts.body) : undefined,
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: res.statusText }));
+    throw new Error(err.error || `HTTP ${res.status}`);
   }
-
-  const response = await fetch(url, { ...options, headers });
-
-  // If 401, token might be invalid - prompt for new one
-  if (response.status === 401) {
-    const newToken = prompt('API token required. Please enter your BARTLEBY_API_TOKEN:');
-    if (newToken) {
-      setApiToken(newToken);
-      // Retry with new token
-      headers['Authorization'] = `Bearer ${newToken}`;
-      return fetch(url, { ...options, headers });
-    }
-  }
-
-  return response;
+  return res.json();
 }
 
-// Initialize
-document.addEventListener('DOMContentLoaded', () => {
-  connectWebSocket();
-  loadPanels();
-  fetchAutocomplete();
-  setupDragDrop();
-});
-
+// ─────────────────────────────────────────────────────────────────────────────
 // WebSocket
-function connectWebSocket() {
-  const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
-  ws = new WebSocket(`${protocol}//${location.host}`);
+// ─────────────────────────────────────────────────────────────────────────────
 
-  ws.onopen = () => {
-    document.getElementById('status').textContent = 'connected';
-    document.getElementById('status').className = 'status connected';
-    
-    // Subscribe to all current panels
-    for (const view of panels.keys()) {
-      ws.send(JSON.stringify({ type: 'subscribe', view }));
+let ws = null;
+let wsReconnectTimer = null;
+const wsSubscriptions = new Set(); // view names currently open in panels
+
+function connect() {
+  const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+  ws = new WebSocket(`${proto}://${location.host}`);
+
+  ws.addEventListener('open', () => {
+    setStatus('connected');
+    clearTimeout(wsReconnectTimer);
+    // Re-subscribe all open panels
+    for (const view of wsSubscriptions) {
+      wsSubscribe(view);
     }
-  };
+  });
 
-  ws.onclose = () => {
-    document.getElementById('status').textContent = 'disconnected';
-    document.getElementById('status').className = 'status disconnected';
-    setTimeout(connectWebSocket, 3000);
-  };
-
-  ws.onmessage = (event) => {
-    const msg = JSON.parse(event.data);
-    if (msg.type === 'data' && msg.view) {
-      renderPanel(msg.view, msg.data, msg.pageView);
+  ws.addEventListener('message', (e) => {
+    try {
+      onMessage(JSON.parse(e.data));
+    } catch {
+      // ignore malformed messages
     }
-  };
+  });
+
+  ws.addEventListener('close', () => {
+    setStatus('disconnected');
+    wsReconnectTimer = setTimeout(connect, 3000);
+  });
+
+  ws.addEventListener('error', () => {
+    ws.close();
+  });
 }
 
-// Autocomplete data
-async function fetchAutocomplete() {
-  try {
-    const res = await apiFetch('/api/autocomplete');
-    if (res.ok) {
-      autocompleteData = await res.json();
-      console.log('Autocomplete data loaded:', autocompleteData);
-    }
-  } catch (e) {
-    console.warn('Failed to fetch autocomplete data:', e);
+function wsSubscribe(viewName) {
+  wsSubscriptions.add(viewName);
+  if (ws?.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify({ type: 'subscribe', view: viewName }));
   }
 }
 
-// Panel management
+function wsUnsubscribe(viewName) {
+  wsSubscriptions.delete(viewName);
+  if (ws?.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify({ type: 'unsubscribe', view: viewName }));
+  }
+}
+
+function onMessage(msg) {
+  if (msg.type === 'data' && msg.view && msg.viewData) {
+    updatePanelData(msg.view, msg.viewData);
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Panels
+// ─────────────────────────────────────────────────────────────────────────────
+
+// panels: Array<{ id: string, view: string, el: HTMLElement }>
+const panels = [];
+
 function addPanel(view) {
-  if (panels.has(view)) return;
+  const id = `panel-${Date.now()}`;
+  const el = document.createElement('div');
+  el.className = 'panel';
+  el.dataset.panelId = id;
+  el.dataset.view = view;
 
-  const panel = createPanel(view);
-  document.getElementById('panels').appendChild(panel);
-  panels.set(view, panel);
-  savePanels();
-
-  // REPL is local-only, render immediately
   if (view === 'repl') {
-    renderPanel('repl', null);
+    el.innerHTML = renderReplPanel();
+    document.getElementById('panels').appendChild(el);
+    panels.push({ id, view, el });
+    savePanels();
+    const input = el.querySelector('.repl-input');
+    if (input) input.focus();
     return;
   }
 
-  if (ws && ws.readyState === WebSocket.OPEN) {
-    ws.send(JSON.stringify({ type: 'subscribe', view }));
+  el.innerHTML = `<div class="panel-header">
+    <span class="panel-title">${esc(view)}</span>
+    <button class="panel-close" onclick="removePanel('${id}')">&times;</button>
+  </div>
+  <div class="panel-body loading">Loading…</div>`;
+
+  document.getElementById('panels').appendChild(el);
+  panels.push({ id, view, el });
+  savePanels();
+
+  wsSubscribe(view);
+  loadPanel(id, view);
+}
+
+function removePanel(id) {
+  const idx = panels.findIndex(p => p.id === id);
+  if (idx === -1) return;
+  const { view, el } = panels[idx];
+  el.remove();
+  panels.splice(idx, 1);
+  if (!panels.some(p => p.view === view)) {
+    wsUnsubscribe(view);
+  }
+  savePanels();
+}
+
+async function loadPanel(id, view) {
+  try {
+    const viewData = await apiFetch(`/api/view/${encodeURIComponent(view)}`);
+    updatePanelData(view, viewData);
+  } catch (err) {
+    setPanelBody(id, `<div class="error">Error: ${esc(err.message)}</div>`);
   }
 }
 
-function removePanel(view) {
-  const panel = panels.get(view);
-  if (panel) {
-    panel.remove();
-    panels.delete(view);
-    savePanels();
-
-    if (ws && ws.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify({ type: 'unsubscribe', view }));
+function updatePanelData(view, viewData) {
+  for (const panel of panels) {
+    if (panel.view !== view) continue;
+    const html = renderViewData(viewData);
+    const body = panel.el.querySelector('.panel-body');
+    const header = panel.el.querySelector('.panel-title');
+    if (body) {
+      body.className = 'panel-body';
+      body.innerHTML = html;
     }
+    if (header) header.textContent = viewData.title;
   }
+}
+
+function setPanelBody(id, html) {
+  const panel = panels.find(p => p.id === id);
+  if (!panel) return;
+  const body = panel.el.querySelector('.panel-body');
+  if (body) body.innerHTML = html;
 }
 
 function savePanels() {
-  const views = Array.from(panels.keys());
-  localStorage.setItem(PANEL_STORAGE_KEY, JSON.stringify(views));
+  const saved = panels.map(p => p.view);
+  localStorage.setItem('bartleby_panels', JSON.stringify(saved));
 }
 
 function loadPanels() {
-  let views = [];
   try {
-    const raw = localStorage.getItem(PANEL_STORAGE_KEY);
-    if (raw) {
-      views = JSON.parse(raw);
+    const saved = JSON.parse(localStorage.getItem('bartleby_panels') || '[]');
+    for (const view of saved) {
+      addPanel(view);
     }
-  } catch (e) {}
-
-  if (!views.length) {
-    views = ['inbox', 'next-actions'];
+  } catch {
+    addPanel('Inbox');
+    addPanel('Next Actions');
   }
-
-  for (const view of views) {
-    addPanel(view);
-  }
-}
-
-function createPanel(view) {
-  const panel = document.createElement('div');
-  panel.className = 'panel';
-  panel.dataset.view = view;
-
-  const title = formatViewTitle(view);
-
-  panel.innerHTML = `
-    <div class="panel-header">
-      <h2>${title}</h2>
-      <button class="panel-close" onclick="removePanel('${view}')">&times;</button>
-    </div>
-    <div class="panel-content">
-      <div class="empty">Loading...</div>
-    </div>
-  `;
-
-  return panel;
-}
-
-function formatViewTitle(view) {
-  if (view.startsWith('project:')) {
-    return view.slice(8);
-  }
-  return view.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
-}
-
-function promptProjectPanel() {
-  const name = prompt('Project name:');
-  if (name) {
-    addPanel('project:' + name);
+  if (panels.length === 0) {
+    addPanel('Inbox');
+    addPanel('Next Actions');
   }
 }
 
-// Panel rendering
-function renderPanel(view, data, pageView) {
-  const panel = panels.get(view);
-  if (!panel) return;
+// ─────────────────────────────────────────────────────────────────────────────
+// Rendering
+// ─────────────────────────────────────────────────────────────────────────────
 
-  const content = panel.querySelector('.panel-content');
-
-  // Skip re-render if there's an active edit in this panel (would steal focus)
-  const hasActiveEdit = content.querySelector('.action-edit:not(.hidden)') ||
-                        content.querySelector('.item-edit:not(.hidden)') ||
-                        content.querySelector('.note-content-edit:not(.hidden)');
-  if (hasActiveEdit) {
-    console.log('Skipping re-render, active edit in panel:', view);
-    return;
+function renderViewData(viewData) {
+  if (!viewData?.sections?.length) {
+    return '<div class="empty">Nothing here.</div>';
   }
+  return viewData.sections.map(renderSection).join('');
+}
 
-  if (view === 'repl') {
-    // REPL doesn't use server data, render from local messages
-    content.innerHTML = renderRepl();
-  } else if (view === 'inbox') {
-    content.innerHTML = renderInbox(data);
-  } else if (view === 'next-actions') {
-    content.innerHTML = renderNextActions(data);
-  } else if (view === 'projects') {
-    content.innerHTML = renderProjects(data);
-  } else if (view.startsWith('project:')) {
-    // Use PageView if available, otherwise fall back to old rendering
-    content.innerHTML = pageView ? renderPageView(pageView) : renderProject(data);
-  } else if (view.startsWith('note-edit:')) {
-    // Note editing panel (creation or edit)
-    content.innerHTML = renderNoteEdit(view, data);
-    // Focus title field after rendering
-    setTimeout(() => {
-      const titleField = document.getElementById('note-title');
-      if (titleField) titleField.focus();
-    }, 0);
-  } else if (view.startsWith('note:')) {
-    // Use PageView if available, otherwise fall back to old rendering
-    content.innerHTML = pageView ? renderPageView(pageView) : renderNote(data);
-  } else if (view === 'calendar') {
-    content.innerHTML = renderCalendar(data);
-  } else if (view === 'today') {
-    content.innerHTML = renderToday(data);
-  } else if (view === 'recent') {
-    content.innerHTML = renderRecent(data);
-  } else if (view === 'memory') {
-    content.innerHTML = renderMemory(data);
-  } else if (view === 'graph') {
-    content.innerHTML = renderGraph(data);
-  } else if (view === 'notes') {
-    content.innerHTML = renderNotes(data);
-  } else {
-    content.innerHTML = `<div class="empty">Unknown view: ${view}</div>`;
+function renderSection(section) {
+  switch (section.kind) {
+    case 'content':   return renderContentSection(section);
+    case 'list':      return renderListSection(section);
+    case 'metadata':  return renderMetadataSection(section);
+    case 'graph':
+      return `<div class="section section-graph"><span class="muted">${section.nodes?.length ?? 0} nodes, ${section.edges?.length ?? 0} connections</span></div>`;
+    default:
+      return '';
   }
 }
 
-// PageView rendering - structured sections
-function renderPageView(pageView) {
-  if (!pageView || !pageView.sections) {
-    return '<div class="empty">No view data</div>';
-  }
-
-  let html = '';
-
-  for (const section of pageView.sections) {
-    // Skip empty sections
-    if (!section.content || section.content.trim() === '') {
-      continue;
-    }
-
-    // Render section header
-    html += `<div class="section-header">${esc(section.title)}</div>`;
-
-    // Render section content as markdown
-    html += `<div class="section-content">${renderMarkdown(section.content)}</div>`;
-  }
-
-  return html || '<div class="empty">No content</div>';
-}
-
-function renderInbox(data) {
-  let html = '<div class="panel-toolbar"><button class="btn-inline" onclick="createNewItem()">+ New Item</button></div>';
-  
-  if (!data?.length) {
-    html += '<div class="empty">Inbox empty</div>';
-    return html;
-  }
-  const items = data.map(item => renderActionItem(item, true)).join('');
-  html += `<ul>${items}</ul>`;
-  return html;
-}
-
-function renderNextActions(data) {
-  let html = '<div class="panel-toolbar"><button class="btn-inline" onclick="createNewAction()">+ New Action</button></div>';
-  
-  if (!data?.length) {
-    html += '<div class="empty">No actions</div>';
-    return html;
-  }
-
-  // Group by context
-  const byContext = {};
-  for (const task of data) {
-    const ctx = task.context || 'No Context';
-    if (!byContext[ctx]) byContext[ctx] = [];
-    byContext[ctx].push(task);
-  }
-
-  for (const [ctx, actions] of Object.entries(byContext)) {
-    if (actions.length === 0) continue;
-    html += `<div class="section-header">${ctx}</div>`;
-    html += '<ul>' + actions.map(a => renderActionItem(a)).join('') + '</ul>';
-  }
-
-  if (html === '<div class="panel-toolbar"><button class="btn-inline" onclick="createNewAction()">+ New Action</button></div>') {
-    html += '<div class="empty">No actions</div>';
-  }
-  
-  return html;
-}
-
-function renderProjects(data) {
-  let html = '<div class="panel-toolbar"><button class="btn-inline" onclick="createNewProject()">+ New Project</button></div>';
-  
-  if (!data?.length) {
-    html += '<div class="empty">No projects</div>';
-    return html;
-  }
-
-  const items = data.map(p => renderEditableItem(p, 'project')).join('');
-  html += `<ul>${items}</ul>`;
-  return html;
-}
-
-// Generic editable item renderer for non-action types
-function renderEditableItem(item, itemType) {
-  const id = item.id;
-  const title = item.title;
-  
-  // Build display info based on type
-  let metaHtml = '';
-  if (itemType === 'event') {
-    const d = new Date(item.start_time);
-    const dateStr = d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
-    const timeStr = item.all_day ? 'all day' : d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
-    metaHtml = `<span class="item-meta">${dateStr} ${timeStr}</span>`;
-  } else if (itemType === 'project') {
-    metaHtml = `<span class="item-meta clickable-hint">click to expand</span>`;
-  } else if (itemType === 'note') {
-    // Show project if present
-    if (item.project) {
-      metaHtml = `<span class="item-meta">+${esc(item.project)}</span>`;
-    }
-  } else if (item.type) {
-    metaHtml = `<span class="item-meta">${item.type}</span>`;
-  }
-
-  // Notes and projects open panels on click
-  if (itemType === 'project') {
-    return `
-      <li class="item generic-item" data-id="${id}" data-type="${itemType}" data-title="${esc(title)}">
-        <div class="item-display" onclick="addPanel('project:${esc(title)}')">
-          <span class="item-title">${esc(title)}</span>
-          ${metaHtml}
-        </div>
-      </li>
-    `;
-  }
-  
-  if (itemType === 'note') {
-    return `
-      <li class="item generic-item" data-id="${id}" data-type="${itemType}" data-title="${esc(title)}" data-project="${esc(item.project || '')}">
-        <div class="item-display">
-          <span class="item-title" onclick="addPanel('note:${id}')">${esc(title)}</span>
-          ${metaHtml}
-          <span class="edit-link" onclick="event.stopPropagation(); openNoteEdit('${id}')">edit</span>
-        </div>
-      </li>
-    `;
-  }
-
-  // Other types (events, etc.) use inline editing
-  return `
-    <li class="item generic-item" data-id="${id}" data-type="${itemType}" data-title="${esc(title)}">
-      <div class="item-display" onclick="startGenericEdit(this.parentElement)">
-        <span class="item-title">${esc(title)}</span>
-        ${metaHtml}
-      </div>
-      <div class="item-edit hidden">
-        <input type="text" class="inline-input" value="${esc(title)}"
-               onkeydown="handleGenericEditKey(event, this)"
-               onblur="handleGenericEditBlur(event, this)">
-        <div class="inline-actions">
-          <button class="btn-inline save" onclick="saveGenericEdit(this.closest('.generic-item'))">Save</button>
-          <button class="btn-inline" onclick="cancelGenericEdit(this.closest('.generic-item'))">Cancel</button>
-          <button class="btn-inline remove" onclick="removeItem(this.closest('.generic-item'))">Remove</button>
-        </div>
-        <div class="autocomplete-menu hidden"></div>
-      </div>
-    </li>
-  `;
-}
-
-function renderProject(data) {
-  if (!data?.project) {
-    return '<div class="empty">Project not found</div>';
-  }
-
-  let html = '';
-
-  // Actions
-  if (data.actions?.length) {
-    html += '<div class="section-header">Actions</div>';
-    html += '<ul>' + data.actions.map(a => renderActionItem(a)).join('') + '</ul>';
-  }
-
-  // Media
-  if (data.media?.length) {
-    html += '<div class="section-header">Media</div>';
-    html += '<div class="media-grid">';
-    for (const m of data.media) {
-      const meta = m.metadata ? JSON.parse(m.metadata) : {};
-      const isImage = meta.mimeType?.startsWith('image/');
-      if (isImage) {
-        html += `
-          <div class="media-item" onclick="openLightbox('/media/${esc(meta.fileName)}', '${esc(m.title)}')">
-            <img src="/media/${esc(meta.fileName)}" alt="${esc(m.title)}">
-            <span class="media-title">${esc(m.title)}</span>
-          </div>
-        `;
-      } else {
-        html += `
-          <div class="media-item file">
-            <span class="media-icon">📄</span>
-            <span class="media-title">${esc(m.title)}</span>
-          </div>
-        `;
-      }
-    }
-    html += '</div>';
-  }
-
-  // Notes
-  if (data.notes?.length) {
-    html += '<div class="section-header">Notes</div>';
-    html += '<ul>' + data.notes.map(n => renderEditableItem(n, 'note')).join('') + '</ul>';
-  }
-
-  return html || '<div class="empty">Empty project</div>';
-}
-
-function renderNote(data) {
-  if (!data?.note) {
-    return '<div class="empty">Note not found</div>';
-  }
-  
-  const note = data.note;
-  let html = '';
-  
-  // Note content - display mode
-  html += `<div class="note-content-display" data-note-id="${note.id}">`;
-  if (note.content) {
-    html += `<div class="note-content">${renderMarkdown(note.content)}</div>`;
-  } else {
-    html += '<div class="empty">Empty note</div>';
-  }
-  html += '</div>';
-  
-  // Note content - edit mode (hidden by default)
-  html += `<div class="note-content-edit hidden" data-note-id="${note.id}">`;
-  html += `<textarea class="note-textarea" rows="12">${esc(note.content || '')}</textarea>`;
-  html += `<div class="note-edit-actions">
-    <button class="btn-inline save" onclick="saveNoteContent('${note.id}')">Save</button>
-    <button class="btn-inline" onclick="cancelNoteEdit('${note.id}')">Cancel</button>
+function renderContentSection(section) {
+  if (!section.markdown?.trim() && !section.html?.trim()) return '';
+  return `<div class="section section-content">
+    <div class="section-title">${esc(section.title)}</div>
+    <div class="content-body">${renderMarkdown(section.html || section.markdown)}</div>
   </div>`;
-  html += '</div>';
-  
-  // Metadata
-  html += '<div class="note-meta">';
-  if (note.project) {
-    html += `<span class="meta-item">+${esc(note.project)}</span>`;
-  }
-  if (note.tags?.length) {
-    html += note.tags.map(t => `<span class="meta-item">#${esc(t)}</span>`).join('');
-  }
-  if (note.updated_at) {
-    const updated = new Date(note.updated_at).toLocaleDateString('en-US', {
-      month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit'
-    });
-    html += `<span class="meta-item muted">Updated ${updated}</span>`;
-  }
-  html += '</div>';
-  
-  // Action buttons at bottom of panel
-  html += `
-    <div class="note-actions">
-      <button class="btn-inline" onclick="startNoteEdit('${note.id}')">Edit</button>
-      <select class="btn-inline convert-select" onchange="convertNote('${note.id}', this.value); this.value='';">
-        <option value="">Convert to...</option>
-        <option value="action">→ Action</option>
-        <option value="event">→ Event</option>
-        <option value="project">→ Project</option>
-        <option value="entry">→ Entry</option>
-      </select>
-      <button class="btn-inline remove" onclick="removeNoteFromPanel('${note.id}')">Remove</button>
+}
+
+function renderListSection(section) {
+  if (!section.items?.length) return '';
+  const items = section.items.map(renderListItem).join('');
+  return `<div class="section section-list">
+    <div class="section-title">${esc(section.title)} <span class="count">${section.count}</span></div>
+    <ul class="item-list">${items}</ul>
+  </div>`;
+}
+
+function renderListItem(item) {
+  const icon = statusIcon(item.status);
+  const ctx = item.context ? `<span class="item-context">${esc(item.context)}</span>` : '';
+  const due = item.due ? `<span class="item-due">${formatDate(item.due)}</span>` : '';
+  const project = item.project ? `<span class="item-project">${esc(item.project)}</span>` : '';
+  const completable = item.type === 'action' && item.status === 'active';
+
+  return `<li class="item status-${esc(item.status)}" data-id="${esc(item.id)}" data-type="${esc(item.type)}" onclick="openRecord('${esc(item.id)}')">
+    <span class="item-icon">${icon}</span>
+    <span class="item-title">${esc(item.title)}</span>
+    ${ctx}${due}${project}
+    <span class="item-actions">
+      ${completable ? `<button onclick="completeItem(event,'${esc(item.id)}')">✓</button>` : ''}
+      <button onclick="editItem(event,'${esc(item.id)}')">✎</button>
+    </span>
+  </li>`;
+}
+
+function renderMetadataSection(section) {
+  if (!section.fields?.length) return '';
+  const fields = section.fields
+    .map(f => `<span class="meta-field"><span class="meta-label">${esc(f.label)}</span><span class="meta-value">${esc(f.value)}</span></span>`)
+    .join('');
+  return `<div class="section section-metadata"><div class="meta-fields">${fields}</div></div>`;
+}
+
+function statusIcon(status) {
+  const icons = { completed: '✓', waiting: '⏳', someday: '○', archived: '—', processed: '✓' };
+  return icons[status] || '☐';
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// REPL
+// ─────────────────────────────────────────────────────────────────────────────
+
+const replHistory = [];
+let replHistoryIndex = -1;
+
+function renderReplPanel() {
+  return `<div class="panel-header">
+    <span class="panel-title">REPL</span>
+    <button class="panel-close" onclick="removePanel(this.closest('.panel').dataset.panelId)">&times;</button>
+  </div>
+  <div class="panel-body repl-body">
+    <div class="repl-output"></div>
+    <div class="repl-input-row">
+      <span class="repl-prompt">&gt;</span>
+      <input class="repl-input" type="text" placeholder="Ask Bartleby…" autocomplete="off"
+        onkeydown="onReplKey(event)">
+      <button onclick="sendReplMessage(this)">Send</button>
     </div>
-  `;
-  
-  return html;
+  </div>`;
 }
 
-function editNoteInRepl(noteId) {
-  // Add edit command to REPL
-  replMessages.push({ 
-    role: 'user', 
-    text: `edit ${noteId}` 
-  });
-  
-  if (!panels.has('repl')) {
-    addPanel('repl');
-  }
-  
-  // Trigger the edit command
-  apiFetch('/api/chat', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ text: `edit ${noteId}` }),
-  })
-    .then(res => res.json())
-    .then(data => {
-      replMessages.push({ role: 'assistant', text: data.reply || '(no response)' });
-      refreshReplPanel();
-    })
-    .catch(() => {
-      replMessages.push({ role: 'assistant', text: '(error)' });
-      refreshReplPanel();
-    });
-}
-
-async function removeNoteFromPanel(noteId) {
-  if (!confirm('Remove this note?')) return;
-  
-  try {
-    const res = await apiFetch(`/api/page/${noteId}`, { method: 'DELETE' });
-    if (!res.ok) throw new Error('Delete failed');
-    
-    // Close the note panel
-    removePanel(`note:${noteId}`);
-    showToast('Note removed');
-  } catch (e) {
-    console.error('Delete failed:', e);
-    showToast('Failed to remove note', true);
-  }
-}
-
-function startNoteEdit(noteId) {
-  const display = document.querySelector(`.note-content-display[data-note-id="${noteId}"]`);
-  const edit = document.querySelector(`.note-content-edit[data-note-id="${noteId}"]`);
-  
-  if (display && edit) {
-    display.classList.add('hidden');
-    edit.classList.remove('hidden');
-    const textarea = edit.querySelector('textarea');
-    if (textarea) {
-      textarea.focus();
-      textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+function onReplKey(e) {
+  if (e.key === 'Enter') {
+    sendReplMessage(e.target.nextElementSibling);
+  } else if (e.key === 'ArrowUp') {
+    e.preventDefault();
+    if (replHistoryIndex < replHistory.length - 1) {
+      replHistoryIndex++;
+      e.target.value = replHistory[replHistory.length - 1 - replHistoryIndex] || '';
+    }
+  } else if (e.key === 'ArrowDown') {
+    e.preventDefault();
+    if (replHistoryIndex > 0) {
+      replHistoryIndex--;
+      e.target.value = replHistory[replHistory.length - 1 - replHistoryIndex] || '';
+    } else {
+      replHistoryIndex = -1;
+      e.target.value = '';
     }
   }
 }
 
-function cancelNoteEdit(noteId) {
-  const display = document.querySelector(`.note-content-display[data-note-id="${noteId}"]`);
-  const edit = document.querySelector(`.note-content-edit[data-note-id="${noteId}"]`);
-  
-  if (display && edit) {
-    display.classList.remove('hidden');
-    edit.classList.add('hidden');
-  }
-}
-
-async function saveNoteContent(noteId) {
-  const edit = document.querySelector(`.note-content-edit[data-note-id="${noteId}"]`);
-  const textarea = edit?.querySelector('textarea');
-  
-  if (!textarea) return;
-  
-  const content = textarea.value;
-  
-  try {
-    // Get current note to preserve title
-    const getRes = await apiFetch(`/api/page/${noteId}`);
-    if (!getRes.ok) throw new Error('Failed to get note');
-    const noteData = await getRes.json();
-    
-    // Update content while preserving title line
-    let newContent = content;
-    if (!content.startsWith('# ')) {
-      newContent = `# ${noteData.title}\n\n${content}`;
-    }
-    
-    const res = await apiFetch(`/api/page/${noteId}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ content: newContent }),
-    });
-    
-    if (!res.ok) throw new Error('Save failed');
-    
-    showToast('Saved');
-    // Panel will refresh from garden update
-  } catch (e) {
-    console.error('Save failed:', e);
-    showToast('Save failed', true);
-  }
-}
-
-async function convertNote(noteId, targetType) {
-  if (!targetType) return;
-  
-  try {
-    console.log('Converting note:', noteId, 'to:', targetType);
-    
-    // Use direct convert endpoint (no auth needed)
-    const res = await apiFetch(`/api/page/${noteId}/convert`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ targetType }),
-    });
-    
-    const data = await res.json();
-    console.log('Convert response:', data);
-    
-    if (!res.ok) {
-      throw new Error(data.error || 'Conversion failed');
-    }
-    
-    // Close note panel
-    removePanel(`note:${noteId}`);
-    showToast(`Converted to ${targetType}`);
-  } catch (e) {
-    console.error('Convert failed:', e);
-    showToast('Conversion failed', true);
-  }
-}
-
-function renderCalendar(data) {
-  let html = '<div class="panel-toolbar"><button class="btn-inline" onclick="createNewEvent()">+ New Event</button></div>';
-  
-  if (!data?.length) {
-    html += '<div class="empty">Nothing scheduled</div>';
-    return html;
-  }
-
-  const events = data.filter(e => e.entry_type === 'event');
-  const deadlines = data.filter(e => e.entry_type === 'deadline');
-
-  if (events.length) {
-    html += '<div class="section-header">Events</div><ul>';
-    html += events.map(e => renderEditableItem(e, 'event')).join('');
-    html += '</ul>';
-  }
-
-  if (deadlines.length) {
-    html += '<div class="section-header">Deadlines</div><ul>';
-    html += deadlines.map(d => renderEditableItem(d, 'deadline')).join('');
-    html += '</ul>';
-  }
-
-  if (!events.length && !deadlines.length) {
-    html += '<div class="empty">Nothing scheduled</div>';
-  }
-
-  return html;
-}
-
-function renderToday(data) {
-  // data is { events: [...], overdue: [...] }
-  let html = '';
-
-  const events = data.events?.filter(e => e.entry_type === 'event') || [];
-  const deadlines = data.events?.filter(e => e.entry_type === 'deadline') || [];
-
-  if (events.length) {
-    html += '<div class="section-header">Events</div><ul>';
-    html += events.map(e => renderEditableItem(e, 'event')).join('');
-    html += '</ul>';
-  }
-
-  if (deadlines.length) {
-    html += '<div class="section-header">Due Today</div><ul>';
-    html += deadlines.map(d => renderEditableItem(d, 'deadline')).join('');
-    html += '</ul>';
-  }
-
-  if (data.overdue?.length) {
-    html += '<div class="section-header">Overdue</div><ul>';
-    html += data.overdue.map(o => renderActionItem(o, false)).join('');
-    html += '</ul>';
-  }
-
-  return html || '<div class="empty">Nothing for today</div>';
-}
-
-function renderRecent(data) {
-  // data is array of pages
-  if (!data?.length) {
-    return '<div class="empty">No recent pages</div>';
-  }
-
-  const items = data.map(p => {
-    // Actions use the action item renderer
-    if (p.type === 'action') {
-      return renderActionItem(p, false);
-    }
-    // Items use the action item renderer with inbox flag
-    if (p.type === 'item') {
-      return renderActionItem(p, true);
-    }
-    // Others use generic editable item
-    return renderEditableItem(p, p.type);
-  }).join('');
-
-  return `<ul>${items}</ul>`;
-}
-
-function renderMemory(data) {
-  if (!data) {
-    return '<div class="empty">Loading memory...</div>';
-  }
-
-  if (data.message) {
-    return `<div class="empty">${data.message}</div>`;
-  }
-
-  let html = '';
-
-  // Preferences section
-  if (data.preferences?.length) {
-    html += '<div class="section-header">Preferences</div>';
-    html += '<ul class="memory-list">';
-    for (const pref of data.preferences) {
-      const confidence = pref.confidence >= 0.9 ? '✓' : pref.confidence >= 0.7 ? '~' : '?';
-      html += `<li><strong>${confidence} ${escapeHtml(pref.key)}</strong>: ${escapeHtml(pref.value)}</li>`;
-    }
-    html += '</ul>';
-  }
-
-  // Patterns section
-  if (data.patterns?.length) {
-    html += '<div class="section-header">Patterns</div>';
-    html += '<ul class="memory-list">';
-    for (const pattern of data.patterns) {
-      let value = pattern.value;
-      // Try to parse JSON values for better display
-      try {
-        const parsed = JSON.parse(pattern.value);
-        if (pattern.key === 'work_hours') {
-          value = `${parsed.start} - ${parsed.end} (${parsed.timezone})`;
-        } else {
-          value = JSON.stringify(parsed, null, 2);
-        }
-      } catch (e) {
-        // Use as-is if not JSON
-      }
-      html += `<li><strong>📊 ${escapeHtml(pattern.key)}</strong>: ${escapeHtml(value)}</li>`;
-    }
-    html += '</ul>';
-  }
-
-  // Current context section
-  if (data.context?.length) {
-    html += '<div class="section-header">Current Context</div>';
-    html += '<ul class="memory-list">';
-    for (const ctx of data.context) {
-      html += `<li><strong>📍 ${escapeHtml(ctx.key)}</strong>: ${escapeHtml(ctx.value)}</li>`;
-    }
-    html += '</ul>';
-  }
-
-  // Goals section
-  if (data.goals?.length) {
-    html += '<div class="section-header">Goals</div>';
-    html += '<ul class="memory-list">';
-    for (const goal of data.goals) {
-      html += `<li><strong>🎯 ${escapeHtml(goal.key)}</strong>: ${escapeHtml(goal.value)}</li>`;
-    }
-    html += '</ul>';
-  }
-
-  // Footer with session count
-  if (data.sessionCount > 0) {
-    const totalObs = (data.preferences?.length || 0) + (data.patterns?.length || 0) +
-                     (data.context?.length || 0) + (data.goals?.length || 0);
-    html += `<div class="memory-footer">Based on ${data.sessionCount} session(s) and ${totalObs} observation(s)</div>`;
-  }
-
-  if (!html) {
-    return '<div class="empty">No memory data yet. As you use Bartleby, I\'ll learn your preferences and patterns.</div>';
-  }
-
-  return html;
-}
-
-function renderGraph(data) {
-  if (!data) {
-    return '<div class="empty">Loading graph...</div>';
-  }
-
-  if (data.message) {
-    return `<div class="empty">${data.message}</div>`;
-  }
-
-  if (!data.nodes || data.nodes.length === 0) {
-    return '<div class="empty">No records with relationships yet. Create records and link them together to see the relationship graph.</div>';
-  }
-
-  // Create a unique ID for this graph instance
-  const graphId = 'graph-' + Date.now();
-
-  // Build simple network visualization
-  let html = `<div class="graph-container" id="${graphId}">`;
-  html += '<div class="graph-info">';
-  html += `<span>${data.nodes.length} node(s), ${data.edges?.length || 0} relationship(s)</span>`;
-  html += '</div>';
-  html += '<svg class="graph-svg" width="100%" height="400"></svg>';
-  html += '</div>';
-
-  // Schedule rendering after DOM update
-  setTimeout(() => {
-    const container = document.getElementById(graphId);
-    if (!container) return;
-
-    const svg = container.querySelector('.graph-svg');
-    const width = svg.clientWidth;
-    const height = 400;
-
-    // Simple force-directed layout
-    const nodes = data.nodes.map(n => ({
-      ...n,
-      x: Math.random() * width,
-      y: Math.random() * height,
-      vx: 0,
-      vy: 0
-    }));
-
-    const edges = data.edges || [];
-
-    // Run simple physics simulation
-    for (let i = 0; i < 100; i++) {
-      // Repulsion between all nodes
-      for (let j = 0; j < nodes.length; j++) {
-        for (let k = j + 1; k < nodes.length; k++) {
-          const dx = nodes[k].x - nodes[j].x;
-          const dy = nodes[k].y - nodes[j].y;
-          const dist = Math.sqrt(dx * dx + dy * dy) || 1;
-          const force = 500 / (dist * dist);
-          nodes[j].vx -= (dx / dist) * force;
-          nodes[j].vy -= (dy / dist) * force;
-          nodes[k].vx += (dx / dist) * force;
-          nodes[k].vy += (dy / dist) * force;
-        }
-      }
-
-      // Attraction along edges
-      for (const edge of edges) {
-        const source = nodes.find(n => n.id === edge.from);
-        const target = nodes.find(n => n.id === edge.to);
-        if (!source || !target) continue;
-
-        const dx = target.x - source.x;
-        const dy = target.y - source.y;
-        const dist = Math.sqrt(dx * dx + dy * dy) || 1;
-        const force = (dist - 80) * 0.01;
-
-        source.vx += (dx / dist) * force;
-        source.vy += (dy / dist) * force;
-        target.vx -= (dx / dist) * force;
-        target.vy -= (dy / dist) * force;
-      }
-
-      // Apply velocity and damping
-      for (const node of nodes) {
-        node.x += node.vx;
-        node.y += node.vy;
-        node.vx *= 0.8;
-        node.vy *= 0.8;
-
-        // Keep in bounds
-        node.x = Math.max(30, Math.min(width - 30, node.x));
-        node.y = Math.max(30, Math.min(height - 30, node.y));
-      }
-    }
-
-    // Render edges
-    let svgContent = '';
-    for (const edge of edges) {
-      const source = nodes.find(n => n.id === edge.from);
-      const target = nodes.find(n => n.id === edge.to);
-      if (!source || !target) continue;
-
-      const opacity = 0.3 + (edge.strength || 0.5) * 0.5;
-      svgContent += `<line x1="${source.x}" y1="${source.y}" x2="${target.x}" y2="${target.y}" stroke="rgba(100,150,200,${opacity})" stroke-width="1.5"/>`;
-    }
-
-    // Render nodes
-    for (const node of nodes) {
-      const color = node.type === 'note' ? '#4a9eff' : node.type === 'project' ? '#9f7aea' : '#48bb78';
-      svgContent += `<circle cx="${node.x}" cy="${node.y}" r="6" fill="${color}"/>`;
-      svgContent += `<text x="${node.x}" y="${node.y - 10}" text-anchor="middle" font-size="10" fill="#a0aec0">${escapeHtml(node.label)}</text>`;
-    }
-
-    svg.innerHTML = svgContent;
-  }, 10);
-
-  return html;
-}
-
-function renderNoteEdit(view, data) {
-  const isNew = view === 'note-edit:new';
-  const noteId = isNew ? null : view.slice(10); // Remove 'note-edit:'
-
-  let note = null;
-  if (!isNew && data?.note) {
-    note = data.note;
-  }
-
-  const title = note?.title || '';
-  const content = note?.content || '';
-
-  // Build tags string from note metadata
-  let tagsStr = '';
-  const tagParts = [];
-  if (note?.project) {
-    const projectName = note.project; // TODO: resolve project ID to name
-    tagParts.push('+' + projectName);
-  }
-  if (note?.tags && note.tags.length > 0) {
-    tagParts.push(...note.tags.map(t => '#' + t));
-  }
-  if (note?.context) {
-    tagParts.push(note.context);
-  }
-  tagsStr = tagParts.join(' ');
-
-  let html = '<div class="note-edit-form">';
-
-  // Title field
-  html += '<div class="form-group">';
-  html += '<label>Title</label>';
-  html += `<input type="text" id="note-title" class="form-input" value="${esc(title)}" placeholder="Note title" autocomplete="off">`;
-  html += '</div>';
-
-  // Tags field
-  html += '<div class="form-group" style="position: relative;">';
-  html += '<label>Tags</label>';
-  html += `<input type="text" id="note-tags" class="form-input" value="${esc(tagsStr)}" placeholder="+project #tags @context with person" autocomplete="off" onkeydown="handleNoteTagsKey(event)">`;
-  html += '<div id="note-tags-autocomplete" class="autocomplete-menu hidden"></div>';
-  html += '</div>';
-
-  // Content field
-  html += '<div class="form-group">';
-  html += '<label>Content</label>';
-  html += `<textarea id="note-content" class="form-textarea" rows="12" placeholder="Note content...">${esc(content)}</textarea>`;
-  html += '</div>';
-
-  // Buttons
-  html += '<div class="form-actions">';
-  if (isNew) {
-    html += `<button class="btn-primary" onclick="saveNewNote()">Save</button>`;
-    html += `<button class="btn-secondary" onclick="removePanel('note-edit:new')">Cancel</button>`;
-  } else {
-    html += `<button class="btn-primary" onclick="saveNoteEdit('${noteId}')">Save</button>`;
-    html += `<button class="btn-secondary" onclick="removePanel('note-edit:${noteId}')">Cancel</button>`;
-    html += `<button class="btn-danger" onclick="deleteNoteFromEdit('${noteId}')">Delete</button>`;
-  }
-  html += '</div>';
-
-  html += '</div>';
-
-  return html;
-}
-
-function renderNotes(data) {
-  let html = '<div class="panel-toolbar"><button class="btn-inline" onclick="createNewNote()">+ New Note</button></div>';
-  
-  if (!data?.length) {
-    html += '<div class="empty">No notes yet</div>';
-    return html;
-  }
-
-  const items = data.map(n => renderEditableItem(n, 'note')).join('');
-  html += `<ul>${items}</ul>`;
-  return html;
-}
-
-function createNewNote() {
-  // Open note edit panel for new note
-  addPanel('note-edit:new');
-}
-
-function openNoteEdit(noteId) {
-  // Open note edit panel for existing note
-  addPanel('note-edit:' + noteId);
-}
-
-// Autocomplete for note tags field
-let noteTagsAutocompleteItems = [];
-let noteTagsAutocompleteIndex = -1;
-
-function handleNoteTagsKey(event) {
-  const input = document.getElementById('note-tags');
-  const menu = document.getElementById('note-tags-autocomplete');
-  if (!input || !menu) return;
-
-  const menuVisible = !menu.classList.contains('hidden');
-
-  // Handle navigation and selection when menu is open
-  if (menuVisible) {
-    // Enter - apply selected item
-    if (event.key === 'Enter') {
-      event.preventDefault();
-      event.stopPropagation();
-      if (noteTagsAutocompleteIndex >= 0 && noteTagsAutocompleteItems[noteTagsAutocompleteIndex]) {
-        applyNoteTagsAutocomplete(noteTagsAutocompleteItems[noteTagsAutocompleteIndex]);
-      }
-      hideNoteTagsAutocomplete();
-      return;
-    }
-
-    // Tab or ArrowDown - cycle to next item
-    if (event.key === 'Tab' || event.key === 'ArrowDown') {
-      event.preventDefault();
-      noteTagsAutocompleteIndex = (noteTagsAutocompleteIndex + 1) % noteTagsAutocompleteItems.length;
-      updateNoteTagsAutocompleteSelection();
-      return;
-    }
-
-    // ArrowUp - cycle to previous item
-    if (event.key === 'ArrowUp') {
-      event.preventDefault();
-      noteTagsAutocompleteIndex = (noteTagsAutocompleteIndex - 1 + noteTagsAutocompleteItems.length) % noteTagsAutocompleteItems.length;
-      updateNoteTagsAutocompleteSelection();
-      return;
-    }
-
-    // Escape - close menu
-    if (event.key === 'Escape') {
-      event.preventDefault();
-      hideNoteTagsAutocomplete();
-      return;
-    }
-  }
-
-  // Tab when menu is closed - trigger autocomplete (only if in autocomplete context)
-  if (event.key === 'Tab' && !menuVisible) {
-    // Check if we're in an autocomplete context
-    const cursorPos = input.selectionStart;
-    const text = input.value;
-    const beforeCursor = text.slice(0, cursorPos);
-
-    const contextMatch = beforeCursor.match(/@(\w*)$/);
-    const projectMatch = beforeCursor.match(/\+([^\s]*)$/);
-    const tagMatch = beforeCursor.match(/#(\w*)$/);
-    const withMatch = beforeCursor.match(/\bwith\s+(\w*)$/i);
-
-    // Only preventDefault if we're in an autocomplete context
-    if (contextMatch || projectMatch || tagMatch || withMatch) {
-      event.preventDefault();
-
-      if (contextMatch) {
-        const partial = contextMatch[1].toLowerCase();
-        const matches = autocompleteData.contexts.filter(c =>
-          c.toLowerCase().startsWith('@' + partial) || c.toLowerCase().startsWith(partial)
-        );
-        if (matches.length > 0) showNoteTagsAutocomplete(matches);
-      } else if (projectMatch) {
-        const partial = projectMatch[1].toLowerCase();
-        const matches = autocompleteData.projects.filter(p =>
-          p.toLowerCase().startsWith(partial) ||
-          p.toLowerCase().replace(/\s+/g, '-').startsWith(partial)
-        );
-        if (matches.length > 0) {
-          showNoteTagsAutocomplete(matches.map(p => '+' + p.toLowerCase().replace(/\s+/g, '-')));
-        }
-      } else if (tagMatch) {
-        const partial = tagMatch[1].toLowerCase();
-        const matches = autocompleteData.tags.filter(t =>
-          t.toLowerCase().startsWith(partial)
-        );
-        if (matches.length > 0) showNoteTagsAutocomplete(matches.map(t => '#' + t));
-      } else if (withMatch) {
-        const partial = withMatch[1].toLowerCase();
-        const contacts = autocompleteData.contacts || [];
-        const matches = contacts.filter(c =>
-          c.toLowerCase().startsWith(partial)
-        );
-        if (matches.length > 0) showNoteTagsAutocomplete(matches);
-      }
-    }
-    // If not in autocomplete context, Tab works normally (focus next field)
-  }
-}
-
-function showNoteTagsAutocomplete(items) {
-  const menu = document.getElementById('note-tags-autocomplete');
-  if (!menu || !items.length) return;
-
-  noteTagsAutocompleteItems = items;
-  noteTagsAutocompleteIndex = 0;
-
-  menu.innerHTML = items.map((item, i) =>
-    `<div class="autocomplete-item${i === 0 ? ' selected' : ''}" onclick="clickNoteTagsAutocomplete('${esc(item)}')">${esc(item)}</div>`
-  ).join('');
-  menu.classList.remove('hidden');
-}
-
-function hideNoteTagsAutocomplete() {
-  const menu = document.getElementById('note-tags-autocomplete');
-  if (menu) {
-    menu.classList.add('hidden');
-    menu.innerHTML = '';
-  }
-  noteTagsAutocompleteItems = [];
-  noteTagsAutocompleteIndex = -1;
-}
-
-function updateNoteTagsAutocompleteSelection() {
-  const menu = document.getElementById('note-tags-autocomplete');
-  if (!menu) return;
-
-  const items = menu.querySelectorAll('.autocomplete-item');
-  items.forEach((el, i) => {
-    el.classList.toggle('selected', i === noteTagsAutocompleteIndex);
-  });
-
-  // Scroll selected item into view
-  const selectedItem = items[noteTagsAutocompleteIndex];
-  if (selectedItem) {
-    selectedItem.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-  }
-
-  // Debug log
-  console.log('Selected index:', noteTagsAutocompleteIndex, 'of', items.length, 'items:', noteTagsAutocompleteItems);
-}
-
-function clickNoteTagsAutocomplete(value) {
-  applyNoteTagsAutocomplete(value);
-  hideNoteTagsAutocomplete();
-  document.getElementById('note-tags')?.focus();
-}
-
-function applyNoteTagsAutocomplete(value) {
-  const input = document.getElementById('note-tags');
+async function sendReplMessage(btn) {
+  const row = btn.closest('.repl-input-row');
+  const input = row?.querySelector('.repl-input');
   if (!input) return;
 
-  const cursorPos = input.selectionStart;
-  const text = input.value;
-  const beforeCursor = text.slice(0, cursorPos);
-  const afterCursor = text.slice(cursorPos);
-
-  let newBefore = beforeCursor;
-
-  if (value.startsWith('@')) {
-    newBefore = beforeCursor.replace(/@\w*$/, value + ' ');
-  } else if (value.startsWith('+')) {
-    newBefore = beforeCursor.replace(/\+[^\s]*$/, value + ' ');
-  } else if (value.startsWith('#')) {
-    newBefore = beforeCursor.replace(/#\w*$/, value + ' ');
-  } else if (beforeCursor.match(/\bwith\s+\w*$/i)) {
-    // Contact name completion
-    newBefore = beforeCursor.replace(/(\bwith\s+)\w*$/i, '$1' + value + ' ');
-  } else {
-    newBefore = beforeCursor + value + ' ';
-  }
-
-  input.value = newBefore + afterCursor;
-  input.selectionStart = input.selectionEnd = newBefore.length;
-}
-
-async function saveNewNote() {
-  const title = document.getElementById('note-title')?.value.trim();
-  const tags = document.getElementById('note-tags')?.value.trim();
-  const content = document.getElementById('note-content')?.value.trim();
-
-  if (!title) {
-    showToast('Title is required', true);
-    return;
-  }
-
-  try {
-    // Parse tags field for +project #tags
-    const projectMatch = tags.match(/\+([^@#\s]+)/);
-    const tagMatches = tags.match(/#(\w+)/g);
-
-    const body = {
-      title,
-      content: content || '',
-      project: projectMatch ? projectMatch[1] : undefined,
-      tags: tagMatches ? tagMatches.map(t => t.slice(1)) : [],
-    };
-
-    // Create note via /api/note endpoint
-    const res = await apiFetch('/api/note', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    });
-
-    if (!res.ok) throw new Error('Failed to create note');
-
-    const data = await res.json();
-
-    showToast('Note created');
-    removePanel('note-edit:new');
-
-    // Open the newly created note in a panel if we have the ID
-    if (data.note?.id) {
-      addPanel(`note:${data.note.id}`);
-    }
-  } catch (e) {
-    console.error('Create note failed:', e);
-    showToast('Failed to create note', true);
-  }
-}
-
-async function saveNoteEdit(noteId) {
-  const title = document.getElementById('note-title')?.value.trim();
-  const tags = document.getElementById('note-tags')?.value.trim();
-  const content = document.getElementById('note-content')?.value;
-
-  if (!title) {
-    showToast('Title is required', true);
-    return;
-  }
-
-  try {
-    // Parse tags: +project #tag1 #tag2 @context
-    const updates = { title };
-
-    const projectMatch = tags.match(/\+([^@#\s]+)/);
-    const tagMatches = tags.match(/#(\w+)/g);
-    const contextMatch = tags.match(/@(\w+)/);
-
-    if (projectMatch) {
-      updates.project = projectMatch[1];
-    }
-    if (tagMatches) {
-      updates.tags = tagMatches.map(t => t.slice(1));
-    }
-    if (contextMatch) {
-      updates.context = '@' + contextMatch[1];
-    }
-
-    // Update note
-    const res = await apiFetch(`/api/note/${noteId}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(updates),
-    });
-
-    if (!res.ok) throw new Error('Failed to update note');
-
-    // Update content separately if changed
-    if (content !== undefined) {
-      const contentRes = await apiFetch(`/api/page/${noteId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content }),
-      });
-      if (!contentRes.ok) throw new Error('Failed to update content');
-    }
-
-    showToast('Note saved');
-    removePanel(`note-edit:${noteId}`);
-  } catch (e) {
-    console.error('Save note failed:', e);
-    showToast('Failed to save note', true);
-  }
-}
-
-async function deleteNoteFromEdit(noteId) {
-  if (!confirm('Delete this note?')) return;
-
-  try {
-    const res = await apiFetch(`/api/page/${noteId}`, { method: 'DELETE' });
-    if (!res.ok) throw new Error('Delete failed');
-
-    removePanel(`note-edit:${noteId}`);
-    showToast('Note deleted');
-  } catch (e) {
-    console.error('Delete failed:', e);
-    showToast('Failed to delete note', true);
-  }
-}
-
-async function createNewItem() {
-  const title = prompt('Capture to inbox:');
-  if (!title?.trim()) return;
-  
-  try {
-    const res = await apiFetch('/api/item', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ title: title.trim() }),
-    });
-    if (!res.ok) throw new Error('Failed to create item');
-    showToast('Item captured');
-  } catch (e) {
-    console.error('Create item failed:', e);
-    showToast('Failed to capture item', true);
-  }
-}
-
-async function createNewAction() {
-  try {
-    // Create action with placeholder title (server won't broadcast)
-    const res = await apiFetch('/api/action?nobroadcast=1', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ title: '' }),
-    });
-    if (!res.ok) throw new Error('Failed to create action');
-    
-    const data = await res.json();
-    const action = data.action;
-    if (!action) throw new Error('No action returned');
-    
-    // Find the @home section (or first section) in next-actions panel
-    const panel = document.querySelector('.panel[data-view="next-actions"] .panel-content');
-    if (!panel) {
-      console.error('Next actions panel not found');
-      return;
-    }
-    
-    // Create the action HTML and insert it
-    const actionHtml = renderActionItem(action, false);
-    
-    // Find or create the @home section
-    let homeSection = panel.querySelector('.section-header + ul');
-    const headers = panel.querySelectorAll('.section-header');
-    for (const h of headers) {
-      if (h.textContent === '@home') {
-        homeSection = h.nextElementSibling;
-        break;
-      }
-    }
-    
-    if (!homeSection) {
-      // No sections yet, create one
-      const sectionHtml = `<div class="section-header">@home</div><ul></ul>`;
-      const toolbar = panel.querySelector('.panel-toolbar');
-      if (toolbar) {
-        toolbar.insertAdjacentHTML('afterend', sectionHtml);
-      } else {
-        panel.insertAdjacentHTML('afterbegin', sectionHtml);
-      }
-      homeSection = panel.querySelector('.section-header + ul');
-    }
-    
-    // Remove "No actions" message if present
-    const empty = panel.querySelector('.empty');
-    if (empty) empty.remove();
-    
-    // Insert at top of the list
-    homeSection.insertAdjacentHTML('afterbegin', actionHtml);
-    
-    // Start editing immediately
-    const actionItem = homeSection.querySelector(`.action-item[data-id="${action.id}"]`);
-    if (actionItem) {
-      startEdit(actionItem);
-      const input = actionItem.querySelector('.inline-input');
-      if (input) {
-        input.value = '';
-        input.focus();
-      }
-    }
-  } catch (e) {
-    console.error('Create action failed:', e);
-    showToast('Failed to create action', true);
-  }
-}
-
-async function createNewProject() {
-  const title = prompt('Project title:');
-  if (!title?.trim()) return;
-  
-  try {
-    const res = await apiFetch('/api/project', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ title: title.trim() }),
-    });
-    if (!res.ok) throw new Error('Failed to create project');
-    showToast('Project created');
-  } catch (e) {
-    console.error('Create project failed:', e);
-    showToast('Failed to create project', true);
-  }
-}
-
-async function createNewEvent() {
-  const title = prompt('Event title:');
-  if (!title?.trim()) return;
-  
-  const dateStr = prompt('Date/time (e.g. "tomorrow 3pm", "2026-01-20 14:00"):');
-  if (!dateStr?.trim()) return;
-  
-  try {
-    const res = await apiFetch('/api/event', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ title: title.trim(), dateStr: dateStr.trim() }),
-    });
-    if (!res.ok) throw new Error('Failed to create event');
-    showToast('Event created');
-  } catch (e) {
-    console.error('Create event failed:', e);
-    showToast('Failed to create event', true);
-  }
-}
-
-function renderRepl() {
-  let html = '<div class="repl-messages">';
-  
-  if (replMessages.length === 0) {
-    html += '<div class="empty">Type a command below</div>';
-  } else {
-    for (const msg of replMessages) {
-      html += `<div class="repl-msg repl-${msg.role}">`;
-      html += `<span class="repl-label">${msg.role === 'user' ? '>' : 'Bartleby:'}</span>`;
-      // User input stays plain, assistant output gets markdown rendering
-      const content = msg.role === 'user' ? esc(msg.text) : renderMarkdown(msg.text);
-      html += `<span class="repl-text">${content}</span>`;
-      html += '</div>';
-    }
-  }
-  
-  html += '</div>';
-  html += `
-    <div class="repl-input-wrapper">
-      <form class="repl-input" onsubmit="sendReplMessage(event)">
-        <input type="text" id="repl-input" placeholder="Type a command..." autocomplete="off" onkeydown="handleReplKeydown(event)">
-        <button type="submit">Send</button>
-      </form>
-      <div id="repl-autocomplete" class="autocomplete-menu hidden"></div>
-    </div>
-  `;
-  
-  return html;
-}
-
-async function sendReplMessage(event) {
-  event.preventDefault();
-  const input = document.getElementById('repl-input');
   const text = input.value.trim();
   if (!text) return;
-  
-  // Add user message
-  replMessages.push({ role: 'user', text });
+
+  replHistory.push(text);
+  replHistoryIndex = -1;
   input.value = '';
-  refreshReplPanel();
-  
-  // Send to server
+
+  const output = btn.closest('.repl-body')?.querySelector('.repl-output');
+  if (!output) return;
+
+  appendReplLine(output, 'user', text);
+
   try {
-    const res = await apiFetch('/api/chat', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text }),
-    });
-    
-    if (res.ok) {
-      const data = await res.json();
-      replMessages.push({ role: 'assistant', text: data.reply || '(no response)' });
-    } else {
-      replMessages.push({ role: 'assistant', text: '(error)' });
-    }
-  } catch (e) {
-    replMessages.push({ role: 'assistant', text: '(connection error)' });
-  }
-  
-  refreshReplPanel();
-}
-
-function refreshReplPanel() {
-  const panel = panels.get('repl');
-  if (panel) {
-    const content = panel.querySelector('.panel-content');
-    content.innerHTML = renderRepl();
-    // Scroll to bottom
-    const messages = content.querySelector('.repl-messages');
-    if (messages) messages.scrollTop = messages.scrollHeight;
-    // Re-focus input
-    const input = document.getElementById('repl-input');
-    if (input) input.focus();
+    const data = await apiFetch('/api/chat', { body: { text } });
+    appendReplLine(output, 'assistant', data.reply);
+  } catch (err) {
+    appendReplLine(output, 'error', err.message);
   }
 }
 
-// REPL autocomplete
-let replAutocompleteItems = [];
-let replAutocompleteIndex = -1;
+function appendReplLine(output, role, text) {
+  const div = document.createElement('div');
+  div.className = `repl-message repl-${role}`;
+  div.innerHTML = role === 'user'
+    ? `<span class="repl-you">&gt; ${esc(text)}</span>`
+    : `<span class="repl-reply">${renderMarkdown(text)}</span>`;
+  output.appendChild(div);
+  output.scrollTop = output.scrollHeight;
+}
 
-function handleReplKeydown(event) {
-  const input = document.getElementById('repl-input');
-  const menu = document.getElementById('repl-autocomplete');
-  console.log('REPL keydown:', event.key, 'input:', input, 'menu:', menu);
-  if (!input || !menu) return;
+// ─────────────────────────────────────────────────────────────────────────────
+// Open / Editing
+// ─────────────────────────────────────────────────────────────────────────────
 
-  // Tab - trigger or apply autocomplete
-  if (event.key === 'Tab') {
-    event.preventDefault();
-    console.log('Tab pressed in REPL, autocomplete data:', autocompleteData);
-    
-    if (!menu.classList.contains('hidden')) {
-      // Apply selected item
-      if (replAutocompleteIndex >= 0 && replAutocompleteItems[replAutocompleteIndex]) {
-        applyReplAutocomplete(replAutocompleteItems[replAutocompleteIndex]);
-      }
-      hideReplAutocomplete();
+async function openRecord(id) {
+  try {
+    const record = await apiFetch(`/api/record/${id}`);
+    // Check if this record's title is already open as a panel
+    const existing = panels.find(p => p.view === record.title);
+    if (existing) {
+      existing.el.scrollIntoView({ behavior: 'smooth', block: 'start' });
       return;
     }
-    
-    // Trigger autocomplete
-    const cursorPos = input.selectionStart;
-    const text = input.value;
-    const beforeCursor = text.slice(0, cursorPos);
-    console.log('REPL before cursor:', beforeCursor);
-    
-    const contextMatch = beforeCursor.match(/@(\w*)$/);
-    const projectMatch = beforeCursor.match(/\+([^\s]*)$/);
-    const withMatch = beforeCursor.match(/\bwith\s+(\w*)$/i);
-    console.log('REPL context match:', contextMatch, 'project match:', projectMatch, 'with match:', withMatch);
-    
-    if (contextMatch) {
-      const partial = contextMatch[1].toLowerCase();
-      const matches = autocompleteData.contexts.filter(c =>
-        c.toLowerCase().startsWith('@' + partial) || c.toLowerCase().startsWith(partial)
-      );
-      console.log('REPL context matches:', matches);
-      showReplAutocomplete(matches, '@');
-    } else if (projectMatch) {
-      const partial = projectMatch[1].toLowerCase();
-      const matches = autocompleteData.projects.filter(p =>
-        p.toLowerCase().startsWith(partial) ||
-        p.toLowerCase().replace(/\s+/g, '-').startsWith(partial)
-      );
-      console.log('REPL project matches:', matches);
-      showReplAutocomplete(matches.map(p => '+' + p.toLowerCase().replace(/\s+/g, '-')), '+');
-    } else if (withMatch) {
-      const partial = withMatch[1].toLowerCase();
-      const contacts = autocompleteData.contacts || [];
-      const matches = contacts.filter(c =>
-        c.toLowerCase().startsWith(partial)
-      );
-      console.log('REPL contact matches:', matches);
-      showReplAutocomplete(matches, 'with');
-    } else {
-      // Command or page name completion
-      const partial = beforeCursor.toLowerCase().trim();
-      console.log('REPL general partial:', partial);
-      
-      let matches = [];
-      
-      // Match commands first
-      if (autocompleteData.commands) {
-        const cmdMatches = autocompleteData.commands.filter(c => 
-          c.toLowerCase().startsWith(partial)
-        );
-        matches.push(...cmdMatches);
-      }
-      
-      // Then page names (for commands like "open", "show", "done", "edit")
-      const pageCommands = ['open ', 'show ', 'done ', 'edit ', 'delete '];
-      const hasPageCommand = pageCommands.some(cmd => partial.startsWith(cmd));
-      
-      if (hasPageCommand && autocompleteData.pages) {
-        const afterCommand = partial.split(' ').slice(1).join(' ');
-        const pageMatches = autocompleteData.pages.filter(p =>
-          p.toLowerCase().startsWith(afterCommand)
-        ).slice(0, 10);
-        
-        // Reconstruct with the command prefix
-        const cmdPart = partial.split(' ')[0] + ' ';
-        matches = pageMatches.map(p => cmdPart + p);
-      }
-      
-      console.log('REPL general matches:', matches);
-      if (matches.length) {
-        showReplAutocomplete(matches.slice(0, 15), 'full');
-      }
-    }
-    return;
-  }
-  
-  // Arrow keys for menu navigation
-  if (!menu.classList.contains('hidden')) {
-    if (event.key === 'ArrowDown') {
-      event.preventDefault();
-      replAutocompleteIndex = Math.min(replAutocompleteIndex + 1, replAutocompleteItems.length - 1);
-      updateReplAutocompleteSelection();
-    } else if (event.key === 'ArrowUp') {
-      event.preventDefault();
-      replAutocompleteIndex = Math.max(replAutocompleteIndex - 1, 0);
-      updateReplAutocompleteSelection();
-    } else if (event.key === 'Enter') {
-      if (replAutocompleteIndex >= 0) {
-        event.preventDefault();
-        applyReplAutocomplete(replAutocompleteItems[replAutocompleteIndex]);
-        hideReplAutocomplete();
-      }
-    } else if (event.key === 'Escape') {
-      hideReplAutocomplete();
-    }
+    addPanel(record.title);
+  } catch {
+    // Silently ignore — record may have been deleted
   }
 }
 
-let replAutocompleteType = 'full'; // 'full', '@', '+'
-
-function showReplAutocomplete(items, type = 'full') {
-  const menu = document.getElementById('repl-autocomplete');
-  if (!menu || !items.length) return;
-  
-  replAutocompleteItems = items;
-  replAutocompleteIndex = 0;
-  replAutocompleteType = type;
-  
-  menu.innerHTML = items.map((item, i) => 
-    `<div class="autocomplete-item${i === 0 ? ' selected' : ''}" onclick="clickReplAutocomplete('${esc(item)}')">${esc(item)}</div>`
-  ).join('');
-  menu.classList.remove('hidden');
+function editItem(e, id) {
+  e.stopPropagation();
+  startEdit(id);
 }
 
-function hideReplAutocomplete() {
-  const menu = document.getElementById('repl-autocomplete');
-  if (menu) {
-    menu.classList.add('hidden');
-    menu.innerHTML = '';
-  }
-  replAutocompleteItems = [];
-  replAutocompleteIndex = -1;
-}
-
-function updateReplAutocompleteSelection() {
-  const menu = document.getElementById('repl-autocomplete');
-  if (!menu) return;
-  
-  const items = menu.querySelectorAll('.autocomplete-item');
-  items.forEach((el, i) => {
-    el.classList.toggle('selected', i === replAutocompleteIndex);
-  });
-}
-
-function clickReplAutocomplete(value) {
-  applyReplAutocomplete(value);
-  hideReplAutocomplete();
-  document.getElementById('repl-input')?.focus();
-}
-
-function applyReplAutocomplete(value) {
-  const input = document.getElementById('repl-input');
-  if (!input) return;
-  
-  const cursorPos = input.selectionStart;
-  const text = input.value;
-  const beforeCursor = text.slice(0, cursorPos);
-  const afterCursor = text.slice(cursorPos);
-  
-  // Find what we're replacing based on type
-  let newBefore = beforeCursor;
-  
-  if (replAutocompleteType === '@') {
-    newBefore = beforeCursor.replace(/@\w*$/, value + ' ');
-  } else if (replAutocompleteType === '+') {
-    newBefore = beforeCursor.replace(/\+[^\s]*$/, value + ' ');
-  } else if (replAutocompleteType === 'with') {
-    newBefore = beforeCursor.replace(/(\bwith\s+)\w*$/i, '$1' + value + ' ');
-  } else {
-    // Full replacement - replace entire input, add space for commands
-    newBefore = value + ' ';
-  }
-  
-  input.value = newBefore + (replAutocompleteType === 'full' ? '' : afterCursor);
-  input.selectionStart = input.selectionEnd = newBefore.length;
-}
-
-// Action item with inline editing
-function renderActionItem(task, isInbox = false) {
-  const project = task.project ? ` +${task.project}` : '';
-  const due = task.due_date ? ` due:${task.due_date.split('T')[0]}` : '';
-  const context = task.context ? ` ${task.context}` : '';
-  const fullText = `${task.title}${context}${project}${due}`;
-
-  return `
-    <li class="item action-item" data-id="${task.id}" data-full="${esc(fullText)}" data-context="${task.context || ''}">
-      <div class="action-display" onclick="startEdit(this.parentElement)">
-        <span class="item-title">${esc(task.title)}</span>
-        <span class="item-meta">
-          ${task.project ? `<span class="item-project">+${esc(task.project)}</span>` : ''}
-          ${task.due_date ? `<span class="item-due">${formatDue(task.due_date)}</span>` : ''}
-        </span>
-      </div>
-      <div class="action-edit hidden">
-        <input type="text" class="inline-input" value="${esc(fullText)}"
-               onkeydown="handleEditKey(event, this)"
-               onblur="handleEditBlur(event, this)">
-        <div class="inline-actions">
-          <button class="btn-inline save" onclick="saveEdit(this.closest('.action-item'))">Save</button>
-          <button class="btn-inline" onclick="cancelEdit(this.closest('.action-item'))">Cancel</button>
-          ${isInbox ? `
-            <select class="btn-inline convert-select" onchange="convertItem(this.closest('.action-item'), this.value)">
-              <option value="">Convert to...</option>
-              <option value="action">→ Action</option>
-              <option value="event">→ Event</option>
-              <option value="project">→ Project</option>
-              <option value="note">→ Note</option>
-              <option value="entry">→ Entry</option>
-            </select>
-          ` : ''}
-          <button class="btn-inline done" onclick="markDone(this.closest('.action-item').dataset.id)">Done</button>
-        </div>
-        <div class="autocomplete-menu hidden"></div>
-      </div>
-    </li>
-  `;
-}
-
-function formatDue(dateStr) {
-  if (!dateStr) return '';
-  if (dateStr.includes('T')) {
-    const [date, time] = dateStr.split('T');
-    const [h, m] = time.split(':').map(Number);
-    const ampm = h >= 12 ? 'pm' : 'am';
-    const hour = h % 12 || 12;
-    return `${date} ${hour}:${m.toString().padStart(2, '0')}${ampm}`;
-  }
-  return dateStr;
-}
-
-// Inline editing
-function startEdit(item) {
-  document.querySelectorAll('.action-item.editing').forEach(el => {
-    if (el !== item) cancelEdit(el);
-  });
-
-  item.classList.add('editing');
-  item.querySelector('.action-display').classList.add('hidden');
-  item.querySelector('.action-edit').classList.remove('hidden');
-
-  const input = item.querySelector('.inline-input');
-  input.focus();
-  input.setSelectionRange(input.value.length, input.value.length);
-}
-
-function cancelEdit(item) {
-  if (!item) return;
-
-  item.classList.remove('editing');
-  item.querySelector('.action-display').classList.remove('hidden');
-  item.querySelector('.action-edit').classList.add('hidden');
-
-  const input = item.querySelector('.inline-input');
-  input.value = item.dataset.full;
-  hideAutocomplete(item);
-}
-
-function handleEditBlur(event, input) {
-  setTimeout(() => {
-    const item = input.closest('.action-item');
-    if (!item) return;
-
-    const editArea = item.querySelector('.action-edit');
-    if (!editArea.contains(document.activeElement)) {
-      cancelEdit(item);
-    }
-  }, 150);
-}
-
-function handleEditKey(event, input) {
-  const item = input.closest('.action-item');
-  const menu = item.querySelector('.autocomplete-menu');
-
-  if (event.key === 'Escape') {
-    event.preventDefault();
-    cancelEdit(item);
-    return;
-  }
-
-  if (event.key === 'Enter') {
-    event.preventDefault();
-    const selected = menu.querySelector('.autocomplete-item.selected');
-    if (selected && !menu.classList.contains('hidden')) {
-      applyAutocomplete(input, selected.dataset.value);
-      hideAutocomplete(item);
-    } else {
-      saveEdit(item);
-    }
-    return;
-  }
-
-  if (event.key === 'Tab') {
-    event.preventDefault();
-    console.log('Tab pressed, autocomplete data:', autocompleteData);
-
-    if (!menu.classList.contains('hidden')) {
-      const selected = menu.querySelector('.autocomplete-item.selected');
-      if (selected) {
-        applyAutocomplete(input, selected.dataset.value);
-        hideAutocomplete(item);
-        return;
-      }
-    }
-
-    // Trigger autocomplete
-    const cursorPos = input.selectionStart;
-    const text = input.value;
-    const beforeCursor = text.slice(0, cursorPos);
-    console.log('Before cursor:', beforeCursor);
-
-    const contextMatch = beforeCursor.match(/@(\w*)$/);
-    const projectMatch = beforeCursor.match(/\+([^\s]*)$/);
-    const withMatch = beforeCursor.match(/\bwith\s+(\w*)$/i);
-    console.log('Context match:', contextMatch, 'Project match:', projectMatch, 'With match:', withMatch);
-
-    if (contextMatch) {
-      const partial = contextMatch[1].toLowerCase();
-      const matches = autocompleteData.contexts.filter(c =>
-        c.toLowerCase().startsWith('@' + partial) || c.toLowerCase().startsWith(partial)
-      );
-      console.log('Context matches:', matches);
-      showAutocomplete(item, matches, '@');
-    } else if (projectMatch) {
-      const partial = projectMatch[1].toLowerCase();
-      console.log('Project partial:', partial, 'Projects:', autocompleteData.projects);
-      const matches = autocompleteData.projects.filter(p =>
-        p.toLowerCase().startsWith(partial) ||
-        p.toLowerCase().replace(/\s+/g, '-').startsWith(partial)
-      );
-      console.log('Project matches:', matches);
-      showAutocomplete(item, matches.map(p => '+' + p.toLowerCase().replace(/\s+/g, '-')), '+');
-    } else if (withMatch) {
-      const partial = withMatch[1].toLowerCase();
-      console.log('With partial:', partial, 'Contacts:', autocompleteData.contacts);
-      const contacts = autocompleteData.contacts || [];
-      const matches = contacts.filter(c =>
-        c.toLowerCase().startsWith(partial)
-      );
-      console.log('Contact matches:', matches);
-      showAutocomplete(item, matches, 'with');
-    }
-    return;
-  }
-
-  if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
-    if (!menu.classList.contains('hidden')) {
-      event.preventDefault();
-      navigateAutocomplete(menu, event.key === 'ArrowDown' ? 1 : -1);
-    }
+async function startEdit(id) {
+  try {
+    const record = await apiFetch(`/api/record/${id}`);
+    showEditModal(record);
+  } catch (err) {
+    showToast(err.message, 'error');
   }
 }
 
-function showAutocomplete(item, matches, prefix) {
-  const menu = item.querySelector('.autocomplete-menu');
+function showEditModal(record) {
+  document.getElementById('edit-modal')?.remove();
 
-  if (matches.length === 0) {
-    hideAutocomplete(item);
-    return;
-  }
+  const modal = document.createElement('div');
+  modal.id = 'edit-modal';
+  modal.className = 'modal';
+  modal.innerHTML = `<div class="modal-content">
+    <div class="modal-header">
+      <span>Edit ${esc(record.type)}</span>
+      <button onclick="cancelEdit()">&times;</button>
+    </div>
+    <div class="modal-body">
+      <label>Title<input type="text" id="edit-title" value="${esc(record.title)}"></label>
+      <label>Status<select id="edit-status">
+        ${['active','completed','waiting','someday','archived'].map(s =>
+          `<option value="${s}"${record.status === s ? ' selected' : ''}>${s.charAt(0).toUpperCase() + s.slice(1)}</option>`
+        ).join('')}
+      </select></label>
+      ${record.type === 'action' ? `
+        <label>Context<input type="text" id="edit-context" value="${esc(record.context || '')}"></label>
+        <label>Due<input type="date" id="edit-due_date" value="${esc(record.due_date || '')}"></label>
+      ` : ''}
+      <label>Content<textarea id="edit-content" rows="6">${esc(record.content || '')}</textarea></label>
+    </div>
+    <div class="modal-footer">
+      <button onclick="cancelEdit()">Cancel</button>
+      <button class="btn-primary" onclick="saveEdit('${esc(record.id)}')">Save</button>
+    </div>
+  </div>`;
 
-  menu.innerHTML = matches.slice(0, 8).map((m, i) => `
-    <div class="autocomplete-item ${i === 0 ? 'selected' : ''}" data-value="${esc(m)}"
-         onclick="applyAutocompleteClick(this)">${esc(m)}</div>
-  `).join('');
-
-  menu.classList.remove('hidden');
+  modal.addEventListener('click', (e) => { if (e.target === modal) cancelEdit(); });
+  document.body.appendChild(modal);
+  document.getElementById('edit-title')?.focus();
 }
 
-function hideAutocomplete(item) {
-  const menu = item.querySelector('.autocomplete-menu');
-  if (menu) menu.classList.add('hidden');
-}
+async function saveEdit(id) {
+  const updates = {};
+  const title   = document.getElementById('edit-title')?.value?.trim();
+  const status  = document.getElementById('edit-status')?.value;
+  const content = document.getElementById('edit-content')?.value;
+  const context = document.getElementById('edit-context')?.value;
+  const due     = document.getElementById('edit-due_date')?.value;
 
-function navigateAutocomplete(menu, direction) {
-  const items = menu.querySelectorAll('.autocomplete-item');
-  const current = menu.querySelector('.autocomplete-item.selected');
-  let currentIndex = Array.from(items).indexOf(current);
-
-  currentIndex += direction;
-  if (currentIndex < 0) currentIndex = items.length - 1;
-  if (currentIndex >= items.length) currentIndex = 0;
-
-  items.forEach((item, i) => {
-    item.classList.toggle('selected', i === currentIndex);
-  });
-}
-
-function applyAutocompleteClick(el) {
-  const item = el.closest('.action-item') || el.closest('.generic-item');
-  const input = item.querySelector('.inline-input');
-  applyAutocomplete(input, el.dataset.value);
-  hideAutocomplete(item);
-  input.focus();
-}
-
-function applyAutocomplete(input, value) {
-  const cursorPos = input.selectionStart;
-  const text = input.value;
-  const beforeCursor = text.slice(0, cursorPos);
-  const afterCursor = text.slice(cursorPos);
-
-  let newBefore;
-  if (value.startsWith('@')) {
-    newBefore = beforeCursor.replace(/@\w*$/, value);
-  } else if (value.startsWith('+')) {
-    newBefore = beforeCursor.replace(/\+[^\s]*$/, value);
-  } else if (value.startsWith('#')) {
-    newBefore = beforeCursor.replace(/#\w*$/, value);
-  } else if (beforeCursor.match(/\bwith\s+\w*$/i)) {
-    // Contact name completion - replace just the partial name after 'with '
-    newBefore = beforeCursor.replace(/(\bwith\s+)\w*$/i, '$1' + value);
-  } else {
-    newBefore = beforeCursor + value;
-  }
-
-  input.value = newBefore + afterCursor;
-  input.setSelectionRange(newBefore.length, newBefore.length);
-}
-
-async function saveEdit(item) {
-  const input = item.querySelector('.inline-input');
-  const text = input.value.trim();
-  const id = item.dataset.id;
-
-  let title = text;
-  let context = null;
-  let project = null;
-  let due_date = null;
-
-  const contextMatch = text.match(/@(\w+)/);
-  if (contextMatch) {
-    context = '@' + contextMatch[1];
-    title = title.replace(/@\w+/, '').trim();
-  }
-
-  const projectMatch = text.match(/\+([^\s]+)/);
-  if (projectMatch) {
-    project = projectMatch[1];
-    title = title.replace(/\+[^\s]+/, '').trim();
-  }
-
-  const dueMatch = text.match(/due:(\S+)/i);
-  if (dueMatch) {
-    due_date = parseDueDate(dueMatch[1]);
-    title = title.replace(/due:\S+/i, '').trim();
-  }
-
-  title = title.replace(/\s+/g, ' ').trim();
+  if (title   != null) updates.title    = title;
+  if (status  != null) updates.status   = status;
+  if (content != null) updates.content  = content;
+  if (context != null) updates.context  = context;
+  if (due     != null) updates.due_date = due;
 
   try {
-    const res = await apiFetch(`/api/action/${id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ title, context, project, due_date }),
-    });
-
-    if (!res.ok) throw new Error('Failed to save');
-    
-    // Update display immediately (don't wait for WebSocket)
-    const titleEl = item.querySelector('.action-display .item-title');
-    if (titleEl) titleEl.textContent = title;
-    
-    const projectEl = item.querySelector('.action-display .item-project');
-    if (projectEl) {
-      projectEl.textContent = project ? `+${project}` : '';
-    }
-    
-    // Update data attributes
-    const newFull = `${title}${context ? ' ' + context : ''}${project ? ' +' + project : ''}${due_date ? ' due:' + due_date : ''}`;
-    item.dataset.full = newFull;
-    item.dataset.context = context || '';
-    
-    cancelEdit(item);
+    await apiFetch(`/api/record/${id}`, { method: 'PATCH', body: updates });
+    cancelEdit();
     showToast('Saved');
-  } catch (e) {
-    console.error('Failed to save:', e);
-    showToast('Failed to save', true);
+    refreshActivePanels();
+  } catch (err) {
+    showToast(err.message, 'error');
   }
 }
 
-function parseDueDate(str) {
-  const today = new Date();
-  const s = str.toLowerCase();
-
-  if (s === 'today') {
-    return today.toISOString().split('T')[0];
-  }
-  if (s === 'tomorrow') {
-    const d = new Date(today);
-    d.setDate(d.getDate() + 1);
-    return d.toISOString().split('T')[0];
-  }
-
-  const days = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
-  const dayIndex = days.indexOf(s);
-  if (dayIndex !== -1) {
-    const d = new Date(today);
-    const diff = (dayIndex - d.getDay() + 7) % 7 || 7;
-    d.setDate(d.getDate() + diff);
-    return d.toISOString().split('T')[0];
-  }
-
-  if (/^\d{4}-\d{2}-\d{2}$/.test(str)) {
-    return str;
-  }
-
-  const mdMatch = str.match(/^(\d{1,2})\/(\d{1,2})$/);
-  if (mdMatch) {
-    const m = parseInt(mdMatch[1], 10) - 1;
-    const d = parseInt(mdMatch[2], 10);
-    let year = today.getFullYear();
-    const parsed = new Date(year, m, d);
-    if (parsed < today) year++;
-    return `${year}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-  }
-
-  return str;
+function cancelEdit() {
+  document.getElementById('edit-modal')?.remove();
 }
 
-async function markDone(id) {
-  try {
-    const res = await apiFetch(`/api/action/${id}/done`, { method: 'POST' });
-    if (!res.ok) throw new Error('Failed');
+// ─────────────────────────────────────────────────────────────────────────────
+// Creation
+// ─────────────────────────────────────────────────────────────────────────────
 
-    const item = document.querySelector(`[data-id="${id}"]`);
-    if (item) {
-      item.style.opacity = '0.5';
-      item.style.pointerEvents = 'none';
-      setTimeout(() => item.remove(), 300);
-    }
-  } catch (e) {
-    console.error('Failed to mark done:', e);
-  }
+async function createRecord(type, fields) {
+  const record = await apiFetch('/api/record', { body: { type, ...fields } });
+  refreshActivePanels();
+  return record;
 }
 
-async function processItem(item) {
-  const id = item.dataset.id;
-  const input = item.querySelector('.inline-input');
-
-  let text = input.value.replace(/@inbox\s*/gi, '').trim();
-  input.value = text;
+async function quickCapture() {
+  const input = document.getElementById('capture-input');
+  const text = input?.value?.trim();
+  if (!text) return;
 
   try {
-    await apiFetch(`/api/action/${id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ context: null }),
-    });
-  } catch (e) {
-    console.error('Failed to process:', e);
+    await createRecord('item', { title: text, source: 'typed' });
+    input.value = '';
+    showToast(`Captured: ${text}`);
+  } catch (err) {
+    showToast(err.message, 'error');
   }
 }
 
-async function convertItem(item, targetType) {
-  if (!targetType) return;
-  
-  const id = item.dataset.id;
-  const input = item.querySelector('.inline-input');
-  const select = item.querySelector('.convert-select');
-  
-  // Clean up the text - remove @inbox
-  let text = input.value.replace(/@inbox\s*/gi, '').trim();
-  
-  // Reset select
-  if (select) select.value = '';
-  
-  if (targetType === 'action') {
-    // Simple conversion - just remove @inbox context
-    try {
-      await apiFetch(`/api/action/${id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ context: null }),
-      });
-      showToast('Converted to action');
-    } catch (e) {
-      console.error('Failed to convert:', e);
-      showToast('Conversion failed', true);
-    }
-    return;
-  }
-  
-  // For other types, use chat API to create new item and delete old
-  let command = '';
-  switch (targetType) {
-    case 'event':
-      command = `new event ${text}`;
-      break;
-    case 'project':
-      command = `new project ${text}`;
-      break;
-    case 'note':
-      command = `new note ${text}`;
-      break;
-    case 'entry':
-      command = `new entry ${text}`;
-      break;
-    default:
-      return;
-  }
-  
+async function completeItem(e, id) {
+  e.stopPropagation();
   try {
-    // Create the new item via chat
-    const res = await apiFetch('/api/chat', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text: command }),
-    });
-    
-    if (!res.ok) throw new Error('Failed to create');
-    
-    // Delete the old inbox item
-    await apiFetch(`/api/action/${id}/done`, { method: 'POST' });
-    
-    // Visual feedback
-    item.style.opacity = '0.5';
-    item.style.pointerEvents = 'none';
-    setTimeout(() => item.remove(), 300);
-    
-    const data = await res.json();
-    showToast(data.reply?.split('\n')[0] || `Converted to ${targetType}`);
-  } catch (e) {
-    console.error('Failed to convert:', e);
-    showToast('Conversion failed', true);
+    await apiFetch(`/api/record/${id}`, { method: 'PATCH', body: { status: 'completed' } });
+    showToast('Completed');
+    refreshActivePanels();
+  } catch (err) {
+    showToast(err.message, 'error');
   }
 }
 
-// Generic item editing (for projects, events, notes, etc.)
-function startGenericEdit(item) {
-  console.log('startGenericEdit called', item);
-  if (!item) {
-    console.error('startGenericEdit: no item provided');
-    return;
-  }
-  
-  // Close any other open edits
-  document.querySelectorAll('.generic-item.editing').forEach(el => {
-    if (el !== item) cancelGenericEdit(el);
-  });
-
-  item.classList.add('editing');
-  const display = item.querySelector('.item-display');
-  const edit = item.querySelector('.item-edit');
-  console.log('display:', display, 'edit:', edit);
-  
-  if (display) display.classList.add('hidden');
-  if (edit) edit.classList.remove('hidden');
-
-  const input = item.querySelector('.inline-input');
-  if (input) {
-    input.focus();
-    input.setSelectionRange(input.value.length, input.value.length);
+function refreshActivePanels() {
+  for (const panel of panels) {
+    if (panel.view === 'repl') continue;
+    loadPanel(panel.id, panel.view);
   }
 }
 
-function cancelGenericEdit(item) {
-  if (!item) return;
+// ─────────────────────────────────────────────────────────────────────────────
+// Drag-drop
+// ─────────────────────────────────────────────────────────────────────────────
 
-  item.classList.remove('editing');
-  item.querySelector('.item-display').classList.remove('hidden');
-  item.querySelector('.item-edit').classList.add('hidden');
-
-  const input = item.querySelector('.inline-input');
-  input.value = item.dataset.title;
-}
-
-function handleGenericEditBlur(event, input) {
-  setTimeout(() => {
-    const item = input.closest('.generic-item');
-    if (!item) return;
-
-    const editArea = item.querySelector('.item-edit');
-    if (!editArea.contains(document.activeElement)) {
-      cancelGenericEdit(item);
-    }
-  }, 150);
-}
-
-function handleGenericEditKey(event, input) {
-  const item = input.closest('.generic-item');
-  const menu = item.querySelector('.autocomplete-menu');
-
-  if (event.key === 'Escape') {
-    event.preventDefault();
-    if (menu && !menu.classList.contains('hidden')) {
-      hideAutocomplete(item);
-    } else {
-      cancelGenericEdit(item);
-    }
-    return;
-  }
-
-  if (event.key === 'Enter') {
-    event.preventDefault();
-    if (menu) {
-      const selected = menu.querySelector('.autocomplete-item.selected');
-      if (selected && !menu.classList.contains('hidden')) {
-        applyAutocomplete(input, selected.dataset.value);
-        hideAutocomplete(item);
-        return;
-      }
-    }
-    saveGenericEdit(item);
-    return;
-  }
-
-  if (event.key === 'Tab') {
-    event.preventDefault();
-
-    if (menu && !menu.classList.contains('hidden')) {
-      const selected = menu.querySelector('.autocomplete-item.selected');
-      if (selected) {
-        applyAutocomplete(input, selected.dataset.value);
-        hideAutocomplete(item);
-        return;
-      }
-    }
-
-    // Trigger autocomplete based on cursor position
-    const cursorPos = input.selectionStart;
-    const text = input.value;
-    const beforeCursor = text.slice(0, cursorPos);
-
-    const contextMatch = beforeCursor.match(/@(\w*)$/);
-    const projectMatch = beforeCursor.match(/\+([^\s]*)$/);
-    const tagMatch = beforeCursor.match(/#(\w*)$/);
-
-    if (contextMatch) {
-      const partial = contextMatch[1].toLowerCase();
-      const matches = autocompleteData.contexts
-        .filter(c => c.toLowerCase().replace('@', '').startsWith(partial))
-        .map(c => c.startsWith('@') ? c : '@' + c);
-      showAutocomplete(item, matches, '@');
-    } else if (projectMatch) {
-      const partial = projectMatch[1].toLowerCase();
-      const matches = autocompleteData.projects
-        .filter(p => p.toLowerCase().startsWith(partial))
-        .map(p => p.startsWith('+') ? p : '+' + p);
-      showAutocomplete(item, matches, '+');
-    } else if (tagMatch) {
-      const partial = tagMatch[1].toLowerCase();
-      const matches = autocompleteData.tags
-        .filter(t => t.toLowerCase().startsWith(partial))
-        .map(t => t.startsWith('#') ? t : '#' + t);
-      showAutocomplete(item, matches, '#');
-    }
-    return;
-  }
-
-  // Arrow keys for autocomplete navigation
-  if (menu && !menu.classList.contains('hidden')) {
-    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
-      event.preventDefault();
-      const items = menu.querySelectorAll('.autocomplete-item');
-      const current = menu.querySelector('.autocomplete-item.selected');
-      let idx = Array.from(items).indexOf(current);
-      
-      if (event.key === 'ArrowDown') {
-        idx = (idx + 1) % items.length;
-      } else {
-        idx = (idx - 1 + items.length) % items.length;
-      }
-      
-      items.forEach((it, i) => it.classList.toggle('selected', i === idx));
-      return;
-    }
-  }
-}
-
-async function saveGenericEdit(item) {
-  const input = item.querySelector('.inline-input');
-  const rawValue = input.value.trim();
-  const id = item.dataset.id;
-  const itemType = item.dataset.type;
-
-  if (!rawValue) {
-    showToast('Title cannot be empty', true);
-    return;
-  }
-
-  // Parse input for title, @context, +project, #tags
-  let title = rawValue;
-  let context = null;
-  let project = null;
-  const tags = [];
-
-  // Extract context (@context)
-  const contextMatch = rawValue.match(/@(\w+)/);
-  if (contextMatch) {
-    context = '@' + contextMatch[1];
-    title = title.replace(/@\w+/, '').trim();
-  }
-
-  // Extract project (+project)
-  const projectMatch = rawValue.match(/\+([^\s#@]+)/);
-  if (projectMatch) {
-    project = projectMatch[1];
-    title = title.replace(/\+[^\s#@]+/, '').trim();
-  }
-
-  // Extract tags (#tag)
-  const tagMatches = rawValue.matchAll(/#(\w+)/g);
-  for (const match of tagMatches) {
-    tags.push(match[1]);
-    title = title.replace(match[0], '').trim();
-  }
-
-  // Clean up extra spaces
-  title = title.replace(/\s+/g, ' ').trim();
-
-  if (!title) {
-    showToast('Title cannot be empty', true);
-    return;
-  }
-
-  try {
-    if (itemType === 'note') {
-      // Use dedicated note PATCH endpoint
-      const body = { title };
-      if (project !== null) body.project = project;
-      if (tags.length > 0) body.tags = tags;
-
-      const res = await apiFetch(`/api/note/${id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      });
-
-      if (!res.ok) throw new Error('Update failed');
-      
-      item.dataset.title = title;
-      item.querySelector('.item-title').textContent = title;
-      cancelGenericEdit(item);
-      showToast('Saved');
-      
-      // Open the note panel
-      addPanel(`note:${id}`);
-    } else if (itemType === 'action' || itemType === 'item') {
-      // Use dedicated action PATCH endpoint
-      const body = { title };
-      if (context !== null) body.context = context;
-      if (project !== null) body.project = project;
-      if (tags.length > 0) body.tags = tags;
-
-      const res = await apiFetch(`/api/action/${id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      });
-
-      if (!res.ok) throw new Error('Update failed');
-      
-      item.dataset.title = title;
-      const titleEl = item.querySelector('.item-title') || item.querySelector('.action-title');
-      if (titleEl) titleEl.textContent = title;
-      cancelGenericEdit(item);
-      showToast('Saved');
-    } else {
-      // Fallback for other types - update via content
-      const res = await apiFetch(`/api/page/${id}`, { method: 'GET' });
-      
-      if (res.ok) {
-        const data = await res.json();
-        let content = data.content || '';
-        content = content.replace(/^#\s+.+$/m, `# ${title}`);
-        
-        await apiFetch(`/api/page/${id}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ content }),
-        });
-        
-        item.dataset.title = title;
-        item.querySelector('.item-title').textContent = title;
-        cancelGenericEdit(item);
-        showToast('Saved');
-      }
-    }
-  } catch (e) {
-    console.error('Failed to save:', e);
-    showToast('Save failed', true);
-  }
-}
-
-async function removeItem(item) {
-  const id = item.dataset.id;
-  const itemType = item.dataset.type;
-  const title = item.dataset.title;
-
-  if (!confirm(`Remove "${title}"?`)) return;
-
-  try {
-    // Use chat API to delete
-    const command = itemType === 'event' 
-      ? `delete event ${title}` 
-      : `delete ${title}`;
-    
-    const res = await apiFetch('/api/chat', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text: command }),
-    });
-
-    if (res.ok) {
-      item.style.opacity = '0.5';
-      item.style.pointerEvents = 'none';
-      setTimeout(() => item.remove(), 300);
-      showToast('Removed');
-    } else {
-      throw new Error('Failed to remove');
-    }
-  } catch (e) {
-    console.error('Failed to remove:', e);
-    showToast('Remove failed', true);
-  }
-}
-
-// Drag and drop
 function setupDragDrop() {
   const overlay = document.getElementById('drop-overlay');
 
-  document.addEventListener('dragover', (e) => {
-    e.preventDefault();
-    overlay.classList.remove('hidden');
+  document.addEventListener('dragenter', (e) => {
+    if (e.dataTransfer?.types?.includes('Files')) {
+      overlay.classList.remove('hidden');
+    }
   });
 
   document.addEventListener('dragleave', (e) => {
-    if (e.relatedTarget === null) {
-      overlay.classList.add('hidden');
-    }
+    if (!e.relatedTarget) overlay.classList.add('hidden');
   });
+
+  document.addEventListener('dragover', (e) => e.preventDefault());
 
   document.addEventListener('drop', async (e) => {
     e.preventDefault();
     overlay.classList.add('hidden');
-
-    const files = e.dataTransfer.files;
-    if (files.length === 0) return;
-
-    const file = files[0];
-    const isImage = file.type.startsWith('image/');
-    
-    // For images, offer OCR options
-    if (isImage) {
-      const choice = prompt(
-        'What would you like to do?\n\n' +
-        '1 = OCR only (show in REPL)\n' +
-        '3 = Import image to garden\n\n' +
-        'Or enter a note title to OCR and save:',
-        ''
-      );
-      
-      if (!choice) return;
-      
-      if (choice === '1' || choice.toLowerCase() === 'ocr') {
-        // OCR mode - show in REPL
-        const formData = new FormData();
-        formData.append('file', file);
-        
-        showToast('Extracting text...');
-        
-        try {
-          const res = await apiFetch('/api/ocr', { method: 'POST', body: formData });
-          if (!res.ok) {
-            const data = await res.json();
-            throw new Error(data.error || 'OCR failed');
-          }
-          const data = await res.json();
-          
-          if (data.text) {
-            replMessages.push({ 
-              role: 'assistant', 
-              text: `**OCR Result from ${file.name}:**\n\n${data.text}` 
-            });
-            
-            if (!panels.has('repl')) {
-              addPanel('repl');
-            }
-            refreshReplPanel();
-            showToast('Text extracted!');
-          }
-        } catch (e) {
-          console.error('OCR failed:', e);
-          showToast(e.message || 'OCR failed', true);
-        }
-        return;
-      }
-      
-      if (choice === '3' || choice.toLowerCase() === 'import') {
-        // Import mode
-        const name = prompt('Name for this media (can include +project #tags):', file.name.replace(/\.[^.]+$/, ''));
-        if (!name) return;
-        
-        const formData = new FormData();
-        formData.append('file', file);
-        formData.append('name', name);
-
-        try {
-          const res = await apiFetch('/api/media/upload', { method: 'POST', body: formData });
-          if (!res.ok) throw new Error('Upload failed');
-          showToast('Media imported');
-        } catch (e) {
-          console.error('Upload failed:', e);
-          showToast('Upload failed', true);
-        }
-        return;
-      }
-      
-      // Anything else = OCR to Note with custom title
-      const customTitle = choice.trim();
-      const formData = new FormData();
-      formData.append('file', file);
-      formData.append('title', customTitle);
-      
-      showToast('Extracting text...');
-      
-      try {
-        const res = await apiFetch('/api/ocr/note', { method: 'POST', body: formData });
-        if (!res.ok) {
-          const data = await res.json();
-          throw new Error(data.error || 'OCR failed');
-        }
-        const data = await res.json();
-        
-        if (data.noteId) {
-          showToast(`Saved: ${data.title}`);
-          // Open the note in a panel
-          addPanel(`note:${data.noteId}`);
-        }
-      } catch (e) {
-        console.error('OCR to note failed:', e);
-        showToast(e.message || 'OCR failed', true);
-      }
-      return;
-    } else {
-      // Non-image: standard import
-      const name = prompt('Name for this media (can include +project #tags):', file.name.replace(/\.[^.]+$/, ''));
-      if (!name) return;
-
-      const formData = new FormData();
-      formData.append('file', file);
-      formData.append('name', name);
-
-      try {
-        const res = await apiFetch('/api/media/upload', { method: 'POST', body: formData });
-        if (!res.ok) throw new Error('Upload failed');
-        showToast('Media imported');
-      } catch (e) {
-        console.error('Upload failed:', e);
-        showToast('Upload failed', true);
-      }
+    for (const file of Array.from(e.dataTransfer?.files || [])) {
+      await uploadFile(file);
     }
   });
 }
 
-// Lightbox
-function openLightbox(src, title) {
-  document.getElementById('lightbox-img').src = src;
-  document.getElementById('lightbox-title').textContent = title;
-  document.getElementById('lightbox').classList.remove('hidden');
-}
+async function uploadFile(file) {
+  try {
+    const formData = new FormData();
+    formData.append('file', file);
 
-function closeLightbox(event) {
-  if (event.target.tagName !== 'IMG') {
-    document.getElementById('lightbox').classList.add('hidden');
+    const token = getToken();
+    const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
+
+    const res = await fetch('/api/media/upload', { method: 'POST', headers, body: formData });
+    if (!res.ok) throw new Error(`Upload failed: ${res.status}`);
+
+    const record = await res.json();
+    showToast(`Imported: ${record.title}`);
+    refreshActivePanels();
+  } catch (err) {
+    showToast(err.message, 'error');
   }
 }
 
-// Toast
-function showToast(message, isError = false) {
-  const toast = document.createElement('div');
-  toast.className = 'toast' + (isError ? ' error' : '');
-  toast.textContent = message;
-  toast.style.cssText = `
-    position: fixed;
-    bottom: 80px;
-    left: 50%;
-    transform: translateX(-50%);
-    background: var(--bg-panel);
-    border: 1px solid ${isError ? 'var(--danger)' : 'var(--success)'};
-    color: var(--text-bright);
-    padding: 10px 20px;
-    border-radius: 6px;
-    z-index: 1001;
-  `;
-  document.body.appendChild(toast);
-  setTimeout(() => toast.remove(), 3000);
+function closeLightbox(e) {
+  const lb = document.getElementById('lightbox');
+  if (e.target === lb || e.target.classList.contains('lightbox-close')) {
+    lb.classList.add('hidden');
+  }
 }
 
-// Utility
+// ─────────────────────────────────────────────────────────────────────────────
+// Utilities
+// ─────────────────────────────────────────────────────────────────────────────
+
 function esc(str) {
-  if (!str) return '';
+  if (str == null) return '';
   return String(str)
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }
 
-// Lightweight markdown renderer for REPL output
 function renderMarkdown(text) {
   if (!text) return '';
-  
-  // First escape HTML
-  let html = esc(text);
-  
-  // Bold: **text** or __text__
-  html = html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
-  html = html.replace(/__([^_]+)__/g, '<strong>$1</strong>');
-  
-  // Italic: *text* or _text_ (but not inside words)
-  html = html.replace(/(?<!\w)\*([^*]+)\*(?!\w)/g, '<em>$1</em>');
-  html = html.replace(/(?<!\w)_([^_]+)_(?!\w)/g, '<em>$1</em>');
-  
-  // Inline code: `code`
-  html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
-  
-  // Process line by line for lists and structure
-  const lines = html.split('\n');
-  let result = [];
-  let inList = false;
-  
-  for (let i = 0; i < lines.length; i++) {
-    let line = lines[i];
-    
-    // List items: - item or * item or • item (with optional indentation)
-    const listMatch = line.match(/^(\s*)([-*•])\s+(.+)$/);
-    if (listMatch) {
-      if (!inList) {
-        result.push('<ul class="md-list">');
-        inList = true;
-      }
-      const indent = listMatch[1].length > 0 ? ' class="indent"' : '';
-      result.push(`<li${indent}>${listMatch[3]}</li>`);
-    } else {
-      if (inList) {
-        result.push('</ul>');
-        inList = false;
-      }
-      
-      // Empty line = paragraph break
-      if (line.trim() === '') {
-        result.push('<br>');
-      } else {
-        result.push(`<div class="md-line">${line}</div>`);
-      }
-    }
-  }
-  
-  if (inList) {
-    result.push('</ul>');
-  }
-  
-  return result.join('');
+  if (text.trim().startsWith('<')) return text; // Already HTML
+  return text
+    .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+    .replace(/\*([^*]+)\*/g, '<em>$1</em>')
+    .replace(/`([^`]+)`/g, '<code>$1</code>')
+    .replace(/\n/g, '<br>');
 }
+
+function showToast(message, type = 'success') {
+  const container = document.getElementById('toast-container');
+  if (!container) return;
+  const toast = document.createElement('div');
+  toast.className = `toast toast-${type}`;
+  toast.textContent = message;
+  container.appendChild(toast);
+  requestAnimationFrame(() => toast.classList.add('visible'));
+  setTimeout(() => {
+    toast.classList.remove('visible');
+    setTimeout(() => toast.remove(), 300);
+  }, 3000);
+}
+
+function formatDate(iso) {
+  if (!iso) return '';
+  try {
+    return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  } catch {
+    return iso;
+  }
+}
+
+function setStatus(state) {
+  const el = document.getElementById('status');
+  if (!el) return;
+  el.textContent = state;
+  el.className = `status ${state}`;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Init
+// ─────────────────────────────────────────────────────────────────────────────
+
+document.addEventListener('DOMContentLoaded', () => {
+  connect();
+  setupDragDrop();
+  loadPanels();
+
+  document.getElementById('capture-input')?.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') quickCapture();
+  });
+});

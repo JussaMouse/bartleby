@@ -172,7 +172,7 @@ async function main(): Promise<void> {
   const dashboardHost = process.env.DASHBOARD_HOST || 'localhost';
   const dashboardPort = parseInt(process.env.DASHBOARD_PORT || '3333');
   const dashboardServer = new DashboardServer(services, router, agent);
-  dashboardServer.start(dashboardPort, dashboardHost);
+  dashboardServer.start(dashboardPort);
   info(`Dashboard server started at http://${dashboardHost}:${dashboardPort}`);
 
   // 6. Start REPL (handles its own shutdown via quit command and SIGINT/SIGTERM)

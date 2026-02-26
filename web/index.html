@@ -10,42 +10,48 @@
   <div id="app">
     <header>
       <h1>Bartleby</h1>
-      <span id="status" class="status">connecting...</span>
+      <div class="header-right">
+        <span id="status" class="status">connecting...</span>
+      </div>
     </header>
 
     <main id="panels"></main>
 
     <footer>
-      <button onclick="addPanel('repl')">+ REPL</button>
-      <button onclick="addPanel('inbox')">+ Inbox</button>
-      <button onclick="addPanel('next-actions')">+ Next Actions</button>
-      <button onclick="addPanel('projects')">+ Projects</button>
-      <button onclick="addPanel('notes')">+ Notes</button>
-      <button onclick="addPanel('calendar')">+ Calendar</button>
-      <button onclick="addPanel('today')">+ Today</button>
-      <button onclick="addPanel('recent')">+ Recent</button>
-      <button onclick="addPanel('memory')">+ Memory</button>
-      <button onclick="addPanel('graph')">+ Graph</button>
-      <button onclick="promptProjectPanel()">+ Project...</button>
+      <div class="footer-views">
+        <button onclick="addPanel('Inbox')">Inbox</button>
+        <button onclick="addPanel('Next Actions')">Next Actions</button>
+        <button onclick="addPanel('Waiting For')">Waiting</button>
+        <button onclick="addPanel('All Projects')">Projects</button>
+        <button onclick="addPanel('All Notes')">Notes</button>
+        <button onclick="addPanel('All Events')">Events</button>
+        <button onclick="addPanel('Contacts')">Contacts</button>
+        <button onclick="addPanel('repl')">REPL</button>
+      </div>
+      <div class="footer-capture">
+        <input id="capture-input" type="text" placeholder="Quick capture..." autocomplete="off">
+        <button onclick="quickCapture()">Capture</button>
+      </div>
     </footer>
   </div>
 
-  <!-- Drop overlay for drag-and-drop media import -->
+  <!-- Drop overlay -->
   <div id="drop-overlay" class="drop-overlay hidden">
     <div class="drop-message">
-      <span class="drop-icon">📎</span>
-      <span>Drop to import or OCR</span>
+      <span>Drop file to import</span>
     </div>
   </div>
 
-  <!-- Lightbox for full-size images -->
+  <!-- Lightbox -->
   <div id="lightbox" class="lightbox hidden" onclick="closeLightbox(event)">
     <div class="lightbox-content">
       <button class="lightbox-close" onclick="closeLightbox(event)">&times;</button>
       <img id="lightbox-img" src="" alt="">
-      <div id="lightbox-title" class="lightbox-title"></div>
     </div>
   </div>
+
+  <!-- Toast container -->
+  <div id="toast-container"></div>
 
   <script src="app.js"></script>
 </body>

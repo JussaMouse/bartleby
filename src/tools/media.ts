@@ -1,208 +1,109 @@
 // src/tools/media.ts
-import { Tool } from './types.js';
-import fs from 'fs';
-import path from 'path';
-import { v4 as uuidv4 } from 'uuid';
+// Garden tool for importing media files.
 
-export const addMedia: Tool = {
-  name: 'addMedia',
-  description: 'Add multimedia files (images, audio, video, documents) to Garden',
+import { Tool } from './types.js';
+import path from 'path';
+import type { GardenService } from '../garden/GardenService.js';
+import type { ViewService } from '../garden/ViewService.js';
+import { ReplRenderer } from '../garden/renderers/ReplRenderer.js';
+
+function getServices(context: any) {
+  const garden = context.services.garden as GardenService;
+  const views  = context.services.views  as ViewService;
+  return { garden, views };
+}
+
+const renderer = new ReplRenderer();
+
+export const importMedia: Tool = {
+  name: 'importMedia',
+  description: 'Import a media file (image, PDF, document) into the garden',
 
   routing: {
     patterns: [
-      /^add\s+media\s+(.+)$/i,
-      /^upload\s+(.+)$/i,
+      /^(import|attach|add) (file|media|document|image|pdf)\s+(.+)/i,
     ],
     keywords: {
-      verbs: ['add', 'upload', 'attach'],
-      nouns: ['media', 'image', 'photo', 'file', 'document', 'audio', 'video'],
+      verbs: ['import', 'attach', 'add'],
+      nouns: ['file', 'media', 'document', 'image', 'pdf'],
     },
-    examples: [
-      'add media photo.jpg +project #tag',
-      'add media contract.pdf +visa #legal --ocr',
-      'upload voice-memo.m4a +project',
-    ],
-    priority: 75,
+    examples: ['import file contract.pdf', 'attach image photo.jpg'],
+    priority: 70,
   },
 
-  parameters: {
-    type: 'object',
-    properties: {
-      filepath: { type: 'string', description: 'Path to the media file' },
-      projects: { type: 'array', items: { type: 'string' }, description: 'Project names (prefixed with +)' },
-      tags: { type: 'array', items: { type: 'string' }, description: 'Tags (prefixed with #)' },
-      ocr: { type: 'boolean', description: 'Extract text from image using OCR' },
-    },
-    required: ['filepath'],
-  },
-
-  parseArgs: (input, match) => {
-    let rawInput = '';
-    if (match) {
-      rawInput = match[match.length - 1]?.trim() || '';
-    } else {
-      rawInput = input.replace(/^(add\s+media|upload)\s*/i, '').trim();
-    }
-
-    // Extract projects (+project-name) and keywords
-    const projects: string[] = [];
-    const keywords: string[] = [];
-    let ocr = false;
-
-    // Match all +word patterns
-    const projectMatches = rawInput.matchAll(/\+([a-zA-Z0-9_-]+)/g);
-    for (const match of projectMatches) {
-      projects.push(match[1]);
-    }
-
-    // Match all #word patterns (keep as keywords for content)
-    const keywordMatches = rawInput.matchAll(/#([a-zA-Z0-9_-]+)/g);
-    for (const match of keywordMatches) {
-      keywords.push(match[1]);
-    }
-
-    // Check for --ocr flag
-    if (rawInput.includes('--ocr')) {
-      ocr = true;
-    }
-
-    // Remove projects and flags from filepath (keep keywords for content)
-    const filepath = rawInput
-      .replace(/\+[a-zA-Z0-9_-]+/g, '')
-      .replace(/#[a-zA-Z0-9_-]+/g, '')
-      .replace(/--ocr/g, '')
-      .trim();
-
-    return { filepath, projects, keywords, ocr };
+  parseArgs: (input) => {
+    const filePath = input.replace(/^(import|attach|add)\s*(file|media|document|image|pdf)?\s+/i, '').trim();
+    return { file_path: filePath };
   },
 
   execute: async (args, context) => {
-    const { filepath, projects = [], keywords = [], ocr = false } = args as {
-      filepath: string;
-      projects?: string[];
-      keywords?: string[];
-      ocr?: boolean;
+    const { file_path, project: projectTitle, title: overrideTitle } = args as {
+      file_path: string;
+      project?: string;
+      title?: string;
     };
 
-    if (!filepath) {
-      return 'Please provide a file path. Examples:\n  add media photo.jpg +project #tag\n  add media document.pdf --ocr';
-    }
+    if (!file_path) return 'Please specify a file path.';
 
-    try {
-      // Resolve file path
-      const absolutePath = path.isAbsolute(filepath)
-        ? filepath
-        : path.resolve(process.cwd(), filepath);
+    const { garden } = getServices(context);
 
-      if (!fs.existsSync(absolutePath)) {
-        return `File not found: ${filepath}`;
-      }
+    const fileName = path.basename(file_path);
+    const ext = path.extname(fileName).toLowerCase();
 
-      const stats = fs.statSync(absolutePath);
-      if (!stats.isFile()) {
-        return `Not a file: ${filepath}`;
-      }
+    // Infer mime type from extension
+    const mimeMap: Record<string, string> = {
+      '.pdf': 'application/pdf',
+      '.png': 'image/png',
+      '.jpg': 'image/jpeg',
+      '.jpeg': 'image/jpeg',
+      '.gif': 'image/gif',
+      '.mp4': 'video/mp4',
+      '.txt': 'text/plain',
+      '.md': 'text/markdown',
+      '.doc': 'application/msword',
+      '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    };
 
-      // Get file info
-      const originalFilename = path.basename(absolutePath);
-      const ext = path.extname(originalFilename).toLowerCase();
-      const baseName = path.basename(originalFilename, ext);
+    const mime_type = mimeMap[ext] ?? 'application/octet-stream';
 
-      // Determine file type
-      const imageExts = ['.jpg', '.jpeg', '.png', '.gif', '.heic', '.webp'];
-      const audioExts = ['.mp3', '.m4a', '.wav', '.ogg'];
-      const videoExts = ['.mp4', '.mov', '.avi', '.mkv'];
-      const docExts = ['.pdf', '.doc', '.docx', '.txt', '.md'];
+    const record = garden.create({
+      type: 'media',
+      title: overrideTitle ?? fileName,
+      file_path,
+      mime_type,
+    });
 
-      let fileType = 'file';
-      if (imageExts.includes(ext)) fileType = 'image';
-      else if (audioExts.includes(ext)) fileType = 'audio';
-      else if (videoExts.includes(ext)) fileType = 'video';
-      else if (docExts.includes(ext)) fileType = 'document';
-
-      // Generate unique filename to avoid collisions
-      const uniqueId = uuidv4().slice(0, 8);
-      const newFilename = `${baseName}-${uniqueId}${ext}`;
-
-      // Copy to media directory
-      const mediaDir = context.services.garden.getMediaDir();
-      const targetPath = path.join(mediaDir, newFilename);
-
-      fs.copyFileSync(absolutePath, targetPath);
-
-      // Build tags array
-      // Build classification keywords for content
-      const classificationKeywords = ['media', fileType, ...keywords].join(' ');
-
-      // Build content
-      let content = `**File:** ${originalFilename}\n`;
-      content += `**Type:** ${fileType}\n`;
-      content += `**Size:** ${(stats.size / 1024).toFixed(1)} KB\n`;
-      content += `**Added:** ${new Date().toLocaleDateString()}\n\n`;
-      content += `[View file](/media/${newFilename})\n`;
-
-      // OCR if requested and is image
-      let ocrText: string | null = null;
-      if (ocr && fileType === 'image') {
-        try {
-          ocrText = await context.services.ocr.processFile(targetPath);
-          if (ocrText) {
-            content += `\n## Extracted Text (OCR)\n\n${ocrText}\n`;
-          }
-        } catch (ocrError) {
-          content += `\n*Note: OCR failed - ${ocrError instanceof Error ? ocrError.message : 'Unknown error'}*\n`;
-        }
-      }
-
-      // Add classification keywords to content for search
-      if (classificationKeywords) {
-        content += `\n\n${classificationKeywords}`;
-      }
-
-      // Create Garden page
-      const mediaPage = context.services.garden.create({
-        type: 'media',
-        title: baseName,
-        status: 'active',
-        // tags removed - keywords in content
-        content,
-        metadata: {
-          file_path: `/media/${newFilename}`,
-          original_filename: originalFilename,
-          file_type: fileType,
-          file_size: stats.size,
-          has_ocr: !!ocrText,
-          projects: projects.length > 0 ? projects : undefined,
-        },
-      });
-
-      // Link to projects if specified
-      for (const projectSlug of projects) {
-        const projectPages = context.services.garden.getByType('project');
-        const project = projectPages.find(p =>
-          p.title.toLowerCase().replace(/\s+/g, '-') === projectSlug.toLowerCase()
-        );
-
-        if (project) {
-          context.services.garden.update(mediaPage.id, {
-            content: mediaPage.content + `\n\n**Project:** [[${project.title}]]`,
-          });
-        }
-      }
-
-      // Build output
-      const metadataDisplay =
-        (projects.length > 0 ? `\n  Projects: ${projects.map(p => '+' + p).join(' ')}` : '') +
-        (keywords.length > 0 ? `\n  Keywords: ${keywords.map(k => k).join(' ')}` : '');
-
-      const ocrDisplay = ocrText ? `\n  OCR: ${ocrText.length} chars extracted` : '';
-
-      return `✓ Added media: "${baseName}"\n  Type: ${fileType}\n  Size: ${(stats.size / 1024).toFixed(1)} KB\n  File: ${newFilename}${ocrDisplay}${metadataDisplay}\n  Page created: open "${mediaPage.title}"`;
-
-    } catch (err) {
-      return `Failed to add media: ${err instanceof Error ? err.message : String(err)}`;
-    }
+    return `Imported: **${record.title}** (${mime_type})`;
   },
 };
 
-export const mediaTools: Tool[] = [addMedia];
+export const showMedia: Tool = {
+  name: 'showMedia',
+  description: 'Show a media record',
+
+  routing: {
+    patterns: [
+      /^(show|open|view) (file|media)\s+(.+)/i,
+    ],
+    keywords: {
+      verbs: ['show', 'open', 'view'],
+      nouns: ['file', 'media', 'document'],
+    },
+    examples: ['show file contract.pdf', 'view media photo.jpg'],
+    priority: 65,
+  },
+
+  parseArgs: (input) => {
+    const title = input.replace(/^(show|open|view)\s*(file|media)?\s+/i, '').trim();
+    return { title };
+  },
+
+  execute: async (args, context) => {
+    const { title, id } = args as { title?: string; id?: string };
+    const { views } = getServices(context);
+
+    const viewData = id ? views.openRecord(id) : (title ? views.resolve(title) : null);
+    if (!viewData) return `Media not found: "${title ?? id}"`;
+    return renderer.render(viewData);
+  },
+};

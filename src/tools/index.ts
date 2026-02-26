@@ -1,59 +1,98 @@
 // src/tools/index.ts
 import { Tool } from './types.js';
-import { promptHandler } from './prompt-handler.js';
-import { gtdTools } from './gtd.js';
-import { calendarTools } from './calendar.js';
-import { contactTools } from './contacts.js';
-import { contextTools } from './context.js';
-import { memoryTools } from './memory.js';
-import { shedTools } from './shed.js';
-import { schedulerTools } from './scheduler.js';
-import { weatherTools } from './weather.js';
-import { systemTools } from './system.js';
-import { ocrTools } from './ocr.js';
-import { dataTools } from './data.js';
-import { mediaTools } from './media.js';
-import { insightsTools } from './insights.js';
-import { relatedTools } from './related.js';
-import { historyTools } from './history.js';
-import { importTools } from './import.js';
-import { importRuleTools } from './import-rules-tool.js';
-import { importRuleMgmtTools } from './import-rules-mgmt.js';
-import { batchImportTools } from './import-batch.js';
-import { urlImportTools } from './import-url.js';
-import { settingsTools } from './settings.js';
-import { firstRunTools } from './first-run-wizard.js';
-import { settingsMigrationTools } from './settings-migration.js';
-import { importProfileTools } from './import-profiles.js';
+import { promptHandler }                                                         from './prompt-handler.js';
+import { captureItem, showInbox, processItem, addAction,
+         completeAction, editAction, listActions }                               from './actions.js';
+import { createProject, showProject, completeProject, listProjects }            from './projects.js';
+import { createNote, showNote, editNote, deleteNote, listNotes, tagNote }        from './notes.js';
+import { addContact, showContact, editContact, listContacts, findContact }       from './contacts.js';
+import { createEvent, showEvent, editEvent, listEvents, showCalendar }           from './events.js';
+import { importMedia, showMedia }                                                from './media.js';
+import { createTag, listTags, showTag }                                          from './tags.js';
+import { listViews, openView, createView, deleteView }                           from './garden-views.js';
+import { contextTools }                                                          from './context.js';
+import { memoryTools }                                                           from './memory.js';
+import { historyTools }                                                          from './history.js';
+import { weatherTools }                                                          from './weather.js';
+import { ocrTools }                                                              from './ocr.js';
+import { dataTools }                                                             from './data.js';
+import { settingsTools }                                                         from './settings.js';
+import { firstRunTools }                                                         from './first-run-wizard.js';
+import { settingsMigrationTools }                                                from './settings-migration.js';
 
-// Aggregate all tools
-// promptHandler MUST be first for Layer 0 contextual routing
+// Aggregate all tools.
+// promptHandler MUST be first for Layer 0 contextual routing.
 export const allTools: Tool[] = [
-  promptHandler,  // Layer 0: pending prompts bypass all routing
-  ...gtdTools,
-  ...calendarTools,
-  ...contactTools,
+  promptHandler,
+
+  // Garden: items and actions
+  captureItem,
+  showInbox,
+  processItem,
+  addAction,
+  completeAction,
+  editAction,
+  listActions,
+
+  // Garden: projects
+  createProject,
+  showProject,
+  completeProject,
+  listProjects,
+
+  // Garden: notes
+  createNote,
+  showNote,
+  editNote,
+  deleteNote,
+  listNotes,
+  tagNote,
+
+  // Garden: contacts
+  addContact,
+  showContact,
+  editContact,
+  listContacts,
+  findContact,
+
+  // Garden: events
+  createEvent,
+  showEvent,
+  editEvent,
+  listEvents,
+  showCalendar,
+
+  // Garden: media
+  importMedia,
+  showMedia,
+
+  // Garden: tags
+  createTag,
+  listTags,
+  showTag,
+
+  // Garden: views
+  listViews,
+  openView,
+  createView,
+  deleteView,
+
+  // Context and memory
   ...contextTools,
-  ...memoryTools,  // Agent-controlled memory operations
-  ...insightsTools,
-  ...relatedTools,
+  ...memoryTools,
+
+  // History
   ...historyTools,
-  ...shedTools,
-  ...mediaTools,
-  ...importTools,
-  ...importRuleTools,
-  ...importRuleMgmtTools,
-  ...batchImportTools,
-  ...urlImportTools,
-  ...importProfileTools,
-  ...schedulerTools,
+
+  // Weather
   ...weatherTools,
-  ...systemTools,
+
+  // Utilities
+  ...ocrTools,
+  ...dataTools,
   ...settingsTools,
   ...firstRunTools,
   ...settingsMigrationTools,
-  ...ocrTools,
-  ...dataTools,
 ];
 
 export function getToolByName(name: string): Tool | undefined {

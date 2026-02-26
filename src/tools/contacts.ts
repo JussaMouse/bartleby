@@ -1,67 +1,108 @@
 // src/tools/contacts.ts
+// Garden tools for contacts.
+
 import { Tool } from './types.js';
+import type { GardenService } from '../garden/GardenService.js';
+import type { ViewService } from '../garden/ViewService.js';
+import { ReplRenderer } from '../garden/renderers/ReplRenderer.js';
+
+function getServices(context: any) {
+  const garden = context.services.garden as GardenService;
+  const views  = context.services.views  as ViewService;
+  return { garden, views };
+}
+
+const renderer = new ReplRenderer();
 
 export const addContact: Tool = {
   name: 'addContact',
-  description: 'Create a new contact',
+  description: 'Add a new contact',
 
   routing: {
     patterns: [
-      /^add\s+contact\s+(.+)$/i,
-      /^new\s+contact\s+(.+)$/i,
-      /^create\s+contact\s+(.+)$/i,
+      /^(add|create|new) contact\s+(.+)/i,
     ],
     keywords: {
       verbs: ['add', 'create', 'new'],
-      nouns: ['contact'],  // Removed 'person' - too generic, causes false matches
+      nouns: ['contact', 'person'],
     },
-    priority: 85,
+    examples: ['add contact Alice Chen', 'new contact Bob Smith'],
+    priority: 78,
   },
 
   parseArgs: (input) => {
-    let text = input.replace(/^(add|new|create)\s+contact\s*/i, '');
-
-    // Parse flexible format: "name, field: value, field value, ..."
-    const parts = text.split(/,\s*/);
-    const name = parts[0]?.trim();
-
-    let email: string | undefined;
-    let phone: string | undefined;
-    let company: string | undefined;
-    let address: string | undefined;
-    let birthday: string | undefined;
-    let notes: string[] = [];
-
-    for (let i = 1; i < parts.length; i++) {
-      const part = parts[i].trim();
-      const partLower = part.toLowerCase();
-
-      // Handle "field: value" or "field value" format
-      if (partLower.startsWith('email:') || partLower.startsWith('email ')) {
-        email = part.replace(/^email[:\s]+/i, '').trim();
-      } else if (partLower.startsWith('phone:') || partLower.startsWith('phone ')) {
-        phone = part.replace(/^phone[:\s]+/i, '').trim();
-      } else if (partLower.startsWith('company:') || partLower.startsWith('company ')) {
-        company = part.replace(/^company[:\s]+/i, '').trim();
-      } else if (partLower.startsWith('address:') || partLower.startsWith('address ')) {
-        address = part.replace(/^address[:\s]+/i, '').trim();
-      } else if (partLower.startsWith('birthday:') || partLower.startsWith('birthday ')) {
-        birthday = part.replace(/^birthday[:\s]+/i, '').trim();
-      } else if (partLower.startsWith('note:') || partLower.startsWith('note ')) {
-        // Note goes into content
-        notes.push(part.replace(/^note[:\s]+/i, '').trim());
-      } else {
-        // Unrecognized format - add to notes
-        notes.push(part);
-      }
-    }
-
-    return { name, email, phone, company, address, birthday, content: notes.join('\n') };
+    const title = input.replace(/^(add|create|new)\s*contact\s+/i, '').trim();
+    return { title };
   },
 
   execute: async (args, context) => {
-    const { name, email, phone, company, address, birthday, content } = args as {
-      name: string;
+    const { title, email, phone, company, address, birthday } = args as {
+      title: string;
+      email?: string;
+      phone?: string;
+      company?: string;
+      address?: string;
+      birthday?: string;
+    };
+
+    if (!title) return 'What is the contact\'s name?';
+    const { garden } = getServices(context);
+
+    const contact = garden.create({ type: 'contact', title, email, phone, company, address, birthday });
+    return `Added contact: **${contact.title}**`;
+  },
+};
+
+export const showContact: Tool = {
+  name: 'showContact',
+  description: 'Show a contact\'s details and relationships',
+
+  routing: {
+    patterns: [
+      /^(show|open|view) contact\s+(.+)/i,
+    ],
+    keywords: {
+      verbs: ['show', 'open', 'view'],
+      nouns: ['contact'],
+    },
+    examples: ['show contact Alice Chen', 'view contact Bob Smith'],
+    priority: 74,
+  },
+
+  parseArgs: (input) => {
+    const title = input.replace(/^(show|open|view)\s*(contact)?\s+/i, '').trim();
+    return { title };
+  },
+
+  execute: async (args, context) => {
+    const { title, id } = args as { title?: string; id?: string };
+    const { views } = getServices(context);
+
+    const viewData = id ? views.openRecord(id) : (title ? views.resolve(title) : null);
+    if (!viewData) return `Contact not found: "${title ?? id}"`;
+    return renderer.render(viewData);
+  },
+};
+
+export const editContact: Tool = {
+  name: 'editContact',
+  description: 'Edit a contact\'s details',
+
+  routing: {
+    keywords: {
+      verbs: ['edit', 'update', 'change'],
+      nouns: ['contact'],
+    },
+    examples: ['edit contact Alice Chen'],
+    priority: 60,
+  },
+
+  parseArgs: (input) => ({ input }),
+
+  execute: async (args, context) => {
+    const { id, title, email, phone, company, address, birthday, content } = args as {
+      id?: string;
+      title?: string;
       email?: string;
       phone?: string;
       company?: string;
@@ -70,291 +111,85 @@ export const addContact: Tool = {
       content?: string;
     };
 
-    if (!name) {
-      return 'Please provide a name. Example: add contact Sarah Chen, email: sarah@example.com, company: Acme Corp';
-    }
+    const { garden } = getServices(context);
+    const record = id ? garden.get(id) : (title ? garden.getByTitle(title) : null);
+    if (!record) return 'Contact not found.';
 
-    const contact = context.services.garden.addContact(name, {
-      email,
-      phone,
-      company,
-      address,
-      birthday,
-      content
-    });
+    const updates: Record<string, unknown> = {};
+    if (email    !== undefined) updates.email    = email;
+    if (phone    !== undefined) updates.phone    = phone;
+    if (company  !== undefined) updates.company  = company;
+    if (address  !== undefined) updates.address  = address;
+    if (birthday !== undefined) updates.birthday = birthday;
+    if (content  !== undefined) updates.content  = content;
 
-    let response = `✓ Created contact: ${contact.title}`;
-    if (email) response += `\n  📧 Email: ${email}`;
-    if (phone) response += `\n  📱 Phone: ${phone}`;
-    if (company) response += `\n  🏢 Company: ${company}`;
-    if (address) response += `\n  📍 Address: ${address}`;
-    if (birthday) response += `\n  🎂 Birthday: ${birthday}`;
+    const updated = garden.update(record.id, updates as any);
+    return `Updated contact: **${updated?.title}**`;
+  },
+};
 
-    // If no content provided inline, prompt for it
-    if (!content?.trim()) {
-      context.services.context.setFact('system', 'pending_prompt', {
-        recordId: contact.id,
-        recordType: 'contact',
-        recordTitle: contact.title,
-      }, { source: 'explicit' });
+export const listContacts: Tool = {
+  name: 'listContacts',
+  description: 'List all active contacts',
 
-      response += '\n\nNote (optional, Enter to skip):';
-    }
+  routing: {
+    patterns: [
+      /^(list|show|view) (all\s+)?contacts?/i,
+    ],
+    keywords: {
+      verbs: ['list', 'show', 'view'],
+      nouns: ['contacts'],
+    },
+    examples: ['list contacts', 'show all contacts'],
+    priority: 77,
+  },
 
-    return response;
+  parseArgs: () => ({}),
+
+  execute: async (_args, context) => {
+    const { views } = getServices(context);
+    const viewData = views.resolve('Contacts');
+    if (!viewData) return 'No contacts found.';
+    return renderer.render(viewData);
   },
 };
 
 export const findContact: Tool = {
   name: 'findContact',
-  description: 'Search for a contact',
+  description: 'Find a contact by name or details',
 
   routing: {
     patterns: [
-      /^find\s+(contact\s+)?(.+)$/i,
-      /^search\s+(contact|contacts)\s+(.+)$/i,
-      /^who\s+is\s+(.+)$/i,
+      /^find contact\s+(.+)/i,
+      /^search contacts?\s+(.+)/i,
     ],
     keywords: {
-      verbs: ['find', 'search', 'lookup', 'who'],
-      nouns: ['contact', 'person'],
-    },
-    priority: 80,
-  },
-
-  parseArgs: (input) => {
-    const query = input
-      .replace(/^(find|search|who\s+is)\s+(contact\s+)?/i, '')
-      .trim();
-    return { query };
-  },
-
-  execute: async (args, context) => {
-    const { query } = args as { query: string };
-
-    if (!query) {
-      return 'Please provide a name to search. Example: find sarah';
-    }
-
-    const contacts = context.services.garden.searchContacts(query);
-
-    if (contacts.length === 0) {
-      return `No contacts found matching "${query}"`;
-    }
-
-    const lines = [`Found ${contacts.length} contact(s):`];
-    for (const c of contacts) {
-      lines.push(`\n**${c.title}**`);
-      if (c.email) lines.push(`  📧 Email: ${c.email}`);
-      if (c.phone) lines.push(`  📱 Phone: ${c.phone}`);
-      if (c.company) lines.push(`  🏢 Company: ${c.company}`);
-      if (c.address) lines.push(`  📍 Address: ${c.address}`);
-      if (c.birthday) lines.push(`  🎂 Birthday: ${c.birthday}`);
-    }
-
-    return lines.join('\n');
-  },
-};
-
-export const deleteContact: Tool = {
-  name: 'deleteContact',
-  description: 'Remove a contact',
-
-  routing: {
-    patterns: [
-      /^(delete|remove)\s+contact\s+(.+)$/i,
-    ],
-    keywords: {
-      verbs: ['delete', 'remove'],
+      verbs: ['find', 'search', 'look up'],
       nouns: ['contact'],
     },
-    priority: 90,  // Higher than addContact to catch "remove contact" first
+    examples: ['find contact Alice', 'search contacts Bob'],
+    priority: 74,
   },
 
   parseArgs: (input) => {
-    const query = input.replace(/^(delete|remove)\s+contact\s*/i, '').trim();
+    const query = input.replace(/^(find contact|search contacts?)\s+/i, '').trim();
     return { query };
   },
 
   execute: async (args, context) => {
     const { query } = args as { query: string };
+    if (!query) return 'What contact are you looking for?';
 
-    if (!query) {
-      return 'Please provide a contact name to remove. Example: remove contact John';
+    const { garden } = getServices(context);
+    const results = garden.search(query).filter(r => r.type === 'contact');
+
+    if (results.length === 0) return `No contacts found matching "${query}".`;
+
+    const lines = [`Found ${results.length} contact(s):\n`];
+    for (const c of results) {
+      const details = [c.email, c.phone, c.company].filter(Boolean).join(' · ');
+      lines.push(`• **${c.title}**${details ? `  ${details}` : ''}`);
     }
-
-    // Find the contact first
-    const contacts = context.services.garden.searchContacts(query);
-
-    if (contacts.length === 0) {
-      return `No contact found matching "${query}"`;
-    }
-
-    if (contacts.length > 1) {
-      const names = contacts.map(c => c.title).join(', ');
-      return `Multiple contacts match "${query}": ${names}\nPlease be more specific.`;
-    }
-
-    // Delete the single match
-    const contact = contacts[0];
-    const deleted = context.services.garden.delete(contact.id);
-
-    if (deleted) {
-      return `✓ Removed contact: ${contact.title}`;
-    }
-    return `Failed to remove contact: ${contact.title}`;
-  },
-};
-
-export const showWithContact: Tool = {
-  name: 'showWithContact',
-  description: 'Show all items linked to a contact',
-
-  routing: {
-    patterns: [
-      /^show\s+(all\s+)?with\s+(.+)$/i,
-      /^(actions?|events?|projects?)\s+with\s+(.+)$/i,
-      /^what.+with\s+(.+)\??$/i,
-      /^do\s+i\s+have\s+anything\s+with\s+(.+)\??$/i,
-    ],
-    keywords: {
-      verbs: ['show', 'list', 'find'],
-      nouns: ['with'],
-    },
-    examples: ['show all with sarah', 'actions with mom', 'do i have anything with nicole?'],
-    priority: 85,
-  },
-
-  parseArgs: (input) => {
-    // Extract contact name from various patterns
-    let contactName = '';
-    let filterType: string | undefined;
-    
-    const allWithMatch = input.match(/^show\s+(?:all\s+)?with\s+(.+)$/i);
-    if (allWithMatch) {
-      contactName = allWithMatch[1].trim();
-    }
-    
-    const typeWithMatch = input.match(/^(actions?|events?|projects?)\s+with\s+(.+)$/i);
-    if (typeWithMatch) {
-      filterType = typeWithMatch[1].toLowerCase().replace(/s$/, ''); // normalize to singular
-      contactName = typeWithMatch[2].trim();
-    }
-    
-    const whatWithMatch = input.match(/what.+with\s+(.+)\??$/i);
-    if (whatWithMatch) {
-      contactName = whatWithMatch[1].trim().replace(/\?$/, '');
-    }
-    
-    const anythingMatch = input.match(/anything\s+with\s+(.+)\??$/i);
-    if (anythingMatch) {
-      contactName = anythingMatch[1].trim().replace(/\?$/, '');
-    }
-    
-    // Clean up contact name
-    contactName = contactName.replace(/[?.,!]$/, '').trim();
-    
-    return { contactName, filterType };
-  },
-
-  execute: async (args, context) => {
-    const { contactName, filterType } = args as { contactName: string; filterType?: string };
-
-    if (!contactName) {
-      return 'Please specify a contact name. Example: show all with sarah';
-    }
-
-    // Resolve contact
-    const resolution = context.services.garden.resolveContact(contactName);
-    
-    if (resolution === null) {
-      return `No contact found matching "${contactName}"`;
-    }
-    
-    if (Array.isArray(resolution)) {
-      const names = resolution.map(c => c.title).join(', ');
-      return `Multiple contacts match "${contactName}": ${names}\nPlease be more specific.`;
-    }
-
-    const contact = context.services.garden.get(resolution.id);
-    if (!contact) {
-      return `Contact not found: ${contactName}`;
-    }
-
-    // Get all records linked to this contact
-    let records = context.services.garden.getByContact(resolution.id);
-    
-    // Filter by type if specified
-    if (filterType) {
-      records = records.filter(r => r.type === filterType);
-    }
-
-    // Also search calendar events for this contact
-    const calendarEvents = context.services.calendar.getUpcoming(30);
-    const linkedEvents = calendarEvents.filter(e => {
-      if (!e.metadata) return false;
-      try {
-        const meta = JSON.parse(e.metadata);
-        return meta.contactIds?.includes(resolution.id);
-      } catch {
-        return false;
-      }
-    });
-
-    if (records.length === 0 && linkedEvents.length === 0) {
-      return `No items linked to ${contact.title}`;
-    }
-
-    const lines: string[] = [`**Items with ${contact.title}**`];
-
-    // Group records by type
-    const actions = records.filter(r => r.type === 'action');
-    const projects = records.filter(r => r.type === 'project');
-    const notes = records.filter(r => r.type === 'note');
-    const others = records.filter(r => !['action', 'project', 'note'].includes(r.type));
-
-    if (actions.length > 0 && (!filterType || filterType === 'action')) {
-      lines.push(`\n**Actions** (${actions.length})`);
-      for (const a of actions) {
-        const ctx = a.context ? ` ${a.context}` : '';
-        const due = a.due_date ? ` [due: ${a.due_date}]` : '';
-        lines.push(`• ${a.title}${ctx}${due}`);
-      }
-    }
-
-    if (linkedEvents.length > 0 && (!filterType || filterType === 'event')) {
-      lines.push(`\n**Events** (${linkedEvents.length})`);
-      for (const e of linkedEvents) {
-        const d = new Date(e.start_time);
-        const dateStr = d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
-        const timeStr = e.all_day ? '' : ` ${d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}`;
-        lines.push(`• ${e.title} — ${dateStr}${timeStr}`);
-      }
-    }
-
-    if (projects.length > 0 && (!filterType || filterType === 'project')) {
-      lines.push(`\n**Projects** (${projects.length})`);
-      for (const p of projects) {
-        lines.push(`• ${p.title}`);
-      }
-    }
-
-    if (notes.length > 0) {
-      lines.push(`\n**Notes** (${notes.length})`);
-      for (const n of notes) {
-        lines.push(`• ${n.title}`);
-      }
-    }
-
-    if (others.length > 0) {
-      lines.push(`\n**Other** (${others.length})`);
-      for (const o of others) {
-        lines.push(`• ${o.title} (${o.type})`);
-      }
-    }
-
     return lines.join('\n');
   },
 };
-
-export const contactTools: Tool[] = [addContact, findContact, deleteContact, showWithContact];
