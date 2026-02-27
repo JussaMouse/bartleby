@@ -1,7 +1,6 @@
 // src/tools/index.ts
 import { Tool } from './types.js';
 import { promptHandler }                                                         from './prompt-handler.js';
-import { editSettingsWizard, settingsWizardHandler }                             from './settings-wizard.js';
 import { captureItem, showInbox, processItem, addAction,
          completeAction, editAction, listActions }                               from './actions.js';
 import { createProject, showProject, completeProject, listProjects }            from './projects.js';
@@ -25,7 +24,6 @@ import { settingsMigrationTools }                                               
 // promptHandler MUST be first for Layer 0 contextual routing.
 export const allTools: Tool[] = [
   promptHandler,
-  settingsWizardHandler,
 
   // Garden: items and actions
   captureItem,
@@ -93,7 +91,6 @@ export const allTools: Tool[] = [
   ...ocrTools,
   ...dataTools,
   ...settingsTools,
-  editSettingsWizard,
   ...firstRunTools,
   ...settingsMigrationTools,
 ];

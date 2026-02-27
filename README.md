@@ -611,7 +611,6 @@ Changes take effect immediately without restarting:
 > set calendar.timezone to America/New_York
 > set weather.city to London
 > setup wizard               # Re-run first-launch wizard
-> edit signal settings       # Guided wizard per category
 ```
 
 ### LLM Models
@@ -667,7 +666,6 @@ Free API key at [openweathermap.org](https://openweathermap.org/api).
 > set signal.recipient to +0987654321
 > set signal.receive-enabled to true
 > set signal.allowed-senders to +1234567890
-> edit signal settings
 ```
 
 Requires [signal-cli](https://github.com/AsamK/signal-cli) installed and registered.

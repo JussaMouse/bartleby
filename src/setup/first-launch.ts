@@ -79,7 +79,7 @@ const ENV_TO_DB: EnvMapping[] = [
 
 // ─── Settings Manifest (for optional-settings wizard) ─────────────────────────
 
-export interface SettingSpec {
+interface SettingSpec {
   key: string;
   label: string;
   description: string;
@@ -90,7 +90,7 @@ export interface SettingSpec {
   sensitive?: boolean;
 }
 
-export const SETTINGS_MANIFEST: SettingSpec[] = [
+const SETTINGS_MANIFEST: SettingSpec[] = [
   {
     key: 'weather.city',
     label: 'Weather city',
