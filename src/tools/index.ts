@@ -18,7 +18,6 @@ import { ocrTools }                                                             
 import { dataTools }                                                             from './data.js';
 import { settingsTools }                                                         from './settings.js';
 import { firstRunTools }                                                         from './first-run-wizard.js';
-import { settingsMigrationTools }                                                from './settings-migration.js';
 
 // Aggregate all tools.
 // promptHandler MUST be first for Layer 0 contextual routing.
@@ -92,7 +91,6 @@ export const allTools: Tool[] = [
   ...dataTools,
   ...settingsTools,
   ...firstRunTools,
-  ...settingsMigrationTools,
 ];
 
 export function getToolByName(name: string): Tool | undefined {

@@ -7,23 +7,26 @@ import { initServices, closeServices } from './services/index.js';
 import { CommandRouter } from './router/index.js';
 import { Agent } from './agent/index.js';
 import { info, error } from './utils/logger.js';
+import { SettingsService } from './services/settings.js';
 
 async function main() {
-  const config = loadConfig();
+  const settings = new SettingsService();
+  await settings.initialize();
+  const config = loadConfig(settings);
 
   info('Starting Bartleby Dashboard...');
 
-  const services = await initServices(config);
+  const services = await initServices(config, { settings });
   const router = new CommandRouter();
   await router.initialize(services);
   const agent = new Agent(services);
   services.context.startSession();
 
-  const port = parseInt(process.env.DASHBOARD_PORT || '3333', 10);
+  const port = config.dashboard.port || 3333;
   const dashboard = new DashboardServer(services, router, agent);
   await dashboard.start(port);
 
-  const displayHost = process.env.DASHBOARD_HOST || 'localhost';
+  const displayHost = config.dashboard.host || 'localhost';
   console.log(`\n📊 Dashboard running at http://${displayHost}:${port}`);
   console.log('   Open in browser while using Bartleby CLI\n');
 

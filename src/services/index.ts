@@ -48,7 +48,10 @@ export interface ServiceContainer {
   data:    DataService;
 }
 
-export async function initServices(config: Config): Promise<ServiceContainer> {
+export async function initServices(
+  config: Config,
+  options: { settings?: SettingsService } = {}
+): Promise<ServiceContainer> {
   info('Initializing services...');
 
   // ── Infrastructure ──────────────────────────────────────────────────────────
@@ -77,10 +80,12 @@ export async function initServices(config: Config): Promise<ServiceContainer> {
   const rels   = new RelationshipService(garden.getDB(), garden);
   const views  = new ViewService(garden.getDB(), garden, rels);
 
-  // ── Settings and Learning share the same DB connection ──────────────────────
+  // ── Settings and Learning ──────────────────────────────────────────────────
 
-  const settings = new SettingsService(garden.getDB());
-  await settings.initialize();
+  const settings = options.settings ?? new SettingsService();
+  if (!options.settings) {
+    await settings.initialize();
+  }
 
   const learning = new LearningService(garden.getDB());
 

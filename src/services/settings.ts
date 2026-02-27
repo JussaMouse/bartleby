@@ -1,477 +1,205 @@
-// src/services/settings.ts
-import Database from 'better-sqlite3';
 import { debug, warn } from '../utils/logger.js';
+import {
+  SETTINGS_REGISTRY,
+  SETTINGS_BY_KEY,
+  getSettingsByCategory,
+  type SettingDefinition,
+} from '../settings/registry.js';
+import {
+  defaultSettingsPaths,
+  readSettingsFile,
+  writeSettingsFile,
+  type SettingsStorePaths,
+} from '../settings/store.js';
 
-/**
- * Database schema for settings
- */
-const SCHEMA = `
-CREATE TABLE IF NOT EXISTS settings (
-  key TEXT PRIMARY KEY,
-  value TEXT NOT NULL,
-  value_type TEXT NOT NULL,
-  category TEXT NOT NULL,
-  description TEXT,
-  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
-);
+const FIRST_RUN_KEY = 'system.first_run_completed';
 
-CREATE INDEX IF NOT EXISTS idx_settings_category
-  ON settings(category);
-
-CREATE TABLE IF NOT EXISTS settings_metadata (
-  id TEXT PRIMARY KEY DEFAULT 'singleton',
-  first_run_completed BOOLEAN DEFAULT FALSE,
-  migration_version INTEGER DEFAULT 0,
-  last_migration_at TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now'))
-);
-
--- Ensure metadata row exists
-INSERT OR IGNORE INTO settings_metadata (id) VALUES ('singleton');
-`;
-
-/**
- * Type mappings for value storage
- */
-type SettingValueType = 'string' | 'number' | 'boolean' | 'json';
-
-/**
- * Setting record from database
- */
-export interface SettingRecord {
-  key: string;
-  value: string;
-  value_type: SettingValueType;
-  category: string;
-  description?: string;
-  updated_at: string;
+export interface SettingsStats {
+  total: number;
+  byCategory: Record<string, number>;
+  firstRunCompleted: boolean;
 }
 
-/**
- * Settings metadata record
- */
-export interface SettingsMetadata {
-  id: string;
-  first_run_completed: boolean;
-  migration_version: number;
-  last_migration_at?: string;
-  created_at: string;
-}
-
-/**
- * SettingsService manages application configuration in the database
- *
- * Provides runtime-configurable settings with categorization, type safety,
- * and migration support. Replaces most .env configuration.
- */
 export class SettingsService {
-  private db: Database.Database;
-  private cache: Map<string, any> = new Map();
-  private cacheEnabled: boolean = true;
+  private settings: Record<string, unknown> = {};
+  private secrets: Record<string, unknown> = {};
+  private loaded = false;
+  private firstRunCompleted = false;
+  private storePaths: SettingsStorePaths;
 
-  /**
-   * Create SettingsService with shared database connection
-   *
-   * @param db - Shared database instance
-   */
-  constructor(db: Database.Database) {
-    this.db = db;
+  constructor(storePaths?: SettingsStorePaths) {
+    this.storePaths = storePaths ?? defaultSettingsPaths();
   }
 
-  /**
-   * Initialize settings schema
-   */
   async initialize(): Promise<void> {
-    this.db.exec(SCHEMA);
-    debug('SettingsService initialized');
+    this.settings = readSettingsFile(this.storePaths.settingsPath);
+    this.secrets = readSettingsFile(this.storePaths.secretsPath);
+    this.firstRunCompleted = Boolean(this.settings[FIRST_RUN_KEY]);
+    this.loaded = true;
+    debug('SettingsService initialized', { settings: Object.keys(this.settings).length });
   }
 
-  /**
-   * Get a setting value with type conversion
-   *
-   * @param key - Setting key (e.g., 'llm.router-model')
-   * @param defaultValue - Default value if not found
-   * @returns Setting value with proper type
-   */
-  getSetting<T = any>(key: string, defaultValue?: T): T {
-    // Check cache first
-    if (this.cacheEnabled && this.cache.has(key)) {
-      return this.cache.get(key) as T;
-    }
+  isFirstRun(): boolean {
+    return !this.firstRunCompleted;
+  }
 
-    try {
-      const stmt = this.db.prepare('SELECT * FROM settings WHERE key = ?');
-      const record = stmt.get(key) as SettingRecord | undefined;
+  markFirstRunComplete(): void {
+    this.firstRunCompleted = true;
+    this.settings[FIRST_RUN_KEY] = true;
+    this.persistSettings();
+  }
 
-      if (!record) {
-        if (defaultValue !== undefined) {
-          return defaultValue;
-        }
-        throw new Error(`Setting not found: ${key}`);
-      }
-
-      // Convert value based on type
-      const value = this.deserializeValue(record.value, record.value_type);
-
-      // Cache the value
-      if (this.cacheEnabled) {
-        this.cache.set(key, value);
-      }
-
-      return value as T;
-    } catch (err) {
-      warn('Failed to get setting', { key, error: String(err) });
+  getSetting<T = unknown>(key: string, defaultValue?: T): T {
+    const definition = SETTINGS_BY_KEY.get(key);
+    if (!definition) {
       if (defaultValue !== undefined) {
         return defaultValue;
       }
-      throw err;
+      throw new Error(`Unknown setting key: ${key}`);
     }
+
+    const rawValue = this.readValue(definition);
+    if (rawValue === undefined) {
+      return (defaultValue !== undefined ? defaultValue : definition.default) as T;
+    }
+
+    return rawValue as T;
   }
 
-  /**
-   * Set a setting value with type detection
-   *
-   * @param key - Setting key
-   * @param value - Value to store
-   * @param category - Setting category (e.g., 'llm', 'calendar')
-   * @param description - Optional description
-   */
-  setSetting<T = any>(
+  hasSetting(key: string): boolean {
+    const definition = SETTINGS_BY_KEY.get(key);
+    if (!definition) {
+      throw new Error(`Unknown setting key: ${key}`);
+    }
+
+    const source = definition.secret ? this.secrets : this.settings;
+    return Object.prototype.hasOwnProperty.call(source, key);
+  }
+
+  setSetting<T = unknown>(
     key: string,
     value: T,
     category: string,
     description?: string
   ): void {
-    try {
-      const valueType = this.detectValueType(value);
-      const serialized = this.serializeValue(value, valueType);
+    const definition = SETTINGS_BY_KEY.get(key);
+    if (!definition) {
+      throw new Error(`Unknown setting key: ${key}`);
+    }
 
-      const stmt = this.db.prepare(`
-        INSERT INTO settings (key, value, value_type, category, description)
-        VALUES (?, ?, ?, ?, ?)
-        ON CONFLICT(key) DO UPDATE SET
-          value = excluded.value,
-          value_type = excluded.value_type,
-          category = excluded.category,
-          description = COALESCE(excluded.description, description),
-          updated_at = datetime('now')
-      `);
+    if (definition.category !== category) {
+      warn('Setting category mismatch', { key, category, expected: definition.category });
+    }
 
-      stmt.run(key, serialized, valueType, category, description || null);
+    const normalized = normalizeValue(definition, value);
+    const validationError = definition.validate ? definition.validate(normalized as any) : null;
+    if (validationError) {
+      throw new Error(validationError);
+    }
 
-      // Update cache
-      if (this.cacheEnabled) {
-        this.cache.set(key, value);
-      }
+    if (definition.secret) {
+      this.secrets[key] = normalized;
+      this.persistSecrets();
+    } else {
+      this.settings[key] = normalized;
+      this.persistSettings();
+    }
 
-      debug('Setting updated', { key, category });
-    } catch (err) {
-      warn('Failed to set setting', { key, error: String(err) });
-      throw err;
+    if (description) {
+      debug('Setting updated', { key, description });
     }
   }
 
-  /**
-   * Get all settings in a category
-   *
-   * @param category - Category name
-   * @returns Object with setting keys and values
-   */
-  getCategory(category: string): Record<string, any> {
-    try {
-      const stmt = this.db.prepare('SELECT * FROM settings WHERE category = ?');
-      const records = stmt.all(category) as SettingRecord[];
+  getCategory(category: string): Record<string, unknown> {
+    const definitions = getSettingsByCategory(category);
+    const result: Record<string, unknown> = {};
 
-      const result: Record<string, any> = {};
-
-      for (const record of records) {
-        // Remove category prefix from key for cleaner access
-        const shortKey = record.key.replace(`${category}.`, '');
-        result[shortKey] = this.deserializeValue(record.value, record.value_type);
-      }
-
-      return result;
-    } catch (err) {
-      warn('Failed to get category', { category, error: String(err) });
-      return {};
+    for (const definition of definitions) {
+      const value = this.readValue(definition);
+      const shortKey = definition.key.replace(`${category}.`, '');
+      result[shortKey] = value !== undefined ? value : definition.default;
     }
+
+    return result;
   }
 
-  /**
-   * Get all settings grouped by category
-   *
-   * @returns Object with categories as keys
-   */
-  getAllSettings(): Record<string, Record<string, any>> {
-    try {
-      const stmt = this.db.prepare('SELECT DISTINCT category FROM settings ORDER BY category');
-      const categories = stmt.all() as Array<{ category: string }>;
+  getAllSettings(): Record<string, Record<string, unknown>> {
+    const categories = new Set(SETTINGS_REGISTRY.map((definition) => definition.category));
+    const result: Record<string, Record<string, unknown>> = {};
 
-      const result: Record<string, Record<string, any>> = {};
-
-      for (const { category } of categories) {
-        result[category] = this.getCategory(category);
-      }
-
-      return result;
-    } catch (err) {
-      warn('Failed to get all settings', { error: String(err) });
-      return {};
+    for (const category of categories) {
+      result[category] = this.getCategory(category);
     }
+
+    return result;
   }
 
-  /**
-   * Delete a setting
-   *
-   * @param key - Setting key to delete
-   * @returns True if deleted, false if not found
-   */
-  deleteSetting(key: string): boolean {
-    try {
-      const stmt = this.db.prepare('DELETE FROM settings WHERE key = ?');
-      const result = stmt.run(key);
+  getStats(): SettingsStats {
+    const byCategory: Record<string, number> = {};
 
-      // Remove from cache
-      this.cache.delete(key);
-
-      debug('Setting deleted', { key, deleted: result.changes > 0 });
-      return result.changes > 0;
-    } catch (err) {
-      warn('Failed to delete setting', { key, error: String(err) });
-      return false;
+    for (const definition of SETTINGS_REGISTRY) {
+      byCategory[definition.category] = (byCategory[definition.category] || 0) + 1;
     }
+
+    return {
+      total: SETTINGS_REGISTRY.length,
+      byCategory,
+      firstRunCompleted: this.firstRunCompleted,
+    };
   }
 
-  /**
-   * Reset all settings in a category (delete them)
-   *
-   * @param category - Category to reset (if undefined, resets all)
-   * @returns Number of settings deleted
-   */
-  reset(category?: string): number {
-    try {
-      let stmt: Database.Statement;
-
-      if (category) {
-        stmt = this.db.prepare('DELETE FROM settings WHERE category = ?');
-        stmt.run(category);
-      } else {
-        stmt = this.db.prepare('DELETE FROM settings');
-        stmt.run();
-      }
-
-      // Clear cache
-      this.cache.clear();
-
-      const changes = stmt.run(category || '').changes;
-      debug('Settings reset', { category: category || 'all', count: changes });
-
-      return changes;
-    } catch (err) {
-      warn('Failed to reset settings', { category, error: String(err) });
-      return 0;
-    }
-  }
-
-  /**
-   * Check if this is the first run (no settings exist)
-   *
-   * @returns True if first run
-   */
-  isFirstRun(): boolean {
-    try {
-      const stmt = this.db.prepare(
-        'SELECT first_run_completed FROM settings_metadata WHERE id = ?'
-      );
-      const metadata = stmt.get('singleton') as SettingsMetadata | undefined;
-
-      return metadata ? !metadata.first_run_completed : true;
-    } catch (err) {
-      warn('Failed to check first run', { error: String(err) });
-      return true; // Assume first run on error
-    }
-  }
-
-  /**
-   * Mark first run as completed
-   */
-  markFirstRunComplete(): void {
-    try {
-      const stmt = this.db.prepare(`
-        UPDATE settings_metadata
-        SET first_run_completed = TRUE
-        WHERE id = ?
-      `);
-
-      stmt.run('singleton');
-      debug('First run marked complete');
-    } catch (err) {
-      warn('Failed to mark first run complete', { error: String(err) });
-      throw err;
-    }
-  }
-
-  /**
-   * Get migration version
-   *
-   * @returns Current migration version
-   */
-  getMigrationVersion(): number {
-    try {
-      const stmt = this.db.prepare(
-        'SELECT migration_version FROM settings_metadata WHERE id = ?'
-      );
-      const metadata = stmt.get('singleton') as SettingsMetadata | undefined;
-
-      return metadata?.migration_version || 0;
-    } catch (err) {
-      warn('Failed to get migration version', { error: String(err) });
-      return 0;
-    }
-  }
-
-  /**
-   * Set migration version
-   *
-   * @param version - New migration version
-   */
-  setMigrationVersion(version: number): void {
-    try {
-      const stmt = this.db.prepare(`
-        UPDATE settings_metadata
-        SET migration_version = ?,
-            last_migration_at = datetime('now')
-        WHERE id = ?
-      `);
-
-      stmt.run(version, 'singleton');
-      debug('Migration version updated', { version });
-    } catch (err) {
-      warn('Failed to set migration version', { version, error: String(err) });
-      throw err;
-    }
-  }
-
-  /**
-   * Migrate settings from environment variables
-   *
-   * @param envConfig - Configuration object from .env
-   */
-  migrateFromEnv(envConfig: Record<string, any>): void {
-    debug('Starting environment migration');
-
-    // This will be implemented in the migration tool
-    // For now, just log that migration was requested
-    warn('Environment migration not yet implemented', {
-      keys: Object.keys(envConfig).length,
-    });
-  }
-
-  /**
-   * Clear the settings cache
-   */
   clearCache(): void {
-    this.cache.clear();
-    debug('Settings cache cleared');
+    debug('Settings cache cleared (noop for file-backed settings)');
   }
 
-  /**
-   * Detect the type of a value
-   */
-  private detectValueType(value: any): SettingValueType {
-    if (typeof value === 'string') return 'string';
-    if (typeof value === 'number') return 'number';
-    if (typeof value === 'boolean') return 'boolean';
-    return 'json';
+  private readValue(definition: SettingDefinition): unknown {
+    const source = definition.secret ? this.secrets : this.settings;
+    if (Object.prototype.hasOwnProperty.call(source, definition.key)) {
+      return source[definition.key];
+    }
+
+    return undefined;
   }
 
-  /**
-   * Serialize a value for storage
-   */
-  private serializeValue(value: any, type: SettingValueType): string {
-    switch (type) {
-      case 'string':
-        return String(value);
-      case 'number':
-        return String(value);
-      case 'boolean':
-        return value ? '1' : '0';
-      case 'json':
-        return JSON.stringify(value);
-      default:
-        return String(value);
+  private persistSettings(): void {
+    if (!this.loaded) return;
+    writeSettingsFile(this.storePaths.settingsPath, this.settings);
+  }
+
+  private persistSecrets(): void {
+    if (!this.loaded) return;
+    writeSettingsFile(this.storePaths.secretsPath, this.secrets, { fileMode: 0o600 });
+  }
+}
+
+function normalizeValue<T>(definition: SettingDefinition<T>, value: T): T {
+  if (definition.type === 'string_list') {
+    if (Array.isArray(value)) {
+      return value.map((entry) => String(entry).trim()).filter((entry) => entry.length > 0) as T;
+    }
+    if (typeof value === 'string') {
+      return value
+        .split(',')
+        .map((entry) => entry.trim())
+        .filter((entry) => entry.length > 0) as T;
     }
   }
 
-  /**
-   * Deserialize a value from storage
-   */
-  private deserializeValue(value: string, type: SettingValueType): any {
-    switch (type) {
-      case 'string':
-        return value;
-      case 'number':
-        return Number(value);
-      case 'boolean':
-        return value === '1' || value === 'true';
-      case 'json':
-        try {
-          return JSON.parse(value);
-        } catch {
-          return value;
-        }
-      default:
-        return value;
+  if (definition.type === 'number' && typeof value === 'string') {
+    const parsed = Number(value);
+    return (Number.isNaN(parsed) ? definition.default : parsed) as T;
+  }
+
+  if (definition.type === 'boolean' && typeof value === 'string') {
+    return (value.toLowerCase() === 'true') as T;
+  }
+
+  if (definition.type === 'enum' && definition.options) {
+    const normalized = String(value);
+    if (!definition.options.includes(normalized)) {
+      throw new Error(`Invalid value for ${definition.key}. Allowed: ${definition.options.join(', ')}`);
     }
   }
 
-  /**
-   * Get statistics about settings
-   */
-  getStats(): {
-    total: number;
-    byCategory: Record<string, number>;
-    firstRunCompleted: boolean;
-    migrationVersion: number;
-  } {
-    try {
-      // Total count
-      const totalStmt = this.db.prepare('SELECT COUNT(*) as count FROM settings');
-      const total = (totalStmt.get() as { count: number }).count;
-
-      // By category
-      const categoryStmt = this.db.prepare(`
-        SELECT category, COUNT(*) as count
-        FROM settings
-        GROUP BY category
-      `);
-      const categories = categoryStmt.all() as Array<{ category: string; count: number }>;
-
-      const byCategory: Record<string, number> = {};
-      for (const { category, count } of categories) {
-        byCategory[category] = count;
-      }
-
-      // Metadata
-      const metadataStmt = this.db.prepare(
-        'SELECT * FROM settings_metadata WHERE id = ?'
-      );
-      const metadata = metadataStmt.get('singleton') as SettingsMetadata | undefined;
-
-      return {
-        total,
-        byCategory,
-        firstRunCompleted: metadata?.first_run_completed || false,
-        migrationVersion: metadata?.migration_version || 0,
-      };
-    } catch (err) {
-      warn('Failed to get settings stats', { error: String(err) });
-      return {
-        total: 0,
-        byCategory: {},
-        firstRunCompleted: false,
-        migrationVersion: 0,
-      };
-    }
-  }
+  return value;
 }

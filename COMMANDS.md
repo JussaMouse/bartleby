@@ -159,13 +159,13 @@ rule: respond in plain text only
 | `settings` | Show all settings grouped by category |
 | `settings <category>` | Show specific category |
 | `set <key> to <value>` | Quick set a setting |
-| `edit settings` | Interactive wizard |
-| `migrate settings` | Migrate .env to database (one-time) |
+| `setup wizard` | Re-run setup defaults (preserves existing) |
 
 **Quick Set Examples:**
 ```
-set llm.router-model to claude-opus-4-6
+set llm.router.model to claude-opus-4-6
 set weather.city to Portland
+set weather.api_key to <key>
 ```
 
 ---
@@ -177,7 +177,7 @@ set weather.city to Portland
 | `weather` | Current weather |
 | `what's the weather` | Same |
 
-*Requires `weather.city` and `weather.api-key` — set via settings.*
+*Requires `weather.city` and `weather.api_key` — set via settings.*
 
 ---
 

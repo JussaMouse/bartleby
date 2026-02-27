@@ -12,7 +12,6 @@ import { fileURLToPath } from 'url';
 import { Agent } from '../agent/index.js';
 import { CommandRouter } from '../router/index.js';
 import { ServiceContainer } from '../services/index.js';
-import { loadConfig } from '../config.js';
 import { info, error } from '../utils/logger.js';
 import { handleCommand } from '../app/command-handler.js';
 import type { GardenService } from '../garden/GardenService.js';
@@ -58,8 +57,7 @@ export class DashboardServer {
   private router: CommandRouter;
   private agent: Agent;
   private dashRenderer = new DashboardRenderer();
-  private apiToken = process.env.BARTLEBY_API_TOKEN?.trim() || '';
-  private config = loadConfig();
+  private apiToken = '';
 
   // New garden services (wired in Phase 7, accessed as any until then)
   private get garden(): GardenService  { return (this.services as any).garden as GardenService; }
@@ -70,6 +68,7 @@ export class DashboardServer {
     this.services = services;
     this.router = router;
     this.agent = agent;
+    this.apiToken = services.config.dashboard.apiToken?.trim() || '';
     this.setupMiddleware();
     this.setupRoutes();
     this.setupWebSocket();
@@ -83,10 +82,9 @@ export class DashboardServer {
 
     // IP whitelist
     this.app.use((req, res, next) => {
-      const allowedIpsEnv = process.env.BARTLEBY_ALLOWED_IPS?.trim();
-      if (!allowedIpsEnv) return next();
+      const allowedIps = this.services.config.dashboard.allowedIps;
+      if (!allowedIps || allowedIps.length === 0) return next();
 
-      const allowedIps = allowedIpsEnv.split(',').map(ip => ip.trim()).filter(Boolean);
       const localhostIps = ['127.0.0.1', '::1', '::ffff:127.0.0.1'];
       const allAllowed = [...allowedIps, ...localhostIps];
       const clientIp = req.ip || req.socket.remoteAddress || '';
@@ -107,7 +105,7 @@ export class DashboardServer {
       if (req.path === '/test' || req.path.startsWith('/chat')) return next();
 
       if (!this.apiToken) {
-        const host = process.env.DASHBOARD_HOST || 'localhost';
+        const host = this.services.config.dashboard.host || 'localhost';
         if (host !== 'localhost' && host !== '127.0.0.1') {
           return res.status(500).json({ error: 'Server authentication not configured' });
         }

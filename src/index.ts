@@ -2,23 +2,23 @@
 import { loadConfig, Config } from './config.js';
 import { configureLogger, LogLevel, info, error } from './utils/logger.js';
 import { initServices, closeServices, ServiceContainer } from './services/index.js';
+import { SettingsService } from './services/settings.js';
 import { CommandRouter } from './router/index.js';
 import { Agent } from './agent/index.js';
 import { startRepl } from './repl.js';
 import { DashboardServer } from './server/index.js';
 import { SignalReceiver } from './transports/signal-receiver.js';
 
-function checkBootstrapConfig(): void {
+function checkBootstrapConfig(config: Config): void {
   const hasUrl =
-    process.env.LLM_URL ||
-    process.env.ROUTER_URL ||
-    process.env.FAST_URL ||
-    process.env.THINKING_URL;
+    config.llm.router.url ||
+    config.llm.fast.url ||
+    config.llm.thinking.url;
 
   if (!hasUrl) {
     console.error('\n❌ Bartleby is not configured yet.\n');
-    console.error('  Copy .env.example to .env and set at minimum:\n');
-    console.error('    LLM_URL=http://your-llm-endpoint/v1\n');
+    console.error('  Set your LLM endpoint in settings.yaml:\n');
+    console.error('    llm.router.url: http://your-llm-endpoint/v1\n');
     console.error('  Then run: pnpm start\n');
     process.exit(1);
   }
@@ -28,42 +28,42 @@ function validateSecurityPosture(config: Config): void {
   const errors: string[] = [];
   const warnings: string[] = [];
 
-  const dashboardHost = process.env.DASHBOARD_HOST || 'localhost';
-  const apiToken = process.env.BARTLEBY_API_TOKEN?.trim() || '';
-  const allowedIps = process.env.BARTLEBY_ALLOWED_IPS?.trim() || '';
+  const dashboardHost = config.dashboard.host || 'localhost';
+  const apiToken = config.dashboard.apiToken?.trim() || '';
+  const allowedIps = config.dashboard.allowedIps ?? [];
 
   // Check dashboard host binding
   if (dashboardHost === '0.0.0.0') {
     // 0.0.0.0 is acceptable IF IP whitelist is configured
-    if (!allowedIps) {
-      errors.push('DASHBOARD_HOST=0.0.0.0 exposes Bartleby to ALL networks');
-      errors.push('Either use specific IP (localhost/Tailscale) or set BARTLEBY_ALLOWED_IPS');
+    if (allowedIps.length === 0) {
+      errors.push('dashboard.host=0.0.0.0 exposes Bartleby to ALL networks');
+      errors.push('Either use a specific IP (localhost/Tailscale) or set dashboard.allowed_ips');
     } else {
-      warnings.push('DASHBOARD_HOST=0.0.0.0 with IP whitelist - ensure whitelist is correct');
+      warnings.push('dashboard.host=0.0.0.0 with IP whitelist - ensure whitelist is correct');
     }
   }
 
   // Require API token if not localhost
   if (dashboardHost !== 'localhost' && dashboardHost !== '127.0.0.1') {
     if (!apiToken) {
-      errors.push('BARTLEBY_API_TOKEN required when DASHBOARD_HOST is not localhost');
+      errors.push('dashboard.api_token required when dashboard.host is not localhost');
       errors.push('Generate with: openssl rand -hex 32');
     } else if (apiToken.length < 32) {
-      warnings.push('BARTLEBY_API_TOKEN should be at least 32 characters for security');
+      warnings.push('dashboard.api_token should be at least 32 characters for security');
     }
   }
 
   // Validate IP whitelist format
-  if (allowedIps) {
-    const ips = allowedIps.split(',').map(ip => ip.trim()).filter(ip => ip);
+  if (allowedIps.length > 0) {
+    const ips = allowedIps.map(ip => ip.trim()).filter(ip => ip);
     if (ips.length === 0) {
-      warnings.push('BARTLEBY_ALLOWED_IPS is set but empty - will allow all IPs');
+      warnings.push('dashboard.allowed_ips is set but empty - will allow all IPs');
     } else {
       // Simple validation - check if IPs look valid
       const ipPattern = /^(\d{1,3}\.){3}\d{1,3}$|^([0-9a-f:]+)$/i;
       const invalidIps = ips.filter(ip => !ipPattern.test(ip));
       if (invalidIps.length > 0) {
-        warnings.push(`BARTLEBY_ALLOWED_IPS contains potentially invalid IPs: ${invalidIps.join(', ')}`);
+        warnings.push(`dashboard.allowed_ips contains potentially invalid IPs: ${invalidIps.join(', ')}`);
       }
     }
   }
@@ -123,17 +123,21 @@ function validateSecurityPosture(config: Config): void {
 }
 
 async function main(): Promise<void> {
-  // 0. Guard against missing LLM URL (dotenv already loaded at module level)
-  checkBootstrapConfig();
+  // 0. Load settings (for config)
+  const settings = new SettingsService();
+  await settings.initialize();
 
   // 1. Load config
   let config: Config;
   try {
-    config = loadConfig();
+    config = loadConfig(settings);
   } catch (err) {
     console.error('Failed to load config:', err);
     process.exit(1);
   }
+
+  // 1.5 Guard against missing LLM URL
+  checkBootstrapConfig(config);
 
   // 2. Configure logging
   const levelMap: Record<string, LogLevel> = {
@@ -157,7 +161,7 @@ async function main(): Promise<void> {
   // 3. Initialize services
   let services: ServiceContainer;
   try {
-    services = await initServices(config);
+    services = await initServices(config, { settings });
   } catch (err) {
     error('Failed to initialize services', { error: String(err) });
     process.exit(1);
@@ -170,8 +174,8 @@ async function main(): Promise<void> {
   const agent = new Agent(services);
 
   // 5. Start dashboard server
-  const dashboardHost = process.env.DASHBOARD_HOST || 'localhost';
-  const dashboardPort = parseInt(process.env.DASHBOARD_PORT || '3333');
+  const dashboardHost = config.dashboard.host || 'localhost';
+  const dashboardPort = config.dashboard.port || 3333;
   const dashboardServer = new DashboardServer(services, router, agent);
   dashboardServer.start(dashboardPort);
   info(`Dashboard server started at http://${dashboardHost}:${dashboardPort}`);

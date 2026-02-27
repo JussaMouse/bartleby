@@ -35,7 +35,7 @@ pnpm install && pnpm approve-builds && pnpm build
 cp .env.example .env
 ```
 
-Edit `.env` with your LLM endpoint (e.g., [MLX](https://github.com/ml-explore/mlx), [Ollama](https://ollama.ai), or [llama.cpp](https://github.com/ggerganov/llama.cpp)):
+Edit `.env` with your LLM endpoint (bootstrap only) — e.g., [MLX](https://github.com/ml-explore/mlx), [Ollama](https://ollama.ai), or [llama.cpp](https://github.com/ggerganov/llama.cpp):
 
 ```env
 LLM_URL=http://127.0.0.1:8080/v1
@@ -45,12 +45,13 @@ DATABASE_PATH=./database
 LOG_LEVEL=info
 ```
 
-All other settings (models, calendar, weather, OCR, etc.) are configured via the interactive wizard on first run or the `settings` command.
+All other settings (models, calendar, weather, OCR, dashboard access) live in `settings.yaml` + `secrets.yaml`, generated on first run. Configure via the setup wizard or the `settings` command.
 
-For remote access, also set:
-```env
-BARTLEBY_API_TOKEN=<openssl rand -hex 32>
-DASHBOARD_HOST=localhost    # or your Tailscale IP
+For remote access, set dashboard settings in `settings.yaml` (or with `set` commands), e.g.:
+```yaml
+dashboard.host: 100.x.x.x
+dashboard.api_token: <openssl rand -hex 32>
+dashboard.allowed_ips: [127.0.0.1, 100.x.x.x]
 ```
 
 **3. Run**
@@ -463,7 +464,7 @@ Available views: Inbox, Next Actions, All Projects, All Notes, All Events, Conta
 
 ### Authentication
 
-When `DASHBOARD_HOST` is not `localhost`, you'll be prompted for your `BARTLEBY_API_TOKEN` on first use. The token is cached in browser localStorage.
+When `dashboard.host` is not `localhost`, you'll be prompted for your `dashboard.api_token` on first use. The token is cached in browser localStorage.
 
 ---
 
@@ -476,7 +477,7 @@ git clone https://github.com/JussaMouse/bartleby.git
 cd bartleby
 pnpm install && pnpm approve-builds && pnpm build
 cp .env.example .env
-# Set LLM_URL, BARTLEBY_API_TOKEN, and DASHBOARD_HOST in .env
+# Set LLM_URL in .env
 pnpm start
 ```
 
@@ -507,19 +508,19 @@ sudo tailscaled &
 sudo tailscale up
 ```
 
-Set in `.env`:
-```env
-DASHBOARD_HOST=100.x.x.x      # Your Tailscale IP: tailscale ip -4
-BARTLEBY_API_TOKEN=<token>    # Required: openssl rand -hex 32
+Set in `settings.yaml` (or via `set` commands):
+```yaml
+dashboard.host: 100.x.x.x      # Your Tailscale IP: tailscale ip -4
+dashboard.api_token: <token>  # Required: openssl rand -hex 32
 ```
 
 Install Tailscale on iPhone → sign in with the same account → open `http://<tailscale-ip>:3333`.
 
 **Multi-device access with IP whitelisting:**
-```env
-DASHBOARD_HOST=0.0.0.0
-BARTLEBY_ALLOWED_IPS=127.0.0.1,100.x.x.x    # Localhost + device Tailscale IPs
-BARTLEBY_API_TOKEN=<token>
+```yaml
+dashboard.host: 0.0.0.0
+dashboard.allowed_ips: [127.0.0.1, 100.x.x.x]    # Localhost + device Tailscale IPs
+dashboard.api_token: <token>
 ```
 
 ### Siri Shortcuts
@@ -573,11 +574,24 @@ Keep the tunnel open while Bartleby is running. Local `.env` stays unchanged.
 
 ## Configuration
 
-Bartleby uses a two-tier system: `.env` for bootstrap settings, database for everything else.
+Bartleby uses a two-tier system: `.env` for bootstrap settings, `settings.yaml` + `secrets.yaml` for everything else.
+
+### settings.yaml + secrets.yaml
+
+Non-sensitive settings live in `settings.yaml`. Secrets (API keys, phone numbers) live in `secrets.yaml`.
+Both files use flat keys, for example:
+
+```yaml
+llm.router.url: http://127.0.0.1:8080/v1
+weather.city: Austin
+dashboard.api_token: <secret>
+```
+
+Generated on first run (or via `setup wizard`).
 
 ### .env (Bootstrap)
 
-Only what's needed to start. Everything else lives in the database.
+Only what's needed to start. Everything else lives in `settings.yaml`.
 
 ```env
 # LLM (required)
@@ -588,12 +602,6 @@ EMBEDDINGS_URL=http://127.0.0.1:8081/v1    # Optional separate endpoint
 DATABASE_PATH=./database
 SHED_PATH=./shed
 LOG_DIR=./logs
-
-# Dashboard
-DASHBOARD_PORT=3333
-DASHBOARD_HOST=localhost
-BARTLEBY_API_TOKEN=                         # Required for remote access
-BARTLEBY_ALLOWED_IPS=                       # Optional: comma-separated IPs
 
 # Logging
 LOG_LEVEL=info
@@ -607,9 +615,9 @@ Changes take effect immediately without restarting:
 ```
 > settings                   # Show all settings
 > settings llm               # Show one category
-> set llm.fast-model to qwen3:7b
+> set llm.fast.model to qwen3:7b
 > set calendar.timezone to America/New_York
-> set weather.city to London
+> set weather.api_key to <key>
 > setup wizard               # Re-run first-launch wizard
 ```
 
@@ -624,9 +632,9 @@ Bartleby uses three model tiers:
 | Thinking | 30B+ | Multi-step reasoning | 2–10s |
 
 ```
-> set llm.router-model to qwen3:0.6b
-> set llm.fast-model to qwen3:7b
-> set llm.thinking-model to qwen3:32b
+> set llm.router.model to qwen3:0.6b
+> set llm.fast.model to qwen3:7b
+> set llm.thinking.model to qwen3:32b
 ```
 
 ### OCR
@@ -643,16 +651,16 @@ Recommended model: `olmOCR-2-7B-1025-MLX-8bit` (Apple Silicon).
 
 ```
 > set calendar.timezone to America/Los_Angeles
-> set calendar.default-duration to 60        # Event duration in minutes
-> set calendar.week-start to sunday          # or monday
-> set calendar.date-format to mdy            # or dmy
+> set calendar.default_duration_minutes to 60   # Event duration in minutes
+> set calendar.week_start to sunday             # or monday
+> set calendar.date_format to mdy               # or dmy
 ```
 
 ### Weather
 
 ```
 > set weather.city to London
-> set weather.api-key to <key>
+> set weather.api_key to <key>
 ```
 
 Free API key at [openweathermap.org](https://openweathermap.org/api).
@@ -661,20 +669,20 @@ Free API key at [openweathermap.org](https://openweathermap.org/api).
 
 ```
 > set signal.enabled to true
-> set signal.cli-path to /usr/local/bin/signal-cli
+> set signal.cli_path to /usr/local/bin/signal-cli
 > set signal.number to +1234567890
 > set signal.recipient to +0987654321
-> set signal.receive-enabled to true
-> set signal.allowed-senders to +1234567890
+> set signal.receive_enabled to true
+> set signal.allowed_senders to +1234567890
 ```
 
 Requires [signal-cli](https://github.com/AsamK/signal-cli) installed and registered.
 
-**Inbound commands (optional):** add to `.env` to let Bartleby respond to Signal messages as if they were REPL commands.
+**Inbound commands (optional):** configure in settings to let Bartleby respond to Signal messages as if they were REPL commands.
 
-```env
-SIGNAL_RECEIVE_ENABLED=true
-SIGNAL_ALLOWED_SENDERS=+1234567890
+```
+> set signal.receive_enabled to true
+> set signal.allowed_senders to +1234567890
 ```
 
 Only allow numbers you trust. Group messages are ignored by default.
@@ -688,7 +696,9 @@ All garden data lives in one file:
 | Path | Priority | Contents |
 |------|----------|----------|
 | `database/bartleby.db` | **Critical** | All records, notes, contacts, events, learning |
-| `.env` | **Critical** | Configuration and API keys |
+| `settings.yaml` | **Critical** | Runtime settings |
+| `secrets.yaml` | **Critical** | API keys + secret settings |
+| `.env` | Important | Bootstrap settings |
 | `shed/` | Optional | Reference documents (expensive to re-ingest) |
 
 ```bash
@@ -696,7 +706,7 @@ All garden data lives in one file:
 cp database/bartleby.db backups/bartleby-$(date +%Y%m%d).db
 
 # Full backup
-tar -czvf bartleby-$(date +%Y%m%d).tar.gz database/bartleby.db shed/ .env
+tar -czvf bartleby-$(date +%Y%m%d).tar.gz database/bartleby.db shed/ .env settings.yaml secrets.yaml
 
 # Export just the learning/memory system
 pnpm profile export
@@ -711,12 +721,12 @@ Bartleby stores personal notes, contacts, calendar, and financial data. Take a f
 ### Quick Checklist
 
 - [ ] Full-disk encryption enabled (FileVault on macOS, LUKS on Linux)
-- [ ] `.env` permissions are `600`: `chmod 600 .env`
-- [ ] `DASHBOARD_HOST` is `localhost` or a Tailscale IP — never `0.0.0.0` without `BARTLEBY_ALLOWED_IPS`
+- [ ] `.env`, `settings.yaml`, and `secrets.yaml` permissions are `600`: `chmod 600 .env settings.yaml secrets.yaml`
+- [ ] `dashboard.host` is `localhost` or a Tailscale IP — never `0.0.0.0` without `dashboard.allowed_ips`
 - [ ] `LOG_LEVEL=info` (debug logs full conversations)
 - [ ] `LOG_LLM_VERBOSE=false`
 - [ ] All LLM endpoints point to `127.0.0.1` (not a remote service)
-- [ ] `.env` is not tracked by git
+- [ ] `.env`, `settings.yaml`, and `secrets.yaml` are not tracked by git
 - [ ] Backups exist
 
 Run the automated audit:
@@ -726,11 +736,11 @@ Run the automated audit:
 
 ### Authentication
 
-| `DASHBOARD_HOST` | Who can access | Safe? |
+| `dashboard.host` | Who can access | Safe? |
 |------------------|----------------|-------|
 | `localhost` | Local machine only | ✓ Default |
 | `100.x.x.x` (Tailscale) | VPN devices only | ✓ |
-| `0.0.0.0` + `BARTLEBY_ALLOWED_IPS` | Whitelisted IPs only | ✓ |
+| `0.0.0.0` + `dashboard.allowed_ips` | Whitelisted IPs only | ✓ |
 | `0.0.0.0` without whitelist | Everyone | ✗ Blocked at startup |
 
 All non-localhost API requests require `Authorization: Bearer <token>`. Browser sessions cache the token in localStorage after first entry.

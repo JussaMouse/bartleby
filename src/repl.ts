@@ -281,9 +281,10 @@ export async function startRepl(
     debug('Bracketed paste mode enabled');
   }
 
-  const dashboardPort = process.env.DASHBOARD_PORT || '3333';
+  const dashboardHost = services.config.dashboard.host || 'localhost';
+  const dashboardPort = services.config.dashboard.port || 3333;
   console.log('\n📋 Bartleby is ready. Type "help" for commands, "quit" to exit.');
-  console.log(`📊 Dashboard: http://localhost:${dashboardPort}\n`);
+  console.log(`📊 Dashboard: http://${dashboardHost}:${dashboardPort}\n`);
 
   // === First Launch Setup ===
   if (services.settings.isFirstRun()) {

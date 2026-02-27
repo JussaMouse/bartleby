@@ -201,7 +201,7 @@ If nothing matches, ask the Fast model to pick a tool. If complex, use Thinking 
 | `ContextService` | User facts, conversation history, session management |
 | `LearningService` | Entity-Observation-Relationship memory system |
 | `ReflectionService` | Continuous learning from interactions |
-| `SettingsService` | Runtime configuration, database-backed |
+| `SettingsService` | Runtime configuration, file-backed (settings.yaml) |
 | `ShedService` | Document ingestion, RAG (reference library) |
 | `LLMService` | Model tiers, chat completions, routing decisions |
 | `EmbeddingService` | Text to vectors |
@@ -218,7 +218,7 @@ Bartleby keeps the command pipeline transport-agnostic. Each adapter forwards pl
 - **REPL**: local terminal input (`src/repl.ts`)
 - **HTTP API**: `/api/chat` for dashboard/mobile integrations (`src/server/index.ts`)
 - **Dashboard WS**: realtime view updates (`src/server/index.ts`)
-- **Signal (optional)**: inbound SMS-style commands via `signal-cli` with an allowlist (`src/transports/signal-receiver.ts`, `signal.receive-enabled`, `signal.allowed-senders`)
+- **Signal (optional)**: inbound SMS-style commands via `signal-cli` with an allowlist (`src/transports/signal-receiver.ts`, `signal.receive_enabled`, `signal.allowed_senders`)
 
 ### WebSocket / Real-time Dashboard
 
@@ -312,7 +312,8 @@ export const greet: Tool = {
 
 ### Main Database (`bartleby.db`)
 
-All garden data, settings, and learning share one SQLite file. WAL mode enabled, foreign keys ON.
+All garden data and learning share one SQLite file. WAL mode enabled, foreign keys ON.
+Settings live in `settings.yaml` + `secrets.yaml` (project root).
 
 **Garden records:**
 ```sql
@@ -386,28 +387,22 @@ CREATE TABLE garden_view (
 
 **System views (seeded on init):** Inbox, Next Actions, Waiting For, Someday Maybe, All Events, All Notes, All Projects, Contacts.
 
-### Settings Tables (`bartleby.db`)
+### Settings Files
 
-```sql
-CREATE TABLE settings (
-  key        TEXT PRIMARY KEY,
-  value      TEXT NOT NULL,
-  value_type TEXT NOT NULL,
-  category   TEXT NOT NULL,
-  description TEXT,
-  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
-);
+Settings are stored as flat key/value YAML files:
 
-CREATE TABLE settings_metadata (
-  id                  TEXT PRIMARY KEY DEFAULT 'singleton',
-  first_run_completed BOOLEAN DEFAULT FALSE,
-  migration_version   INTEGER DEFAULT 0,
-  last_migration_at   TEXT,
-  created_at          TEXT NOT NULL DEFAULT (datetime('now'))
-);
+- `settings.yaml` — non-secret values
+- `secrets.yaml` — API keys, tokens, phone numbers
+
+Keys are defined in `src/settings/registry.ts`.
+
+Example:
+
+```yaml
+llm.router.url: http://127.0.0.1:8080/v1
+weather.city: Austin
+dashboard.api_token: <secret>
 ```
-
-**Settings categories:** `llm.*`, `embeddings.*`, `ocr.*`, `weather.*`, `signal.*`, `dashboard.*`
 
 ### Learning System (`bartleby.db`)
 

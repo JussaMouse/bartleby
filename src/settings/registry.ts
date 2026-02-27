@@ -18,12 +18,21 @@ export interface SettingDefinition<T = unknown> {
   prompt?: string;
   placeholder?: string;
   example?: string;
-  validate?: (value: T) => string | null;
+  validate?: (value: unknown) => string | null;
 }
 
 const def = <T>(definition: SettingDefinition<T>): SettingDefinition<T> => definition;
 
 export const SETTINGS_REGISTRY: SettingDefinition[] = [
+  // Assistant
+  def({
+    key: 'assistant.name',
+    category: 'assistant',
+    type: 'string',
+    default: 'Bartleby',
+    description: 'Name used to address the assistant',
+  }),
+
   // LLM
   def({
     key: 'llm.router.url',
@@ -32,7 +41,7 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
     default: 'http://127.0.0.1:11434/v1',
     description: 'Router tier endpoint URL',
     requiresRestart: true,
-    prompt: 'Router URL',
+    prompt: 'Router URL (e.g. http://localhost:11434/v1): ',
   }),
   def({
     key: 'llm.router.model',
@@ -57,7 +66,7 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
     default: 'http://127.0.0.1:11434/v1',
     description: 'Fast tier endpoint URL',
     requiresRestart: true,
-    prompt: 'Fast model URL',
+    prompt: 'Fast model URL (e.g. http://localhost:11434/v1): ',
   }),
   def({
     key: 'llm.fast.model',
@@ -82,7 +91,7 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
     default: 'http://127.0.0.1:11434/v1',
     description: 'Thinking tier endpoint URL',
     requiresRestart: true,
-    prompt: 'Thinking model URL',
+    prompt: 'Thinking model URL (e.g. http://localhost:11434/v1): ',
   }),
   def({
     key: 'llm.thinking.model',
@@ -132,6 +141,7 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
     description: 'API key for OpenAI-compatible endpoints',
     secret: true,
     requiresRestart: true,
+    prompt: 'LLM API key (leave blank if none): ',
   }),
 
   // Embeddings
@@ -185,6 +195,16 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
     default: '',
     description: 'OCR endpoint URL',
     requiresRestart: true,
+    prompt: 'OCR service URL (leave blank to skip): ',
+    validate: (value) => {
+      if (!value) return null;
+      try {
+        new URL(String(value));
+        return null;
+      } catch {
+        return 'Must be a valid URL';
+      }
+    },
   }),
   def({
     key: 'ocr.model',
@@ -210,6 +230,7 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
     description: 'API key for OCR endpoint',
     secret: true,
     requiresRestart: true,
+    prompt: 'OCR API key (leave blank if none): ',
   }),
 
   // Paths
@@ -262,6 +283,7 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
     default: 'localhost',
     description: 'Dashboard bind host',
     requiresRestart: true,
+    prompt: 'Dashboard host (default localhost): ',
   }),
   def({
     key: 'dashboard.port',
@@ -270,6 +292,7 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
     default: 3333,
     description: 'Dashboard port',
     requiresRestart: true,
+    prompt: 'Dashboard port (default 3333): ',
   }),
   def({
     key: 'dashboard.api_token',
@@ -279,6 +302,7 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
     description: 'API token for remote dashboard access',
     secret: true,
     requiresRestart: true,
+    prompt: 'Dashboard API token (required for remote access): ',
   }),
   def({
     key: 'dashboard.allowed_ips',
@@ -287,6 +311,7 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
     default: [],
     description: 'Allowlist of IPs for dashboard access',
     requiresRestart: true,
+    prompt: 'Dashboard allowed IPs (comma-separated, leave blank for localhost): ',
   }),
 
   // Weather
@@ -296,6 +321,7 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
     type: 'string',
     default: '',
     description: 'City for weather lookups',
+    prompt: 'Weather city (e.g. Austin, TX): ',
   }),
   def({
     key: 'weather.units',
@@ -312,6 +338,7 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
     default: '',
     description: 'Weather API key',
     secret: true,
+    prompt: 'OpenWeatherMap API key (leave blank if none): ',
   }),
 
   // Signal
@@ -339,6 +366,11 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
     description: 'Signal phone number',
     secret: true,
     requiresRestart: true,
+    prompt: 'Signal phone number (e.g. +15551234567): ',
+    validate: (value) => {
+      if (!value) return null;
+      return /^\+\d{7,15}$/.test(String(value)) ? null : 'Must be in format +15551234567';
+    },
   }),
   def({
     key: 'signal.recipient',
@@ -348,6 +380,11 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
     description: 'Default Signal recipient',
     secret: true,
     requiresRestart: true,
+    prompt: 'Signal recipient number (e.g. +15551234567): ',
+    validate: (value) => {
+      if (!value) return null;
+      return /^\+\d{7,15}$/.test(String(value)) ? null : 'Must be in format +15551234567';
+    },
   }),
   def({
     key: 'signal.timeout_ms',
@@ -364,6 +401,8 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
     default: false,
     description: 'Enable inbound Signal commands',
     requiresRestart: true,
+    prompt: 'Enable inbound Signal commands? (true/false): ',
+    validate: (value) => /^(true|false)?$/i.test(String(value)) ? null : 'Enter true or false',
   }),
   def({
     key: 'signal.allowed_senders',
@@ -372,6 +411,7 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
     default: [],
     description: 'Allowlist of Signal senders for inbound commands',
     requiresRestart: true,
+    prompt: 'Signal allowed senders (comma-separated, leave blank to skip): ',
   }),
 
   // Scheduler
@@ -395,7 +435,7 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
     key: 'scheduler.missed_reminders',
     category: 'scheduler',
     type: 'enum',
-    default: 'default',
+    default: 'ask',
     options: ['default', 'ask', 'fire', 'skip', 'show'],
     description: 'How to handle reminders fired while offline',
     requiresRestart: true,
@@ -436,7 +476,7 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
     key: 'calendar.reminder_minutes',
     category: 'calendar',
     type: 'number',
-    default: 0,
+    default: 15,
     description: 'Default reminder minutes before events',
   }),
   def({

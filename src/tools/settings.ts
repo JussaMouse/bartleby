@@ -1,5 +1,9 @@
 // src/tools/settings.ts
 import { Tool } from './types.js';
+import { SETTINGS_CATEGORIES, getSettingDefinition, getSettingsByCategory } from '../settings/registry.js';
+
+const CATEGORY_PATTERN = SETTINGS_CATEGORIES.join('|');
+const CATEGORY_REGEX = new RegExp(`^settings?\\s+(${CATEGORY_PATTERN})\\s*$`, 'i');
 
 /**
  * Show all settings or a specific category
@@ -12,7 +16,7 @@ export const showSettings: Tool = {
     patterns: [
       /^settings?\s*$/i,
       /^show\s+settings?\s*$/i,
-      /^settings?\s+(llm|calendar|presence|scheduler|import|weather|signal|ocr|embeddings)\s*$/i,
+      CATEGORY_REGEX,
     ],
     keywords: {
       verbs: ['show', 'view', 'list'],
@@ -32,14 +36,14 @@ export const showSettings: Tool = {
     properties: {
       category: {
         type: 'string',
-        enum: ['llm', 'calendar', 'presence', 'scheduler', 'import', 'weather', 'signal', 'ocr', 'embeddings'],
+        enum: SETTINGS_CATEGORIES,
         description: 'Settings category to show',
       },
     },
   },
 
   parseArgs: (input) => {
-    const match = input.match(/settings?\s+(\w+)/i);
+    const match = input.match(CATEGORY_REGEX);
     const category = match ? match[1].toLowerCase() : undefined;
     return { category };
   },
@@ -50,29 +54,31 @@ export const showSettings: Tool = {
 
     try {
       if (category) {
-        // Show specific category
-        const categorySettings = settings.getCategory(category);
+        const definitions = getSettingsByCategory(category);
 
-        if (Object.keys(categorySettings).length === 0) {
-          return `No settings found in category "${category}".\n\nAvailable categories: llm, calendar, presence, scheduler, import, weather, signal, ocr, embeddings`;
+        if (definitions.length === 0) {
+          return `No settings found in category "${category}".\n\nAvailable categories: ${SETTINGS_CATEGORIES.join(', ')}`;
         }
 
         let output = `Settings: ${category}\n\n`;
 
-        for (const [key, value] of Object.entries(categorySettings)) {
-          const displayValue = typeof value === 'object'
-            ? JSON.stringify(value, null, 2)
-            : String(value);
-          output += `  ${key}: ${displayValue}\n`;
+        for (const definition of definitions) {
+          const shortKey = definition.key.replace(`${category}.`, '');
+          const value = settings.getSetting(definition.key);
+          const isSet = settings.hasSetting(definition.key);
+          const displayValue = definition.secret
+            ? (isSet ? '<hidden>' : '<unset>')
+            : formatValue(value);
+
+          output += `  ${shortKey}: ${displayValue}\n`;
         }
 
-        output += `\nTo edit: "edit ${category} settings" or "set ${category}.<key> to <value>"`;
+        output += `\nTo edit: "set ${category}.<key> to <value>"`;
 
         return output;
       }
 
       // Show all settings grouped by category
-      const allSettings = settings.getAllSettings();
       const stats = settings.getStats();
 
       if (stats.total === 0) {
@@ -81,32 +87,34 @@ export const showSettings: Tool = {
 
       let output = `Settings (${stats.total} total)\n\n`;
 
-      const categories = Object.keys(allSettings).sort();
+      const categories = SETTINGS_CATEGORIES;
 
       for (const cat of categories) {
-        const catSettings = allSettings[cat];
-        const count = Object.keys(catSettings).length;
+        const definitions = getSettingsByCategory(cat);
+        const count = definitions.length;
 
         output += `${cat.toUpperCase()} (${count}):\n`;
 
-        for (const [key, value] of Object.entries(catSettings)) {
-          const displayValue = typeof value === 'object'
-            ? JSON.stringify(value)
-            : String(value);
+        for (const definition of definitions) {
+          const shortKey = definition.key.replace(`${cat}.`, '');
+          const value = settings.getSetting(definition.key);
+          const isSet = settings.hasSetting(definition.key);
+          const displayValue = definition.secret
+            ? (isSet ? '<hidden>' : '<unset>')
+            : formatValue(value);
 
-          // Truncate long values
           const truncated = displayValue.length > 50
             ? displayValue.substring(0, 50) + '...'
             : displayValue;
 
-          output += `  ${key}: ${truncated}\n`;
+          output += `  ${shortKey}: ${truncated}\n`;
         }
 
         output += '\n';
       }
 
       output += `To view a category: "settings <category>"\n`;
-      output += `To edit: "set <key> to <value>" or "edit <category> settings"`;
+      output += `To edit: "set <key> to <value>"`;
 
       return output;
     } catch (err) {
@@ -124,8 +132,8 @@ export const setSetting: Tool = {
 
   routing: {
     patterns: [
-      /^set\s+([a-z0-9._-]+)\s+to\s+(.+)$/i,
-      /^set\s+([a-z0-9._-]+)\s*=\s*(.+)$/i,
+      /^set\s+([_a-z0-9.-]+)\s+to\s+(.+)$/i,
+      /^set\s+([_a-z0-9.-]+)\s*=\s*(.+)$/i,
     ],
     keywords: {
       verbs: ['set', 'update', 'change'],
@@ -133,7 +141,7 @@ export const setSetting: Tool = {
     },
     examples: [
       'set calendar.timezone to America/New_York',
-      'set llm.router-model to qwen3:0.6b',
+      'set llm.router.model to qwen3:0.6b',
       'set presence.startup to false',
     ],
     priority: 75,
@@ -149,9 +157,9 @@ export const setSetting: Tool = {
   },
 
   parseArgs: (input) => {
-    let match = input.match(/^set\s+([a-z0-9._-]+)\s+to\s+(.+)$/i);
+    let match = input.match(/^set\s+([_a-z0-9.-]+)\s+to\s+(.+)$/i);
     if (!match) {
-      match = input.match(/^set\s+([a-z0-9._-]+)\s*=\s*(.+)$/i);
+      match = input.match(/^set\s+([_a-z0-9.-]+)\s*=\s*(.+)$/i);
     }
 
     if (!match) {
@@ -173,14 +181,11 @@ export const setSetting: Tool = {
     }
 
     try {
-      // Parse the key to determine category
-      const parts = key.split('.');
-      if (parts.length < 2) {
-        return `Error: Key must include category. Format: <category>.<name>\n\nExample: calendar.timezone, llm.router-model`;
+      const settingKey = key;
+      const definition = getSettingDefinition(settingKey);
+      if (!definition) {
+        return `Error: Unknown setting key "${settingKey}".\n\nAvailable categories: ${SETTINGS_CATEGORIES.join(', ')}`;
       }
-
-      const category = parts[0];
-      const settingKey = key; // Use full key including category
 
       // Parse value (handle boolean, number, string)
       let parsedValue: any = value;
@@ -200,9 +205,13 @@ export const setSetting: Tool = {
       }
 
       // Set the value
-      settings.setSetting(settingKey, parsedValue, category);
+      settings.setSetting(settingKey, parsedValue, definition.category);
 
-      return `✓ Setting updated: ${key} = ${JSON.stringify(parsedValue)}\n\nNote: Restart may be required for some settings to take effect.`;
+      const restartNote = definition.requiresRestart
+        ? '\n\nNote: Restart required for this setting.'
+        : '\n\nNote: Restart may be required for some settings to take effect.';
+
+      return `✓ Setting updated: ${key} = ${JSON.stringify(parsedValue)}${restartNote}`;
     } catch (err) {
       return `Error setting value: ${String(err)}`;
     }
@@ -248,7 +257,7 @@ export const showSettingsStats: Tool = {
       let output = `Settings Statistics:\n\n`;
       output += `Total settings: ${stats.total}\n`;
       output += `First run completed: ${stats.firstRunCompleted ? 'Yes' : 'No'}\n`;
-      output += `Migration version: ${stats.migrationVersion}\n\n`;
+      output += `\n`;
 
       if (Object.keys(stats.byCategory).length > 0) {
         output += `By category:\n`;
@@ -263,6 +272,18 @@ export const showSettingsStats: Tool = {
     }
   },
 };
+
+function formatValue(value: unknown): string {
+  if (typeof value === 'string') {
+    return value;
+  }
+
+  if (typeof value === 'object') {
+    return JSON.stringify(value);
+  }
+
+  return String(value);
+}
 
 /**
  * Export all settings tools

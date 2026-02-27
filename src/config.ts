@@ -51,6 +51,13 @@ const ConfigSchema = z.object({
     inbox: z.string(),
   }),
 
+  dashboard: z.object({
+    host: z.string(),
+    port: z.number().positive(),
+    apiToken: z.string().optional(),
+    allowedIps: z.array(z.string()),
+  }),
+
   weather: z.object({
     city: z.string().optional(),
     apiKey: z.string().optional(),
@@ -107,104 +114,173 @@ export type Config = z.infer<typeof ConfigSchema> & {
   firstRun?: boolean;
 };
 
+export interface SettingsProvider {
+  getSetting<T = unknown>(key: string, defaultValue?: T): T;
+}
+
 // === Loader ===
 
+function resolveSetting<T>(settings: SettingsProvider | undefined, key: string, fallback: T): T {
+  if (!settings) return fallback;
+  return settings.getSetting(key, fallback);
+}
+
+function normalizeOptionalString(value: string | undefined): string | undefined {
+  if (!value) return undefined;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+}
+
+function parseEnvBoolean(value: string | undefined, fallback: boolean): boolean {
+  if (value === undefined) return fallback;
+  return value !== 'false';
+}
+
 /**
- * Load configuration (legacy .env-based loader)
- *
- * This function loads all settings from environment variables.
- * Use loadHybridConfig() for the new database-backed settings system.
+ * Load configuration from settings + minimal bootstrap env.
  */
-export function loadConfig(): Config {
+export function loadConfig(settings?: SettingsProvider): Config {
+  const llmUrlOverride = process.env.LLM_URL;
+
+  const routerUrl =
+    llmUrlOverride ??
+    process.env.ROUTER_URL ??
+    resolveSetting(settings, 'llm.router.url', 'http://127.0.0.1:11434/v1');
+
+  const fastUrl =
+    llmUrlOverride ??
+    process.env.FAST_URL ??
+    resolveSetting(settings, 'llm.fast.url', 'http://127.0.0.1:11434/v1');
+
+  const thinkingUrl =
+    llmUrlOverride ??
+    process.env.THINKING_URL ??
+    resolveSetting(settings, 'llm.thinking.url', 'http://127.0.0.1:11434/v1');
+
+  const llmApiKey = normalizeOptionalString(
+    process.env.LLM_API_KEY ??
+    process.env.MLX_API_KEY ??
+    resolveSetting(settings, 'llm.api_key', '')
+  );
+
+  const embeddingsUrl =
+    process.env.EMBEDDINGS_URL ??
+    resolveSetting(settings, 'embeddings.url', routerUrl);
+
+  const embeddingsApiKey =
+    normalizeOptionalString(
+      process.env.EMBEDDINGS_API_KEY ?? resolveSetting(settings, 'embeddings.api_key', '')
+    ) ?? llmApiKey;
+
+  const logLevel = (process.env.LOG_LEVEL as 'debug' | 'info' | 'warn' | 'error') ??
+    resolveSetting(settings, 'logging.level', 'info');
+
+  const logFile = process.env.LOG_FILE ?? resolveSetting(settings, 'logging.file', './logs/bartleby.log');
+  const logConsole = parseEnvBoolean(
+    process.env.LOG_CONSOLE,
+    resolveSetting(settings, 'logging.console', true)
+  );
+  const logLlmVerbose = parseEnvBoolean(
+    process.env.LOG_LLM_VERBOSE,
+    resolveSetting(settings, 'logging.llm_verbose', false)
+  );
+
   const config = ConfigSchema.parse({
     llm: {
       router: {
-        model: process.env.ROUTER_MODEL || 'qwen3:0.6b',
-        url: process.env.ROUTER_URL || 'http://localhost:11434/v1',
-        maxTokens: parseInt(process.env.ROUTER_MAX_TOKENS || '100'),
+        model: resolveSetting(settings, 'llm.router.model', 'qwen3:0.6b'),
+        url: routerUrl,
+        maxTokens: resolveSetting(settings, 'llm.router.max_tokens', 100),
       },
       fast: {
-        model: process.env.FAST_MODEL || 'qwen3:7b',
-        url: process.env.FAST_URL || 'http://localhost:11434/v1',
-        maxTokens: parseInt(process.env.FAST_MAX_TOKENS || '4096'),
+        model: resolveSetting(settings, 'llm.fast.model', 'qwen3:7b'),
+        url: fastUrl,
+        maxTokens: resolveSetting(settings, 'llm.fast.max_tokens', 4096),
       },
       thinking: {
-        model: process.env.THINKING_MODEL || 'qwen3:32b',
-        url: process.env.THINKING_URL || 'http://localhost:11434/v1',
-        maxTokens: parseInt(process.env.THINKING_MAX_TOKENS || '8192'),
-        budget: process.env.THINKING_BUDGET ? parseInt(process.env.THINKING_BUDGET) : undefined,
+        model: resolveSetting(settings, 'llm.thinking.model', 'qwen3:32b'),
+        url: thinkingUrl,
+        maxTokens: resolveSetting(settings, 'llm.thinking.max_tokens', 8192),
+        budget: resolveSetting(settings, 'llm.thinking.budget', 4096),
       },
-      healthTimeout: parseInt(process.env.HEALTH_TIMEOUT || '35000'),
-      agentMaxIterations: parseInt(process.env.AGENT_MAX_ITERATIONS || '10'),
-      apiKey: process.env.MLX_API_KEY || undefined,
+      healthTimeout: resolveSetting(settings, 'llm.health_timeout_ms', 35000),
+      agentMaxIterations: resolveSetting(settings, 'llm.agent.max_iterations', 10),
+      apiKey: llmApiKey,
     },
     embeddings: {
-      url: process.env.EMBEDDINGS_URL || 'http://localhost:11434/v1',
-      model: process.env.EMBEDDINGS_MODEL || 'nomic-embed-text',
-      dimensions: parseInt(process.env.EMBEDDINGS_DIMENSIONS || '4096'),
-      apiKey: process.env.MLX_API_KEY || undefined,
+      url: embeddingsUrl,
+      model: resolveSetting(settings, 'embeddings.model', 'nomic-embed-text'),
+      dimensions: resolveSetting(settings, 'embeddings.dimensions', 4096),
+      apiKey: embeddingsApiKey,
     },
     ocr: {
-      enabled: !!process.env.OCR_URL,
-      url: process.env.OCR_URL || undefined,
-      model: process.env.OCR_MODEL || 'olmocr',
-      maxTokens: parseInt(process.env.OCR_MAX_TOKENS || '4096'),
-      apiKey: process.env.MLX_API_KEY || undefined,
+      enabled: resolveSetting(settings, 'ocr.enabled', false),
+      url: normalizeOptionalString(resolveSetting(settings, 'ocr.url', '')),
+      model: resolveSetting(settings, 'ocr.model', 'olmocr'),
+      maxTokens: resolveSetting(settings, 'ocr.max_tokens', 4096),
+      apiKey: normalizeOptionalString(resolveSetting(settings, 'ocr.api_key', '')) ?? llmApiKey,
     },
     paths: {
-      garden: process.env.GARDEN_PATH || './garden',
-      shed: process.env.SHED_PATH || './shed',
-      database: process.env.DATABASE_PATH || './database',
-      logs: process.env.LOG_DIR || './logs',
-      inbox: process.env.BARTLEBY_INBOX_PATH || './inbox',
+      garden: process.env.GARDEN_PATH ?? resolveSetting(settings, 'paths.garden', './garden'),
+      shed: process.env.SHED_PATH ?? resolveSetting(settings, 'paths.shed', './shed'),
+      database: process.env.DATABASE_PATH ?? resolveSetting(settings, 'paths.database', './database'),
+      logs: process.env.LOG_DIR ?? resolveSetting(settings, 'paths.logs', './logs'),
+      inbox: process.env.BARTLEBY_INBOX_PATH ?? resolveSetting(settings, 'paths.inbox', './inbox'),
+    },
+    dashboard: {
+      host: resolveSetting(settings, 'dashboard.host', 'localhost'),
+      port: resolveSetting(settings, 'dashboard.port', 3333),
+      apiToken: normalizeOptionalString(resolveSetting(settings, 'dashboard.api_token', '')),
+      allowedIps: normalizeStringList(resolveSetting(settings, 'dashboard.allowed_ips', [])),
     },
     weather: {
-      city: process.env.WEATHER_CITY || undefined,
-      apiKey: process.env.OPENWEATHERMAP_API_KEY || undefined,
-      units: (process.env.WEATHER_UNITS as 'C' | 'F') || 'F',
+      city: normalizeOptionalString(resolveSetting(settings, 'weather.city', '')),
+      apiKey: normalizeOptionalString(resolveSetting(settings, 'weather.api_key', '')),
+      units: resolveSetting(settings, 'weather.units', 'F'),
     },
     signal: {
-      enabled: process.env.SIGNAL_ENABLED === 'true',
-      cliPath: process.env.SIGNAL_CLI_PATH || '/usr/local/bin/signal-cli',
-      number: process.env.SIGNAL_NUMBER || undefined,
-      recipient: process.env.SIGNAL_RECIPIENT || undefined,
-      timeout: parseInt(process.env.SIGNAL_TIMEOUT || '20000'),
-      receiveEnabled: process.env.SIGNAL_RECEIVE_ENABLED === 'true',
-      allowedSenders: (process.env.SIGNAL_ALLOWED_SENDERS || '')
-        .split(',')
-        .map((value) => value.trim())
-        .filter((value) => value.length > 0),
+      enabled: resolveSetting(settings, 'signal.enabled', false),
+      cliPath: resolveSetting(settings, 'signal.cli_path', '/usr/local/bin/signal-cli'),
+      number: normalizeOptionalString(resolveSetting(settings, 'signal.number', '')),
+      recipient: normalizeOptionalString(resolveSetting(settings, 'signal.recipient', '')),
+      timeout: resolveSetting(settings, 'signal.timeout_ms', 20000),
+      receiveEnabled: resolveSetting(settings, 'signal.receive_enabled', false),
+      allowedSenders: normalizeStringList(resolveSetting(settings, 'signal.allowed_senders', [])),
     },
     scheduler: {
-      enabled: process.env.SCHEDULER_ENABLED !== 'false',
-      checkInterval: parseInt(process.env.SCHEDULER_CHECK_INTERVAL || '60000'),
-      missedReminders: (process.env.SCHEDULER_MISSED_REMINDERS || 'default') as 'default' | 'ask' | 'fire' | 'skip' | 'show',
+      enabled: resolveSetting(settings, 'scheduler.enabled', true),
+      checkInterval: resolveSetting(settings, 'scheduler.check_interval_ms', 60000),
+      missedReminders: resolveSetting(settings, 'scheduler.missed_reminders', 'ask'),
     },
     calendar: {
-      timezone: process.env.CALENDAR_TIMEZONE || Intl.DateTimeFormat().resolvedOptions().timeZone,
-      defaultDuration: parseInt(process.env.CALENDAR_DEFAULT_DURATION || '60'),
-      ambiguousTime: (process.env.CALENDAR_AMBIGUOUS_TIME as 'morning' | 'afternoon' | 'ask') || 'afternoon',
-      weekStart: (process.env.CALENDAR_WEEK_START as 'sunday' | 'monday') || 'sunday',
-      reminderMinutes: parseInt(process.env.CALENDAR_EVENT_REMINDER_MINUTES || '0'),
-      dateFormat: (process.env.CALENDAR_DATE_FORMAT as 'mdy' | 'dmy') || 'mdy',
+      timezone: resolveSetting(
+        settings,
+        'calendar.timezone',
+        Intl.DateTimeFormat().resolvedOptions().timeZone
+      ),
+      defaultDuration: resolveSetting(settings, 'calendar.default_duration_minutes', 60),
+      ambiguousTime: resolveSetting(settings, 'calendar.ambiguous_time', 'afternoon'),
+      weekStart: resolveSetting(settings, 'calendar.week_start', 'sunday'),
+      reminderMinutes: resolveSetting(settings, 'calendar.reminder_minutes', 15),
+      dateFormat: resolveSetting(settings, 'calendar.date_format', 'mdy'),
     },
     presence: {
-      startup: process.env.PRESENCE_STARTUP !== 'false',
-      shutdown: process.env.PRESENCE_SHUTDOWN !== 'false',
-      scheduled: process.env.PRESENCE_SCHEDULED !== 'false',
-      contextual: process.env.PRESENCE_CONTEXTUAL !== 'false',
-      idle: process.env.PRESENCE_IDLE === 'true',
-      idleMinutes: parseInt(process.env.PRESENCE_IDLE_MINUTES || '5'),
-      morningHour: parseInt(process.env.PRESENCE_MORNING_HOUR || '8'),
-      eveningHour: parseInt(process.env.PRESENCE_EVENING_HOUR || '18'),
-      weeklyDay: parseInt(process.env.PRESENCE_WEEKLY_DAY || '0'),
-      weeklyHour: parseInt(process.env.PRESENCE_WEEKLY_HOUR || '9'),
+      startup: resolveSetting(settings, 'presence.startup', true),
+      shutdown: resolveSetting(settings, 'presence.shutdown', true),
+      scheduled: resolveSetting(settings, 'presence.scheduled', true),
+      contextual: resolveSetting(settings, 'presence.contextual', true),
+      idle: resolveSetting(settings, 'presence.idle', false),
+      idleMinutes: resolveSetting(settings, 'presence.idle_minutes', 5),
+      morningHour: resolveSetting(settings, 'presence.morning_hour', 8),
+      eveningHour: resolveSetting(settings, 'presence.evening_hour', 18),
+      weeklyDay: resolveSetting(settings, 'presence.weekly_day', 0),
+      weeklyHour: resolveSetting(settings, 'presence.weekly_hour', 9),
     },
     logging: {
-      level: (process.env.LOG_LEVEL as 'debug' | 'info' | 'warn' | 'error') || 'info',
-      file: process.env.LOG_FILE || './logs/bartleby.log',
-      console: process.env.LOG_CONSOLE !== 'false',
-      llmVerbose: process.env.LOG_LLM_VERBOSE === 'true',
+      level: logLevel,
+      file: logFile,
+      console: logConsole,
+      llmVerbose: logLlmVerbose,
     },
   });
 
@@ -228,7 +304,7 @@ export function ensureDir(dirPath: string): void {
   }
 }
 
-function normalizeSignalAllowlist(value: unknown): string[] {
+function normalizeStringList(value: unknown): string[] {
   if (Array.isArray(value)) {
     return value.map((entry) => String(entry).trim()).filter((entry) => entry.length > 0);
   }
@@ -241,263 +317,4 @@ function normalizeSignalAllowlist(value: unknown): string[] {
   }
 
   return [];
-}
-
-// === Hybrid Config Loader (Database + .env) ===
-
-/**
- * Load configuration with hybrid approach:
- * - Bootstrap settings from .env (LLM URL, paths, logging)
- * - All other settings from database via SettingsService
- *
- * @param settingsService - Optional SettingsService for database settings
- * @returns Configuration object
- */
-export function loadHybridConfig(settingsService?: any): Config {
-  // Load bootstrap settings from .env (required to boot)
-  const bootstrap = {
-    llm: {
-      router: {
-        model: process.env.ROUTER_MODEL || 'qwen3:0.6b',
-        url: process.env.LLM_URL || process.env.ROUTER_URL || 'http://localhost:11434/v1',
-        maxTokens: parseInt(process.env.ROUTER_MAX_TOKENS || '100'),
-      },
-      fast: {
-        model: process.env.FAST_MODEL || 'qwen3:7b',
-        url: process.env.LLM_URL || process.env.FAST_URL || 'http://localhost:11434/v1',
-        maxTokens: parseInt(process.env.FAST_MAX_TOKENS || '4096'),
-      },
-      thinking: {
-        model: process.env.THINKING_MODEL || 'qwen3:32b',
-        url: process.env.LLM_URL || process.env.THINKING_URL || 'http://localhost:11434/v1',
-        maxTokens: parseInt(process.env.THINKING_MAX_TOKENS || '8192'),
-        budget: process.env.THINKING_BUDGET ? parseInt(process.env.THINKING_BUDGET) : undefined,
-      },
-      healthTimeout: 35000,
-      agentMaxIterations: 10,
-      apiKey: process.env.LLM_API_KEY || process.env.MLX_API_KEY || undefined,
-    },
-    embeddings: {
-      url: process.env.EMBEDDINGS_URL || process.env.LLM_URL || 'http://localhost:11434/v1',
-      model: 'nomic-embed-text',
-      dimensions: 4096,
-      apiKey: process.env.EMBEDDINGS_API_KEY || process.env.LLM_API_KEY || undefined,
-    },
-    paths: {
-      garden: process.env.GARDEN_PATH || './garden',
-      shed: process.env.SHED_PATH || './shed',
-      database: process.env.DATABASE_PATH || './database',
-      logs: process.env.LOG_DIR || './logs',
-      inbox: process.env.BARTLEBY_INBOX_PATH || './inbox',
-    },
-    logging: {
-      level: (process.env.LOG_LEVEL as 'debug' | 'info' | 'warn' | 'error') || 'info',
-      file: process.env.LOG_FILE || './logs/bartleby.log',
-      console: process.env.LOG_CONSOLE !== 'false',
-      llmVerbose: process.env.LOG_LLM_VERBOSE === 'true',
-    },
-  };
-
-  // If no SettingsService provided, return bootstrap + defaults
-  if (!settingsService) {
-    return ConfigSchema.parse({
-      ...bootstrap,
-      ocr: {
-        enabled: false,
-        maxTokens: 4096,
-      },
-      weather: {
-        units: 'F' as const,
-      },
-      signal: {
-        enabled: false,
-        cliPath: '/usr/local/bin/signal-cli',
-        timeout: 20000,
-        receiveEnabled: false,
-        allowedSenders: [],
-      },
-      scheduler: {
-        enabled: true,
-        checkInterval: 60000,
-        missedReminders: 'default' as const,
-      },
-      calendar: {
-        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-        defaultDuration: 60,
-        ambiguousTime: 'afternoon' as const,
-        weekStart: 'sunday' as const,
-        reminderMinutes: 0,
-        dateFormat: 'mdy' as const,
-      },
-      presence: {
-        startup: true,
-        shutdown: true,
-        scheduled: true,
-        contextual: true,
-        idle: false,
-        idleMinutes: 5,
-        morningHour: 8,
-        eveningHour: 18,
-        weeklyDay: 0,
-        weeklyHour: 9,
-      },
-    });
-  }
-
-  // Check if first run
-  const isFirstRun = settingsService.isFirstRun();
-
-  if (isFirstRun) {
-    // First run: use .env fallbacks or defaults
-    const config = ConfigSchema.parse({
-      ...bootstrap,
-      ocr: {
-        enabled: !!process.env.OCR_URL,
-        url: process.env.OCR_URL || undefined,
-        model: process.env.OCR_MODEL || 'olmocr',
-        maxTokens: parseInt(process.env.OCR_MAX_TOKENS || '4096'),
-        apiKey: process.env.MLX_API_KEY || undefined,
-      },
-      weather: {
-        city: process.env.WEATHER_CITY || undefined,
-        apiKey: process.env.OPENWEATHERMAP_API_KEY || undefined,
-        units: (process.env.WEATHER_UNITS as 'C' | 'F') || 'F',
-      },
-      signal: {
-        enabled: process.env.SIGNAL_ENABLED === 'true',
-        cliPath: process.env.SIGNAL_CLI_PATH || '/usr/local/bin/signal-cli',
-        number: process.env.SIGNAL_NUMBER || undefined,
-        recipient: process.env.SIGNAL_RECIPIENT || undefined,
-        timeout: parseInt(process.env.SIGNAL_TIMEOUT || '20000'),
-        receiveEnabled: process.env.SIGNAL_RECEIVE_ENABLED === 'true',
-        allowedSenders: (process.env.SIGNAL_ALLOWED_SENDERS || '')
-          .split(',')
-          .map((value) => value.trim())
-          .filter((value) => value.length > 0),
-      },
-      scheduler: {
-        enabled: process.env.SCHEDULER_ENABLED !== 'false',
-        checkInterval: parseInt(process.env.SCHEDULER_CHECK_INTERVAL || '60000'),
-        missedReminders: (process.env.SCHEDULER_MISSED_REMINDERS || 'default') as any,
-      },
-      calendar: {
-        timezone: process.env.CALENDAR_TIMEZONE || Intl.DateTimeFormat().resolvedOptions().timeZone,
-        defaultDuration: parseInt(process.env.CALENDAR_DEFAULT_DURATION || '60'),
-        ambiguousTime: (process.env.CALENDAR_AMBIGUOUS_TIME as 'morning' | 'afternoon' | 'ask') || 'afternoon',
-        weekStart: (process.env.CALENDAR_WEEK_START as 'sunday' | 'monday') || 'sunday',
-        reminderMinutes: parseInt(process.env.CALENDAR_EVENT_REMINDER_MINUTES || '0'),
-        dateFormat: (process.env.CALENDAR_DATE_FORMAT as 'mdy' | 'dmy') || 'mdy',
-      },
-      presence: {
-        startup: process.env.PRESENCE_STARTUP !== 'false',
-        shutdown: process.env.PRESENCE_SHUTDOWN !== 'false',
-        scheduled: process.env.PRESENCE_SCHEDULED !== 'false',
-        contextual: process.env.PRESENCE_CONTEXTUAL !== 'false',
-        idle: process.env.PRESENCE_IDLE === 'true',
-        idleMinutes: parseInt(process.env.PRESENCE_IDLE_MINUTES || '5'),
-        morningHour: parseInt(process.env.PRESENCE_MORNING_HOUR || '8'),
-        eveningHour: parseInt(process.env.PRESENCE_EVENING_HOUR || '18'),
-        weeklyDay: parseInt(process.env.PRESENCE_WEEKLY_DAY || '0'),
-        weeklyHour: parseInt(process.env.PRESENCE_WEEKLY_HOUR || '9'),
-      },
-    });
-
-    return { ...config, firstRun: true };
-  }
-
-  // Load from database settings
-  try {
-    const llmSettings = settingsService.getCategory('llm');
-    const embeddingsSettings = settingsService.getCategory('embeddings');
-    const ocrSettings = settingsService.getCategory('ocr');
-    const weatherSettings = settingsService.getCategory('weather');
-    const signalSettings = settingsService.getCategory('signal');
-    const schedulerSettings = settingsService.getCategory('scheduler');
-    const calendarSettings = settingsService.getCategory('calendar');
-    const presenceSettings = settingsService.getCategory('presence');
-
-    const config = ConfigSchema.parse({
-      llm: {
-        router: {
-          model: llmSettings['router-model'] || bootstrap.llm.router.model,
-          url: bootstrap.llm.router.url, // Always from bootstrap
-          maxTokens: llmSettings['router-max-tokens'] || bootstrap.llm.router.maxTokens,
-        },
-        fast: {
-          model: llmSettings['fast-model'] || bootstrap.llm.fast.model,
-          url: bootstrap.llm.fast.url, // Always from bootstrap
-          maxTokens: llmSettings['fast-max-tokens'] || bootstrap.llm.fast.maxTokens,
-        },
-        thinking: {
-          model: llmSettings['thinking-model'] || bootstrap.llm.thinking.model,
-          url: bootstrap.llm.thinking.url, // Always from bootstrap
-          maxTokens: llmSettings['thinking-max-tokens'] || bootstrap.llm.thinking.maxTokens,
-          budget: llmSettings['thinking-budget'] || bootstrap.llm.thinking.budget,
-        },
-        healthTimeout: llmSettings['health-timeout'] || 35000,
-        agentMaxIterations: llmSettings['agent-max-iterations'] || 10,
-        apiKey: bootstrap.llm.apiKey,
-      },
-      embeddings: {
-        url: bootstrap.embeddings.url, // Always from bootstrap
-        model: embeddingsSettings['model'] || 'nomic-embed-text',
-        dimensions: embeddingsSettings['dimensions'] || 4096,
-        apiKey: bootstrap.embeddings.apiKey,
-      },
-      ocr: {
-        enabled: ocrSettings['enabled'] || false,
-        url: ocrSettings['url'] || undefined,
-        model: ocrSettings['model'] || 'olmocr',
-        maxTokens: ocrSettings['max-tokens'] || 4096,
-        apiKey: bootstrap.llm.apiKey,
-      },
-      paths: bootstrap.paths, // Always from bootstrap
-      weather: {
-        city: weatherSettings['city'] || undefined,
-        apiKey: weatherSettings['api-key'] || undefined,
-        units: weatherSettings['units'] || 'F',
-      },
-      signal: {
-        enabled: signalSettings['enabled'] || false,
-        cliPath: signalSettings['cli-path'] || '/usr/local/bin/signal-cli',
-        number: signalSettings['number'] || undefined,
-        recipient: signalSettings['recipient'] || undefined,
-        timeout: signalSettings['timeout'] || 20000,
-        receiveEnabled: signalSettings['receive-enabled'] || false,
-        allowedSenders: normalizeSignalAllowlist(signalSettings['allowed-senders']),
-      },
-      scheduler: {
-        enabled: schedulerSettings['enabled'] !== false,
-        checkInterval: schedulerSettings['check-interval'] || 60000,
-        missedReminders: schedulerSettings['missed-reminders'] || 'default',
-      },
-      calendar: {
-        timezone: calendarSettings['timezone'] || Intl.DateTimeFormat().resolvedOptions().timeZone,
-        defaultDuration: calendarSettings['default-duration'] || 60,
-        ambiguousTime: calendarSettings['ambiguous-time'] || 'afternoon',
-        weekStart: calendarSettings['week-start'] || 'sunday',
-        reminderMinutes: calendarSettings['reminder-minutes'] || 0,
-        dateFormat: calendarSettings['date-format'] || 'mdy',
-      },
-      presence: {
-        startup: presenceSettings['startup'] !== false,
-        shutdown: presenceSettings['shutdown'] !== false,
-        scheduled: presenceSettings['scheduled'] !== false,
-        contextual: presenceSettings['contextual'] !== false,
-        idle: presenceSettings['idle'] || false,
-        idleMinutes: presenceSettings['idle-minutes'] || 5,
-        morningHour: presenceSettings['morning-hour'] || 8,
-        eveningHour: presenceSettings['evening-hour'] || 18,
-        weeklyDay: presenceSettings['weekly-day'] || 0,
-        weeklyHour: presenceSettings['weekly-hour'] || 9,
-      },
-      logging: bootstrap.logging, // Always from bootstrap
-    });
-
-    return config;
-  } catch (err) {
-    console.warn('Failed to load settings from database, falling back to .env:', err);
-    // Fallback to legacy loader
-    return loadConfig();
-  }
 }
