@@ -202,17 +202,6 @@ If Signal inbound is enabled, any command above can be sent via Signal and treat
 
 ---
 
-## Settings
-
-| Command | Description |
-|---------|-------------|
-| `settings` | Show all settings |
-| `settings <category>` | Show one category (e.g., `settings signal`) |
-| `set <key> to <value>` | Update a setting |
-| `edit <category> settings` | Run a category wizard |
-
----
-
 ## Natural Language
 
 Bartleby understands natural language, so these all work:
