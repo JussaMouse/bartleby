@@ -669,6 +669,15 @@ Free API key at [openweathermap.org](https://openweathermap.org/api).
 
 Requires [signal-cli](https://github.com/AsamK/signal-cli) installed and registered.
 
+**Inbound commands (optional):** add to `.env` to let Bartleby respond to Signal messages as if they were REPL commands.
+
+```env
+SIGNAL_RECEIVE_ENABLED=true
+SIGNAL_ALLOWED_SENDERS=+1234567890
+```
+
+Only allow numbers you trust. Group messages are ignored by default.
+
 ---
 
 ## Backups

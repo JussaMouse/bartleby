@@ -208,8 +208,17 @@ If nothing matches, ask the Fast model to pick a tool. If complex, use Thinking 
 | `VectorService` | HNSW index for similarity search |
 | `OCRService` | Image text extraction |
 | `WeatherService` | Weather API integration |
-| `SignalService` | Mobile notifications |
+| `SignalService` | Mobile notifications + send replies |
 | `DataService` | CSV ingestion and SQL queries |
+
+### Transports
+
+Bartleby keeps the command pipeline transport-agnostic. Each adapter forwards plain-text input into the same router/agent flow.
+
+- **REPL**: local terminal input (`src/repl.ts`)
+- **HTTP API**: `/api/chat` for dashboard/mobile integrations (`src/server/index.ts`)
+- **Dashboard WS**: realtime view updates (`src/server/index.ts`)
+- **Signal (optional)**: inbound SMS-style commands via `signal-cli` with an allowlist (`src/transports/signal-receiver.ts`)
 
 ### WebSocket / Real-time Dashboard
 

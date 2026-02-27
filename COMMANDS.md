@@ -199,6 +199,8 @@ set weather.city to Portland
 | `status` | System health check |
 | `quit` | Exit Bartleby |
 
+If Signal inbound is enabled, any command above can be sent via Signal and treated like REPL input.
+
 ---
 
 ## Natural Language

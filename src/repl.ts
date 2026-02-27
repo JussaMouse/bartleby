@@ -9,6 +9,8 @@ import { DashboardServer } from './server/index.js';
 import { info, warn, error, debug } from './utils/logger.js';
 import { getDbPath, ensureDir } from './config.js';
 import { runFirstLaunch } from './setup/first-launch.js';
+import { handleCommand } from './app/command-handler.js';
+import type { SignalReceiver } from './transports/signal-receiver.js';
 
 /**
  * Load command history from disk
@@ -56,112 +58,24 @@ async function processInput(
   router: CommandRouter,
   agent: Agent,
   services: ServiceContainer,
-  dashboardServer: DashboardServer
+  dashboardServer: DashboardServer,
+  signalReceiver?: SignalReceiver
 ): Promise<void> {
-  // Record user message in personal context
-  services.context.recordMessage(input, true);
-
   try {
-    // Route the input
-    const routerResult = await router.route(input);
-    let response: string;
-
-    switch (routerResult.type) {
-      case 'routed':
-        // Deterministic match - execute tool directly
-        if (routerResult.route) {
-          debug('Executing routed tool', { tool: routerResult.route.tool });
-          response = await router.execute(routerResult.route, input);
-        } else {
-          response = "I didn't understand that. Try 'help' for commands.";
-        }
-        break;
-
-      case 'llm-simple':
-        // Simple request, no router match - use Fast model with streaming
-        debug('Handling with Fast model (simple, streaming)');
-        {
-          const startTime = Date.now();
-          try {
-            // Use non-streaming for now (streaming has UX challenges with tool calls)
-            // TODO: Implement smart streaming that detects tool calls before streaming
-            response = await agent.handleSimple(input);
-            const responseTime = Date.now() - startTime;
-
-            // Record successful routing outcome for learning
-            if (routerResult.decision) {
-              services.llm.recordRoutingOutcome({
-                decision: routerResult.decision,
-                success: true,
-                responseTimeMs: responseTime,
-              });
-            }
-          } catch (err) {
-            const responseTime = Date.now() - startTime;
-
-            // Record failed routing outcome
-            if (routerResult.decision) {
-              services.llm.recordRoutingOutcome({
-                decision: routerResult.decision,
-                success: false,
-                responseTimeMs: responseTime,
-                errorMessage: String(err),
-              });
-            }
-            throw err; // Re-throw to be handled by outer catch
-          }
-        }
-        break;
-
-      case 'llm-complex':
-        // Complex request - use Thinking model with agentic loop
+    const result = await handleCommand(input, router, agent, services, {
+      allowExit: true,
+      onComplex: () => {
         debug('Handling with Thinking model (complex agentic loop)');
         console.log('\n🤔 This looks like a complex request. Let me work on it...\n');
-        {
-          const startTime = Date.now();
-          try {
-            response = await agent.handleComplex(input);
-            const responseTime = Date.now() - startTime;
+      },
+    });
 
-            // Record successful routing outcome for learning
-            if (routerResult.decision) {
-              services.llm.recordRoutingOutcome({
-                decision: routerResult.decision,
-                success: true,
-                responseTimeMs: responseTime,
-              });
-            }
-          } catch (err) {
-            const responseTime = Date.now() - startTime;
-
-            // Record failed routing outcome
-            if (routerResult.decision) {
-              services.llm.recordRoutingOutcome({
-                decision: routerResult.decision,
-                success: false,
-                responseTimeMs: responseTime,
-                errorMessage: String(err),
-              });
-            }
-            throw err; // Re-throw to be handled by outer catch
-          }
-        }
-        break;
-
-      default:
-        response = "I'm not sure how to help with that. Try 'help' for commands.";
-    }
-
-    // Check for exit
-    if (response === '__EXIT__') {
-      await handleShutdown(rl, services, dashboardServer);
+    if (result.didExit) {
+      await handleShutdown(rl, services, dashboardServer, signalReceiver);
       return;
     }
 
-    // Record response in personal context
-    services.context.recordMessage(response, false);
-
-    console.log(`\n${response}`);
+    console.log(`\n${result.reply}`);
   } catch (err) {
     error('REPL error', { error: String(err) });
     console.log(`\nError: ${err}`);
@@ -332,7 +246,8 @@ export async function startRepl(
   router: CommandRouter,
   agent: Agent,
   services: ServiceContainer,
-  dashboardServer: DashboardServer
+  dashboardServer: DashboardServer,
+  signalReceiver?: SignalReceiver
 ): Promise<void> {
   // Load persistent command history
   const historyPath = getDbPath(services.config, 'history.txt');
@@ -419,7 +334,7 @@ export async function startRepl(
       appendToHistory(historyPath, pastedInput);
 
       // Process the pasted content
-      await processInput(pastedInput, rl, router, agent, services, dashboardServer);
+      await processInput(pastedInput, rl, router, agent, services, dashboardServer, signalReceiver);
       return;
     }
 
@@ -440,7 +355,7 @@ export async function startRepl(
     // Save command to history
     appendToHistory(historyPath, input);
 
-    await processInput(input, rl, router, agent, services, dashboardServer);
+    await processInput(input, rl, router, agent, services, dashboardServer, signalReceiver);
   });
 
   // Note: Shutdown is handled by handleShutdown() which is called from:
@@ -450,7 +365,7 @@ export async function startRepl(
 
   // Handle shutdown signals (Ctrl+C, kill, etc.)
   const signalHandler = async () => {
-    await handleShutdown(rl, services, dashboardServer);
+    await handleShutdown(rl, services, dashboardServer, signalReceiver);
   };
 
   process.on('SIGINT', signalHandler);   // Ctrl+C
@@ -465,7 +380,8 @@ export async function startRepl(
 async function handleShutdown(
   rl: readline.Interface,
   services: ServiceContainer,
-  dashboardServer: DashboardServer
+  dashboardServer: DashboardServer,
+  signalReceiver?: SignalReceiver
 ): Promise<void> {
   // Disable bracketed paste mode
   if (process.stdin.isTTY) {
@@ -483,6 +399,11 @@ async function handleShutdown(
     }
     console.log('[DEBUG] Session cleared, stopping dashboard');
     info('Stopping dashboard...');
+
+    if (signalReceiver) {
+      info('Stopping Signal receiver...');
+      signalReceiver.stop();
+    }
 
     // Stop dashboard with timeout
     await Promise.race([

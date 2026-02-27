@@ -6,6 +6,7 @@ import { CommandRouter } from './router/index.js';
 import { Agent } from './agent/index.js';
 import { startRepl } from './repl.js';
 import { DashboardServer } from './server/index.js';
+import { SignalReceiver } from './transports/signal-receiver.js';
 
 function checkBootstrapConfig(): void {
   const hasUrl =
@@ -175,8 +176,12 @@ async function main(): Promise<void> {
   dashboardServer.start(dashboardPort);
   info(`Dashboard server started at http://${dashboardHost}:${dashboardPort}`);
 
-  // 6. Start REPL (handles its own shutdown via quit command and SIGINT/SIGTERM)
-  await startRepl(router, agent, services, dashboardServer);
+  // 6. Start Signal receiver (optional inbound commands)
+  const signalReceiver = new SignalReceiver(services, router, agent);
+  signalReceiver.start();
+
+  // 7. Start REPL (handles its own shutdown via quit command and SIGINT/SIGTERM)
+  await startRepl(router, agent, services, dashboardServer, signalReceiver);
 }
 
 main().catch((err) => {

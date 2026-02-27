@@ -63,6 +63,8 @@ const ConfigSchema = z.object({
     number: z.string().optional(),
     recipient: z.string().optional(),
     timeout: z.number().positive(),
+    receiveEnabled: z.boolean(),
+    allowedSenders: z.array(z.string()),
   }),
 
   scheduler: z.object({
@@ -167,6 +169,11 @@ export function loadConfig(): Config {
       number: process.env.SIGNAL_NUMBER || undefined,
       recipient: process.env.SIGNAL_RECIPIENT || undefined,
       timeout: parseInt(process.env.SIGNAL_TIMEOUT || '20000'),
+      receiveEnabled: process.env.SIGNAL_RECEIVE_ENABLED === 'true',
+      allowedSenders: (process.env.SIGNAL_ALLOWED_SENDERS || '')
+        .split(',')
+        .map((value) => value.trim())
+        .filter((value) => value.length > 0),
     },
     scheduler: {
       enabled: process.env.SCHEDULER_ENABLED !== 'false',
@@ -219,6 +226,21 @@ export function ensureDir(dirPath: string): void {
   if (!fs.existsSync(dirPath)) {
     fs.mkdirSync(dirPath, { recursive: true });
   }
+}
+
+function normalizeSignalAllowlist(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return value.map((entry) => String(entry).trim()).filter((entry) => entry.length > 0);
+  }
+
+  if (typeof value === 'string') {
+    return value
+      .split(',')
+      .map((entry) => entry.trim())
+      .filter((entry) => entry.length > 0);
+  }
+
+  return [];
 }
 
 // === Hybrid Config Loader (Database + .env) ===
@@ -291,6 +313,8 @@ export function loadHybridConfig(settingsService?: any): Config {
         enabled: false,
         cliPath: '/usr/local/bin/signal-cli',
         timeout: 20000,
+        receiveEnabled: false,
+        allowedSenders: [],
       },
       scheduler: {
         enabled: true,
@@ -345,6 +369,11 @@ export function loadHybridConfig(settingsService?: any): Config {
         number: process.env.SIGNAL_NUMBER || undefined,
         recipient: process.env.SIGNAL_RECIPIENT || undefined,
         timeout: parseInt(process.env.SIGNAL_TIMEOUT || '20000'),
+        receiveEnabled: process.env.SIGNAL_RECEIVE_ENABLED === 'true',
+        allowedSenders: (process.env.SIGNAL_ALLOWED_SENDERS || '')
+          .split(',')
+          .map((value) => value.trim())
+          .filter((value) => value.length > 0),
       },
       scheduler: {
         enabled: process.env.SCHEDULER_ENABLED !== 'false',
@@ -434,6 +463,8 @@ export function loadHybridConfig(settingsService?: any): Config {
         number: signalSettings['number'] || undefined,
         recipient: signalSettings['recipient'] || undefined,
         timeout: signalSettings['timeout'] || 20000,
+        receiveEnabled: signalSettings['receive-enabled'] || false,
+        allowedSenders: normalizeSignalAllowlist(signalSettings['allowed-senders']),
       },
       scheduler: {
         enabled: schedulerSettings['enabled'] !== false,

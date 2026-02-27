@@ -73,6 +73,8 @@ const ENV_TO_DB: EnvMapping[] = [
   { envKey: 'SIGNAL_NUMBER',     dbKey: 'signal.number',    category: 'signal', description: 'Your Signal phone number' },
   { envKey: 'SIGNAL_RECIPIENT',  dbKey: 'signal.recipient', category: 'signal', description: 'Signal recipient number' },
   { envKey: 'SIGNAL_TIMEOUT',    dbKey: 'signal.timeout',   category: 'signal', description: 'Signal command timeout in ms', transform: Number },
+  { envKey: 'SIGNAL_RECEIVE_ENABLED', dbKey: 'signal.receive-enabled', category: 'signal', description: 'Enable inbound Signal commands', transform: v => v === 'true' },
+  { envKey: 'SIGNAL_ALLOWED_SENDERS', dbKey: 'signal.allowed-senders', category: 'signal', description: 'Comma-separated allowlist for inbound Signal commands' },
 ];
 
 // ─── Settings Manifest (for optional-settings wizard) ─────────────────────────

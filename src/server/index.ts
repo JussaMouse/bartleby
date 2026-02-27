@@ -14,6 +14,7 @@ import { CommandRouter } from '../router/index.js';
 import { ServiceContainer } from '../services/index.js';
 import { loadConfig } from '../config.js';
 import { info, error } from '../utils/logger.js';
+import { handleCommand } from '../app/command-handler.js';
 import type { GardenService } from '../garden/GardenService.js';
 import type { RelationshipService } from '../garden/RelationshipService.js';
 import type { ViewService } from '../garden/ViewService.js';
@@ -272,32 +273,12 @@ export class DashboardServer {
       const voiceMode = req.query.voice === 'true' || req.query.voice === '1';
 
       try {
-        this.services.context.recordMessage(text, true);
+        const result = await handleCommand(text, this.router, this.agent, this.services, {
+          stripMarkdown: voiceMode,
+          allowExit: false,
+        });
 
-        const routerResult = await this.router.route(text);
-        let response: string;
-
-        switch (routerResult.type) {
-          case 'routed':
-            response = routerResult.route
-              ? await this.router.execute(routerResult.route, text)
-              : "I didn't understand that. Try 'help' for commands.";
-            break;
-          case 'llm-simple':
-            response = await this.agent.handleSimple(text);
-            break;
-          case 'llm-complex':
-            response = await this.agent.handleComplex(text);
-            break;
-          default:
-            response = "I'm not sure how to help with that.";
-        }
-
-        let reply = response === '__EXIT__' ? 'Goodbye.' : response;
-        if (voiceMode) reply = stripMarkdown(reply);
-
-        this.services.context.recordMessage(reply, false);
-        res.json({ reply });
+        res.json({ reply: result.reply });
       } catch (err) {
         error('Chat request failed', { error: String(err) });
         res.status(500).json({ error: 'Failed to process request' });
@@ -408,14 +389,4 @@ export class DashboardServer {
     const token = req.headers.authorization?.replace('Bearer ', '').trim();
     return token === this.apiToken;
   }
-}
-
-function stripMarkdown(text: string): string {
-  return text
-    .replace(/\*\*([^*]+)\*\*/g, '$1')
-    .replace(/\*([^*]+)\*/g, '$1')
-    .replace(/#+\s+/g, '')
-    .replace(/`([^`]+)`/g, '$1')
-    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
-    .trim();
 }
