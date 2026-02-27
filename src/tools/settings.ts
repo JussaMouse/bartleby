@@ -210,70 +210,6 @@ export const setSetting: Tool = {
 };
 
 /**
- * Reset settings (delete all or by category)
- */
-export const resetSettings: Tool = {
-  name: 'resetSettings',
-  description: 'Reset settings to defaults',
-
-  routing: {
-    patterns: [
-      /^reset\s+settings?\s*$/i,
-      /^reset\s+settings?\s+([a-z]+)\s*$/i,
-    ],
-    keywords: {
-      verbs: ['reset', 'clear', 'delete'],
-      nouns: ['settings', 'configuration'],
-    },
-    examples: [
-      'reset settings',
-      'reset settings calendar',
-    ],
-    priority: 70,
-  },
-
-  parameters: {
-    type: 'object',
-    properties: {
-      category: { type: 'string', description: 'Category to reset (optional)' },
-      confirm: { type: 'boolean', description: 'Confirm reset' },
-    },
-  },
-
-  parseArgs: (input) => {
-    const match = input.match(/^reset\s+settings?\s+([a-z]+)\s*$/i);
-    const category = match ? match[1].toLowerCase() : undefined;
-    return { category, confirm: false };
-  },
-
-  execute: async (args, context) => {
-    const { settings } = context.services;
-    const { category, confirm = false } = args as { category?: string; confirm?: boolean };
-
-    // Require confirmation (this would ideally use a confirmation dialog)
-    if (!confirm) {
-      if (category) {
-        return `⚠️ This will delete all settings in the "${category}" category.\n\nTo confirm, use the tool with confirm: true parameter.`;
-      } else {
-        return `⚠️ This will delete ALL settings.\n\nTo confirm, use the tool with confirm: true parameter.`;
-      }
-    }
-
-    try {
-      const count = settings.reset(category);
-
-      if (category) {
-        return `✓ Reset ${count} setting${count === 1 ? '' : 's'} in category "${category}".`;
-      } else {
-        return `✓ Reset all ${count} settings.\n\nNote: You may need to run the first-time setup wizard again.`;
-      }
-    } catch (err) {
-      return `Error resetting settings: ${String(err)}`;
-    }
-  },
-};
-
-/**
  * Show settings statistics
  */
 export const showSettingsStats: Tool = {
@@ -334,6 +270,5 @@ export const showSettingsStats: Tool = {
 export const settingsTools: Tool[] = [
   showSettings,
   setSetting,
-  resetSettings,
   showSettingsStats,
 ];

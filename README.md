@@ -610,7 +610,6 @@ Changes take effect immediately without restarting:
 > set llm.fast-model to qwen3:7b
 > set calendar.timezone to America/New_York
 > set weather.city to London
-> reset settings calendar    # Reset a category to defaults
 > setup wizard               # Re-run first-launch wizard
 ```
 

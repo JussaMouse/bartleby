@@ -160,7 +160,6 @@ rule: respond in plain text only
 | `settings <category>` | Show specific category |
 | `set <key> to <value>` | Quick set a setting |
 | `edit settings` | Interactive wizard |
-| `reset settings` | Reset to defaults |
 | `migrate settings` | Migrate .env to database (one-time) |
 
 **Quick Set Examples:**
