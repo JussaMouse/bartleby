@@ -665,6 +665,8 @@ Free API key at [openweathermap.org](https://openweathermap.org/api).
 > set signal.cli-path to /usr/local/bin/signal-cli
 > set signal.number to +1234567890
 > set signal.recipient to +0987654321
+> set signal.receive-enabled to true
+> set signal.allowed-senders to +1234567890
 ```
 
 Requires [signal-cli](https://github.com/AsamK/signal-cli) installed and registered.

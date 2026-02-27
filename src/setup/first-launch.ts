@@ -86,6 +86,7 @@ interface SettingSpec {
   category: string;
   prompt: string;
   validate?: (v: string) => string | null;  // returns error message or null
+  transform?: (v: string) => any;
   sensitive?: boolean;
 }
 
@@ -120,6 +121,22 @@ const SETTINGS_MANIFEST: SettingSpec[] = [
     category: 'signal',
     prompt: 'Recipient phone number (e.g. +15551234567): ',
     validate: (v) => /^\+\d{7,15}$/.test(v) ? null : 'Must be in format +15551234567',
+  },
+  {
+    key: 'signal.receive-enabled',
+    label: 'Signal inbound commands',
+    description: 'Allow Signal messages to act like REPL commands (true/false)',
+    category: 'signal',
+    prompt: 'Enable inbound Signal commands? (true/false): ',
+    validate: (v) => /^(true|false)$/i.test(v) ? null : 'Enter true or false',
+    transform: (v) => v.trim().toLowerCase() === 'true',
+  },
+  {
+    key: 'signal.allowed-senders',
+    label: 'Signal allowed senders',
+    description: 'Comma-separated allowlist for inbound Signal commands',
+    category: 'signal',
+    prompt: 'Allowed sender numbers (comma-separated, e.g. +1555,+1444): ',
   },
   {
     key: 'ocr.url',
@@ -314,7 +331,8 @@ async function runSettingsWizard(
       }
     }
 
-    settings.setSetting(spec.key, value, spec.category, spec.description);
+    const finalValue = spec.transform ? spec.transform(value) : value;
+    settings.setSetting(spec.key, finalValue, spec.category, spec.description);
 
     // Enable OCR if URL was just set
     if (spec.key === 'ocr.url') {

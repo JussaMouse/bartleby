@@ -218,7 +218,7 @@ Bartleby keeps the command pipeline transport-agnostic. Each adapter forwards pl
 - **REPL**: local terminal input (`src/repl.ts`)
 - **HTTP API**: `/api/chat` for dashboard/mobile integrations (`src/server/index.ts`)
 - **Dashboard WS**: realtime view updates (`src/server/index.ts`)
-- **Signal (optional)**: inbound SMS-style commands via `signal-cli` with an allowlist (`src/transports/signal-receiver.ts`)
+- **Signal (optional)**: inbound SMS-style commands via `signal-cli` with an allowlist (`src/transports/signal-receiver.ts`, `signal.receive-enabled`, `signal.allowed-senders`)
 
 ### WebSocket / Real-time Dashboard
 
