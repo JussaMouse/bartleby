@@ -159,7 +159,7 @@ rule: respond in plain text only
 | `settings` | Show all settings grouped by category |
 | `settings <category>` | Show specific category |
 | `set <key> to <value>` | Quick set a setting |
-| `edit settings` | Interactive wizard |
+| `edit <category> settings` | Interactive wizard |
 | `migrate settings` | Migrate .env to database (one-time) |
 
 **Quick Set Examples:**
