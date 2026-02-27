@@ -1,50 +1,38 @@
-# Dependencies
+# Dependencies & build
 node_modules/
-
-# Build output
 dist/
 
 # Environment
 .env
 .env.local
 
-# Databases - exclude entire directory
+# Runtime data
 database/
-
-# Logs
 logs/
 *.log
+/garden/
+shed/
+inbox/
 
-# OS
+# Config (use examples)
+settings.toml
+import-rules.json
+!*.example.json
+
+# OS & IDE
 .DS_Store
 Thumbs.db
-
-# IDE
 .vscode/
 .idea/
 *.swp
 *.swo
 
-# User data - auto-generated from database
-garden/
-shed/
-inbox/
-
-# Configuration files (use examples instead)
-settings.toml
-import-rules.json
-!*.example.json
-
-# Test and diagnostic files
+# Dev-only
+devs-notes/
+testing/
+test/
+scripts/
 test-*.ts
 test-*.js
 check-connectivity.js
 diagnose-llm.js
-
-# Developer notes and testing
-devs-notes/
-testing/
-test/
-
-# Scripts directory (user-facing scripts in package.json instead)
-scripts/
