@@ -60,7 +60,7 @@ dashboard.allowed_ips: [127.0.0.1, 100.x.x.x]
 pnpm start
 ```
 
-On first run, a setup wizard asks your name and configures defaults. After that:
+On first run, a setup wizard asks your name, configures defaults, and lets you walk through settings by category (press Enter to keep defaults). After that:
 
 ```
 📋 Bartleby is ready. Type "help" for commands, "quit" to exit.
@@ -587,7 +587,7 @@ weather.city: Austin
 dashboard.api_token: <secret>
 ```
 
-Generated on first run (or via `setup wizard`).
+Generated on first run (you can re-run defaults with `setup wizard`).
 
 ### .env (Bootstrap)
 

@@ -5,13 +5,16 @@ import path from 'path';
 import { ServiceContainer } from '../services/index.js';
 import { SettingsService } from '../services/settings.js';
 import { configureDefaults } from '../tools/first-run-wizard.js';
-import { SETTINGS_REGISTRY, type SettingDefinition } from '../settings/registry.js';
+import {
+  SETTINGS_REGISTRY,
+  SETTINGS_CATEGORIES,
+  getSettingsByCategory,
+  type SettingDefinition,
+} from '../settings/registry.js';
 
 // ─── Settings Manifest (registry-driven) ─────────────────────────────────────
 
-const PROMPTABLE_SETTINGS: SettingDefinition[] = SETTINGS_REGISTRY.filter(
-  (definition) => !!definition.prompt
-);
+const ALL_SETTINGS: SettingDefinition[] = SETTINGS_REGISTRY;
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -42,6 +45,100 @@ function setIfUnset(
 ): void {
   if (!settings.hasSetting(key)) {
     settings.setSetting(key, value, category, description);
+  }
+}
+
+function formatValue(value: unknown): string {
+  if (typeof value === 'string') return value;
+  if (typeof value === 'object') return JSON.stringify(value);
+  return String(value);
+}
+
+function formatDisplayValue(
+  definition: SettingDefinition,
+  value: unknown,
+  isSet: boolean
+): string {
+  if (definition.secret) {
+    return isSet ? '<hidden>' : '<unset>';
+  }
+
+  return formatValue(value);
+}
+
+function buildPrompt(
+  definition: SettingDefinition,
+  displayValue: string,
+  isSet: boolean
+): string {
+  const label = isSet ? `current: ${displayValue}` : `default: ${displayValue}`;
+  if (definition.prompt) {
+    return `${definition.prompt.trim()} [${label}] (Enter to keep): `;
+  }
+
+  const hints: string[] = [];
+  if (definition.type === 'enum' && definition.options) {
+    hints.push(`options: ${definition.options.join('/')}`);
+  }
+  if (definition.type === 'boolean') {
+    hints.push('true/false');
+  }
+  const hint = hints.length > 0 ? ` (${hints.join(', ')})` : '';
+
+  return `Set ${definition.key}${hint} [${label}] (Enter to keep): `;
+}
+
+async function runCategoryWizard(
+  rl: readline.Interface,
+  settings: SettingsService,
+  category: string,
+  restartRequired: Set<string>
+): Promise<'back' | 'done' | void> {
+  const definitions = getSettingsByCategory(category);
+
+  console.log('\n' + '─'.repeat(50));
+  console.log(`⚙️  ${category.toUpperCase()} settings`);
+  console.log('Type "back" to return, "done" to finish.\n');
+
+  for (const definition of definitions) {
+    while (true) {
+      const isSet = settings.hasSetting(definition.key);
+      const currentValue = isSet ? settings.getSetting(definition.key) : definition.default;
+      const displayValue = formatDisplayValue(definition, currentValue, isSet);
+      const prompt = buildPrompt(definition, displayValue, isSet);
+      const input = await promptLine(rl, prompt);
+
+      if (!input) break;
+
+      const lowered = input.toLowerCase();
+      if (lowered === 'back') return 'back';
+      if (lowered === 'done') return 'done';
+
+      if (definition.validate) {
+        const error = definition.validate(input);
+        if (error) {
+          console.log(`✗ ${error}`);
+          continue;
+        }
+      }
+
+      try {
+        settings.setSetting(definition.key, input, definition.category, definition.description);
+        if (definition.requiresRestart) {
+          restartRequired.add(definition.key);
+        }
+        if (definition.key === 'ocr.url' && input) {
+          setIfUnset(settings, 'ocr.enabled', true, 'ocr', 'Enable OCR for image text extraction');
+        }
+        if (definition.key.startsWith('signal.') && input) {
+          setIfUnset(settings, 'signal.enabled', true, 'signal', 'Enable Signal notifications');
+        }
+        console.log('✓ Saved.');
+        break;
+      } catch (err) {
+        console.log(`✗ ${String(err)}`);
+      }
+    }
   }
 }
 
@@ -126,63 +223,52 @@ async function runSettingsWizard(
   rl: readline.Interface,
   settings: SettingsService
 ): Promise<void> {
+  if (ALL_SETTINGS.length === 0) return;
+
+  const restartRequired = new Set<string>();
+
   while (true) {
-    // Build list of unset settings from manifest
-    const unset = PROMPTABLE_SETTINGS.filter(
-      (definition) => !settings.hasSetting(definition.key)
-    );
-
-    if (unset.length === 0) break;
-
     console.log('\n' + '─'.repeat(50));
-    console.log('📋 Optional settings to configure:\n');
+    console.log('📋 Settings categories:\n');
 
-    unset.forEach((definition, i) => {
-      console.log(`  ${i + 1}. ${definition.key.padEnd(28)}  ${definition.description}`);
+    SETTINGS_CATEGORIES.forEach((category, index) => {
+      const definitions = getSettingsByCategory(category);
+      const configured = definitions.filter((definition) => settings.hasSetting(definition.key)).length;
+      const label = `${configured}/${definitions.length} configured`;
+      console.log(`  ${index + 1}. ${category.padEnd(14)}  ${label}`);
     });
 
-    console.log('\nType a number to configure, "done" to finish, or press Enter to skip.');
+    console.log('\nChoose a number, type "all" for everything, or "done" to finish.');
     console.log('─'.repeat(50));
 
     const input = await promptLine(rl, '> ');
+    const lowered = input.toLowerCase();
 
-    if (!input || input.toLowerCase() === 'done') break;
+    if (!input || lowered === 'done') break;
+
+    if (lowered === 'all') {
+      for (const category of SETTINGS_CATEGORIES) {
+        const result = await runCategoryWizard(rl, settings, category, restartRequired);
+        if (result === 'done') {
+          break;
+        }
+      }
+      break;
+    }
 
     const idx = parseInt(input) - 1;
-    if (isNaN(idx) || idx < 0 || idx >= unset.length) {
-      console.log('Please enter a valid number or "done".');
+    if (isNaN(idx) || idx < 0 || idx >= SETTINGS_CATEGORIES.length) {
+      console.log('Please enter a valid number, "all", or "done".');
       continue;
     }
 
-    const definition = unset[idx];
-    const value = await promptLine(rl, definition.prompt ?? `${definition.key}: `);
+    const category = SETTINGS_CATEGORIES[idx];
+    const result = await runCategoryWizard(rl, settings, category, restartRequired);
+    if (result === 'done') break;
+  }
 
-    if (!value) {
-      console.log('Skipped.');
-      continue;
-    }
-
-    if (definition.validate) {
-      const error = definition.validate(value as any);
-      if (error) {
-        console.log(`✗ ${error}`);
-        continue;
-      }
-    }
-
-    settings.setSetting(definition.key, value, definition.category, definition.description);
-
-    // Enable OCR if URL was just set
-    if (definition.key === 'ocr.url' && value) {
-      setIfUnset(settings, 'ocr.enabled', true, 'ocr', 'Enable OCR for image text extraction');
-    }
-
-    // Enable Signal if number was just set
-    if (definition.key.startsWith('signal.') && value) {
-      setIfUnset(settings, 'signal.enabled', true, 'signal', 'Enable Signal notifications');
-    }
-
-    console.log(`✓ Saved.`);
+  if (restartRequired.size > 0) {
+    console.log('\n⚠️  Some settings require a restart to take effect.');
   }
 }
 
