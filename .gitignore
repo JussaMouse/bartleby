@@ -16,6 +16,7 @@ inbox/
 
 # Config (use examples)
 settings.toml
+settings.yaml
 import-rules.json
 !*.example.json
 
