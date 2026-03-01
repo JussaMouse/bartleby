@@ -615,7 +615,7 @@ Changes take effect immediately without restarting:
 ```
 > settings                   # Show all settings
 > settings llm               # Show one category
-> set llm.fast.model to qwen3:7b
+> set llm.fast.model to mlx-community/Qwen3.5-35B-A3B-4bit
 > set calendar.timezone to America/New_York
 > set weather.api_key to <key>
 > setup wizard               # Re-run first-launch wizard
@@ -632,9 +632,9 @@ Bartleby uses three model tiers:
 | Thinking | 30B+ | Multi-step reasoning | 2–10s |
 
 ```
-> set llm.router.model to qwen3:0.6b
-> set llm.fast.model to qwen3:7b
-> set llm.thinking.model to qwen3:32b
+> set llm.router.model to mlx-community/Qwen3-0.6B-4bit
+> set llm.fast.model to mlx-community/Qwen3.5-35B-A3B-4bit
+> set llm.thinking.model to mlx-community/Qwen3.5-122B-A10B-4bit
 ```
 
 ### OCR

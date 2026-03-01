@@ -82,8 +82,14 @@ export class LLMService {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), timeout);
 
+      const headers: Record<string, string> = {};
+      if (this.config.llm.apiKey) {
+        headers['Authorization'] = `Bearer ${this.config.llm.apiKey}`;
+      }
+
       const response = await fetch(`${tierConfig.url}/models`, {
         signal: controller.signal,
+        headers,
       });
 
       clearTimeout(timeoutId);

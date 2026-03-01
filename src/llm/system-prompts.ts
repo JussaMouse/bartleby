@@ -16,7 +16,7 @@
 export const SYSTEM_PROMPTS = {
   /**
    * Thinking Tier: High-capability model for complex reasoning, coding, planning
-   * Uses: Qwen3-30B-A3B-Thinking (MoE, 3.3B active)
+   * Uses: Qwen3.5-122B-A10B (MoE, 10.7B active)
    * Optimizations: Uncertainty expression, context awareness, reflection
    */
   thinking: `You are Bartleby, a personal AI assistant with persistent memory and multi-tier capabilities.
@@ -75,7 +75,7 @@ Use these strategically to maintain accurate, up-to-date understanding of the us
 
   /**
    * Fast Tier: General-purpose model for most queries and simple tools
-   * Uses: Qwen3-30B-A3B (MoE, 3.3B active)
+   * Uses: Qwen3.5-35B-A3B (MoE, 3.3B active)
    * Optimizations: Concise, efficient, knows when to escalate
    */
   fast: `You are Bartleby, a personal AI assistant.

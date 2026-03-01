@@ -143,18 +143,18 @@ export function loadConfig(settings?: SettingsProvider): Config {
   const llmUrlOverride = process.env.LLM_URL;
 
   const routerUrl =
-    llmUrlOverride ??
     process.env.ROUTER_URL ??
+    llmUrlOverride ??
     resolveSetting(settings, 'llm.router.url', 'http://127.0.0.1:11434/v1');
 
   const fastUrl =
-    llmUrlOverride ??
     process.env.FAST_URL ??
+    llmUrlOverride ??
     resolveSetting(settings, 'llm.fast.url', 'http://127.0.0.1:11434/v1');
 
   const thinkingUrl =
-    llmUrlOverride ??
     process.env.THINKING_URL ??
+    llmUrlOverride ??
     resolveSetting(settings, 'llm.thinking.url', 'http://127.0.0.1:11434/v1');
 
   const llmApiKey = normalizeOptionalString(
@@ -188,17 +188,17 @@ export function loadConfig(settings?: SettingsProvider): Config {
   const config = ConfigSchema.parse({
     llm: {
       router: {
-        model: resolveSetting(settings, 'llm.router.model', 'qwen3:0.6b'),
+        model: resolveSetting(settings, 'llm.router.model', 'mlx-community/Qwen3-0.6B-4bit'),
         url: routerUrl,
         maxTokens: resolveSetting(settings, 'llm.router.max_tokens', 100),
       },
       fast: {
-        model: resolveSetting(settings, 'llm.fast.model', 'qwen3:7b'),
+        model: resolveSetting(settings, 'llm.fast.model', 'mlx-community/Qwen3.5-35B-A3B-4bit'),
         url: fastUrl,
         maxTokens: resolveSetting(settings, 'llm.fast.max_tokens', 4096),
       },
       thinking: {
-        model: resolveSetting(settings, 'llm.thinking.model', 'qwen3:32b'),
+        model: resolveSetting(settings, 'llm.thinking.model', 'mlx-community/Qwen3.5-122B-A10B-4bit'),
         url: thinkingUrl,
         maxTokens: resolveSetting(settings, 'llm.thinking.max_tokens', 8192),
         budget: resolveSetting(settings, 'llm.thinking.budget', 4096),

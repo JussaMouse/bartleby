@@ -36,8 +36,14 @@ export class OCRService {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 10000);
 
+      const headers: Record<string, string> = {};
+      if (this.config.ocr.apiKey) {
+        headers['Authorization'] = `Bearer ${this.config.ocr.apiKey}`;
+      }
+
       const response = await fetch(`${this.config.ocr.url}/models`, {
         signal: controller.signal,
+        headers,
       });
       clearTimeout(timeoutId);
 
@@ -123,9 +129,14 @@ export class OCRService {
         contentParts: requestBody.messages[0].content.length,
       });
 
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (this.config.ocr.apiKey) {
+        headers['Authorization'] = `Bearer ${this.config.ocr.apiKey}`;
+      }
+
       const fetchResponse = await fetch(`${this.config.ocr.url}/chat/completions`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify(requestBody),
       });
 

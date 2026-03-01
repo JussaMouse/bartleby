@@ -141,7 +141,7 @@ export const setSetting: Tool = {
     },
     examples: [
       'set calendar.timezone to America/New_York',
-      'set llm.router.model to qwen3:0.6b',
+      'set llm.router.model to mlx-community/Qwen3-0.6B-4bit',
       'set presence.startup to false',
     ],
     priority: 75,

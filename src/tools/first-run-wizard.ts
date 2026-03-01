@@ -113,9 +113,9 @@ export async function configureDefaults(
         output += `  • ${model}\n`;
       }
 
-      const routerModel = findModelBySize(availableModels, 'small') || 'qwen3:0.6b';
-      const fastModel = findModelBySize(availableModels, 'medium') || 'qwen3:7b';
-      const thinkingModel = findModelBySize(availableModels, 'large') || 'qwen3:32b';
+      const routerModel = findModelBySize(availableModels, 'small') || 'mlx-community/Qwen3-0.6B-4bit';
+      const fastModel = findModelBySize(availableModels, 'medium') || 'mlx-community/Qwen3.5-35B-A3B-4bit';
+      const thinkingModel = findModelBySize(availableModels, 'large') || 'mlx-community/Qwen3.5-122B-A10B-4bit';
 
       output += `\nRecommended configuration:\n`;
       output += `  Router (0.5-1B): ${routerModel}\n`;
@@ -127,15 +127,15 @@ export async function configureDefaults(
       setIfUnset('llm.thinking.model', thinkingModel, 'llm', 'Thinking tier model for complex reasoning');
     } else {
       output += `⚠ Could not detect models. Using defaults.\n\n`;
-      setIfUnset('llm.router.model', 'qwen3:0.6b', 'llm');
-      setIfUnset('llm.fast.model', 'qwen3:7b', 'llm');
-      setIfUnset('llm.thinking.model', 'qwen3:32b', 'llm');
+      setIfUnset('llm.router.model', 'mlx-community/Qwen3-0.6B-4bit', 'llm');
+      setIfUnset('llm.fast.model', 'mlx-community/Qwen3.5-35B-A3B-4bit', 'llm');
+      setIfUnset('llm.thinking.model', 'mlx-community/Qwen3.5-122B-A10B-4bit', 'llm');
     }
   } catch (_err) {
     output += `⚠ Could not connect to LLM. Using default models.\n\n`;
-    setIfUnset('llm.router.model', 'qwen3:0.6b', 'llm');
-    setIfUnset('llm.fast.model', 'qwen3:7b', 'llm');
-    setIfUnset('llm.thinking.model', 'qwen3:32b', 'llm');
+    setIfUnset('llm.router.model', 'mlx-community/Qwen3-0.6B-4bit', 'llm');
+    setIfUnset('llm.fast.model', 'mlx-community/Qwen3.5-35B-A3B-4bit', 'llm');
+    setIfUnset('llm.thinking.model', 'mlx-community/Qwen3.5-122B-A10B-4bit', 'llm');
   }
 
   setIfUnset('llm.router.max_tokens', 100, 'llm');
@@ -192,7 +192,8 @@ export async function configureDefaults(
   // Step 6: Optional Features
   output += `━━━ Step 6: Optional Features ━━━\n\n`;
   setIfUnset('ocr.enabled', false, 'ocr', 'Enable OCR for image text extraction');
-  setIfUnset('ocr.model', 'olmocr', 'ocr', 'OCR model name');
+  setIfUnset('ocr.url', 'http://127.0.0.1:8085/v1', 'ocr', 'OCR service URL');
+  setIfUnset('ocr.model', 'mlx-community/olmOCR-2-7B-1025-mlx-8bit', 'ocr', 'OCR model name');
   setIfUnset('ocr.max_tokens', 4096, 'ocr', 'Max tokens for OCR extraction');
   output += `OCR: Disabled (enable with: set ocr.enabled to true)\n`;
   setIfUnset('weather.units', 'F', 'weather', 'Temperature units (F/C)');
@@ -211,9 +212,9 @@ export async function configureDefaults(
 async function detectModels(llm: any): Promise<string[]> {
   try {
     // Try to list models (OpenAI-compatible API)
-    const response = await fetch(`${llm.config.fast.url}/models`, {
-      headers: llm.config.fast.apiKey ? {
-        'Authorization': `Bearer ${llm.config.fast.apiKey}`
+    const response = await fetch(`${llm.config.llm.fast.url}/models`, {
+      headers: llm.config.llm.apiKey ? {
+        'Authorization': `Bearer ${llm.config.llm.apiKey}`
       } : {}
     });
 
@@ -237,7 +238,7 @@ function findModelBySize(models: string[], size: 'small' | 'medium' | 'large'): 
   const patterns = {
     small: /0\.[5-9]b|1b/i,
     medium: /[7-9]b|1[0-9]b|2[0-9]b/i,
-    large: /3[0-9]b|[4-9][0-9]b/i,
+    large: /3[0-9]b|[4-9][0-9]b|1[0-9]{2}b/i,
   };
 
   const pattern = patterns[size];

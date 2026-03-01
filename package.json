@@ -12,6 +12,7 @@
     "typecheck": "tsc --noEmit",
     "profile": "tsx scripts/export-import-profile.ts",
     "monitor": "tsx scripts/monitor-memory.ts",
+    "models": "tsx scripts/list-models.ts",
     "optimize": "tsx scripts/optimize-database.ts",
     "postinstall": "node -e \"require('child_process').execSync('node-gyp rebuild', {cwd: require.resolve('hnswlib-node/package.json').replace('/package.json',''), stdio:'inherit'})\""
   },
