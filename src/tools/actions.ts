@@ -25,7 +25,7 @@ export const captureItem: Tool = {
 
   routing: {
     patterns: [
-      /^(capture|add to inbox|inbox)\s+(.+)/i,
+      /^(capture|add to inbox|inbox)\s*:?\s+(.+)/i,
       /^jot(?: down)?\s+(.+)/i,
     ],
     keywords: {
@@ -37,7 +37,7 @@ export const captureItem: Tool = {
   },
 
   parseArgs: (input) => {
-    const text = input.replace(/^(capture|add to inbox|inbox|jot(?: down)?)\s+/i, '').trim();
+    const text = input.replace(/^(capture|add to inbox|inbox|jot(?: down)?)\s*:?\s+/i, '').trim();
     return { title: text };
   },
 
