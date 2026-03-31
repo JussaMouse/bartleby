@@ -1,0 +1,2 @@
+# Epic D scaffold worker currently uses only the Python standard library.
+# Add Unsloth/PEFT or other trainer dependencies here when the worker is upgraded.
