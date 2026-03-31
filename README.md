@@ -71,6 +71,26 @@ Local inference is the preferred setup.
 
 Bartleby is backend-agnostic as long as the endpoint is OpenAI-compatible. You can use local or remote inference, but local-first is the intended default.
 
+### Supported Model Roles
+
+Bartleby supports these model roles:
+
+- **Router** — intent routing / complexity classification *(this is meant to be a tiny LLM)*
+- **Fast** — routine interactive responses
+- **Thinking** — heavier reasoning and multi-step tasks
+- **Embedding** — semantic search and retrieval
+- **OCR** — text extraction from images/documents
+- **TTS** — spoken output
+- **STT** — voice input
+
+You do not need every role configured on day one, but this is the full model layout Bartleby is designed to support.
+
+### Bootstrap Note
+
+Before Bartleby can launch its interactive setup, you need to put an initial LLM endpoint in `.env`.
+
+That first LLM is used to bootstrap Bartleby so you can launch it and complete setup interactively. Once Bartleby is running, you can configure the broader model layout and optional services from inside Bartleby.
+
 ### Install Steps
 
 ```bash
