@@ -76,6 +76,21 @@ export class EnhancedRouter {
       confidence = 0.95;
       reason = 'Router model classification';
       signals.push('router-model');
+
+      // Guardrail: downgrade obviously command-like short inputs that are
+      // unlikely to need multi-step reasoning, even if router predicts COMPLEX.
+      const guardrail = this.evaluateSimpleGuardrail(input, complexity);
+      if (guardrail.shouldDowngrade) {
+        complexity = 'SIMPLE';
+        confidence = Math.min(confidence, 0.85);
+        reason = `Router classification overridden by simple guardrail: ${guardrail.reason}`;
+        signals.push('simple-guardrail-override', ...guardrail.signals);
+        debug('Simple guardrail override applied', {
+          input: input.slice(0, 80),
+          reason: guardrail.reason,
+          signals: guardrail.signals,
+        });
+      }
     } else {
       // Use enhanced heuristics
       const heuristicResult = this.analyzeWithEnhancedHeuristics(input);
@@ -104,6 +119,55 @@ export class EnhancedRouter {
     });
 
     return { tier, complexity, confidence, reason, signals };
+  }
+
+
+  /**
+   * Guardrail for obvious command-like requests.
+   *
+   * Prevents over-escalation when the router model marks short imperative
+   * commands as COMPLEX.
+   */
+  private evaluateSimpleGuardrail(input: string, complexity: Complexity): {
+    shouldDowngrade: boolean;
+    reason: string;
+    signals: string[];
+  } {
+    if (complexity !== 'COMPLEX') {
+      return { shouldDowngrade: false, reason: 'not-complex', signals: [] };
+    }
+
+    const normalized = input.trim().toLowerCase();
+    const signals: string[] = [];
+
+    const commandLikeStart = /^(show|list|get|view|display|help|status|exit|quit|set|delete|remove|open|edit|new|add|create|complete|done|calendar|contacts|projects|notes|settings|tax\s+status)\b/i;
+    const shortInput = normalized.length <= 80;
+
+    if (shortInput) signals.push('short-input');
+    if (commandLikeStart.test(normalized)) signals.push('command-like-start');
+
+    // Strong complexity indicators that should block downgrade
+    const strongComplexity = [
+      /\b(and then|after that|first.*then|next|finally)\b/i,
+      /\b(analyze|compare|summarize|explain|why|how does)\b/i,
+      /\b(plan|organize|prepare)\b/i,
+      /\b(if|when|based on|depending|unless|in case)\b/i,
+      /\b(write|build|implement|code|script|function|debug)\b/i,
+      /\b(all|each|every|multiple)\s+(\d+\s+)?(files?|csvs?|documents?)\b/i,
+      /\/(.*\*.*|.*\?.*)\b/,
+    ].some(re => re.test(input));
+
+    if (!strongComplexity) signals.push('no-strong-complexity-signals');
+
+    const shouldDowngrade = shortInput && commandLikeStart.test(normalized) && !strongComplexity;
+
+    return {
+      shouldDowngrade,
+      reason: shouldDowngrade
+        ? 'short command-like request without strong complexity indicators'
+        : 'guardrail conditions not met',
+      signals,
+    };
   }
 
   /**
@@ -182,26 +246,44 @@ export class EnhancedRouter {
     }
 
     // 5. Analysis/reasoning (MODERATE signal)
-    if (/\b(compare|analyze|review|summarize|explain|why|how does)\b/i.test(input)) {
-      complexityScore += 1;
+    if (/\b(compare|analyze|review|summarize|explain|why|how does|tradeoffs?|recommend)\b/i.test(input)) {
+      complexityScore += 2;
       signals.push('analysis');
     }
 
     // 6. Planning (MODERATE signal)
-    if (/\b(plan|schedule|organize|prepare)\b/i.test(input)) {
-      complexityScore += 1;
+    if (/\b(plan|schedule|organize|prepare|draft|roadmap|migration|rollback|risk|risks)\b/i.test(input)) {
+      complexityScore += 2;
       signals.push('planning');
     }
 
     // 7. Conditional logic (MODERATE signal)
     if (/\b(if|when|based on|depending|unless|in case)\b/i.test(input)) {
-      complexityScore += 1;
+      complexityScore += 2;
       signals.push('conditional');
+    }
+
+    // 7b. Coordination and follow-through are usually multi-step.
+    if (/\b(notify|message|email|send)\b/i.test(input)) {
+      complexityScore += 1;
+      signals.push('coordination');
+    }
+
+    // 7c. State changes across projects/domains tend to need reasoning.
+    if (/\b(on hold|hold off|starting|switching|migrate|rollback)\b/i.test(input)) {
+      complexityScore += 1;
+      signals.push('state-transition');
+    }
+
+    // 7d. Slash-delimited domain references are often shorthand for multi-domain planning.
+    if (/\b[a-z]+\/[a-z]+\b/i.test(input)) {
+      complexityScore += 1;
+      signals.push('multi-domain');
     }
 
     // 8. Multiple clauses (WEAK signal)
     const clauses = input.split(/[,;]| and /).length;
-    if (clauses > 3) {
+    if (clauses > 2) {
       complexityScore += 1;
       signals.push('multi-clause');
     }

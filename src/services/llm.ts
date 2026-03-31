@@ -1,4 +1,5 @@
 // src/services/llm.ts
+import { AsyncLocalStorage } from 'async_hooks';
 import OpenAI from 'openai';
 import { Config } from '../config.js';
 import { info, warn, debug } from '../utils/logger.js';
@@ -8,6 +9,21 @@ import { EnhancedRouter, type RoutingDecision, type RoutingOutcome } from '../ll
 
 export type Tier = 'router' | 'fast' | 'thinking';
 export type Complexity = 'SIMPLE' | 'COMPLEX';
+
+export interface RouterRuntimeBinding {
+  source: 'base' | 'active-adapter' | 'canary-adapter' | 'shadow-adapter';
+  model: string;
+  modelVersion?: string;
+  baseModel: string;
+  baseModelVersion?: string;
+  baseId?: string;
+  artifactId?: string;
+  artifactPath?: string;
+  artifactFormat?: string;
+  artifactPrecision?: string;
+  activeAdapterId?: string;
+  activeAdapterVersion?: string;
+}
 
 // NOTE: Router system prompt is now defined in system-prompts.ts
 // This classification format is for backwards compatibility
@@ -32,6 +48,8 @@ export class LLMService {
   private healthy: Record<Tier, boolean> = { router: false, fast: false, thinking: false };
   private cache: ResponseCache;
   private router: EnhancedRouter;
+  private routerRuntimeResolver?: () => RouterRuntimeBinding | undefined;
+  private temporaryRouterRuntimeBinding = new AsyncLocalStorage<RouterRuntimeBinding>();
 
   constructor(config: Config) {
     this.config = config;
@@ -105,6 +123,32 @@ export class LLMService {
     return this.healthy[tier];
   }
 
+  setRouterRuntimeResolver(resolver: () => RouterRuntimeBinding | undefined): void {
+    this.routerRuntimeResolver = resolver;
+  }
+
+  getRouterRuntimeBinding(): RouterRuntimeBinding {
+    const temporaryBinding = this.temporaryRouterRuntimeBinding.getStore();
+    if (temporaryBinding) {
+      return temporaryBinding;
+    }
+
+    return this.routerRuntimeResolver?.() ?? {
+      source: 'base',
+      model: this.config.llm.router.model,
+      modelVersion: inferModelVersion(this.config.llm.router.model),
+      baseModel: this.config.llm.router.model,
+      baseModelVersion: inferModelVersion(this.config.llm.router.model),
+    };
+  }
+
+  async withTemporaryRouterRuntimeBinding<T>(
+    binding: RouterRuntimeBinding,
+    fn: () => Promise<T>
+  ): Promise<T> {
+    return this.temporaryRouterRuntimeBinding.run(binding, fn);
+  }
+
   /**
    * Classify input complexity using Router model or heuristics fallback.
    * This determines whether to use Fast (single tool) or Thinking (agentic loop).
@@ -113,6 +157,7 @@ export class LLMService {
    */
   async classifyComplexity(input: string): Promise<RoutingDecision> {
     let routerClassification: Complexity | undefined;
+    const routerRuntime = this.getRouterRuntimeBinding();
 
     // Try router model first
     if (this.healthy['router']) {
@@ -121,7 +166,11 @@ export class LLMService {
         const prompt = ROUTER_CLASSIFICATION_PROMPT.replace('{input}', input);
         const response = await this.chat(
           [{ role: 'user', content: prompt }],
-          { tier: 'router', maxTokens: 20 }  // Increased for new format
+          {
+            tier: 'router',
+            maxTokens: 20,
+            modelOverride: routerRuntime.model,
+          }
         );
 
         const normalized = response.trim().toUpperCase();
@@ -135,7 +184,11 @@ export class LLMService {
           debug('Router model returned ambiguous response', { response });
         }
       } catch (err) {
-        debug('Router classification failed, using heuristics', { error: String(err) });
+        debug('Router classification failed, using heuristics', {
+          error: String(err),
+          routerModel: routerRuntime.model,
+          activeAdapterVersion: routerRuntime.activeAdapterVersion,
+        });
       }
     }
 
@@ -193,7 +246,13 @@ export class LLMService {
 
   async chat(
     messages: Array<{ role: 'system' | 'user' | 'assistant' | 'tool'; content: string; toolCallId?: string }>,
-    options: { tier?: Tier; maxTokens?: number; tools?: OpenAI.ChatCompletionTool[]; skipCache?: boolean } = {}
+    options: {
+      tier?: Tier;
+      maxTokens?: number;
+      tools?: OpenAI.ChatCompletionTool[];
+      skipCache?: boolean;
+      modelOverride?: string;
+    } = {}
   ): Promise<string> {
     const tier = options.tier || 'fast';
     const tierConfig = this.config.llm[tier];
@@ -217,7 +276,7 @@ export class LLMService {
     debug('LLM chat', { tier, model: tierConfig.model });
 
     const requestParams: OpenAI.ChatCompletionCreateParamsNonStreaming = {
-      model: tierConfig.model,
+      model: options.modelOverride || tierConfig.model,
       messages: messagesWithSystem as OpenAI.ChatCompletionMessageParam[],
       max_tokens: options.maxTokens || tierConfig.maxTokens,
     };
@@ -373,4 +432,13 @@ export class LLMService {
   close(): void {
     // Nothing to close for HTTP clients
   }
+}
+
+function inferModelVersion(modelName: string): string | undefined {
+  const normalized = modelName.trim();
+  if (!normalized) return undefined;
+
+  const slashParts = normalized.split('/');
+  const tail = slashParts[slashParts.length - 1] || normalized;
+  return tail || undefined;
 }

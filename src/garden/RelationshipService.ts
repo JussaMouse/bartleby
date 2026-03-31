@@ -4,7 +4,7 @@
 
 import { v4 as uuidv4 } from 'uuid';
 import type { Database as DB } from 'better-sqlite3';
-import type { Relationship, RelType, GardenRecord } from './types.js';
+import type { Relationship, RelType, GardenRecord, RecordType } from './types.js';
 import type { GardenService } from './GardenService.js';
 
 export class RelationshipService {
@@ -127,10 +127,14 @@ export class RelationshipService {
   /**
    * Parse [[wiki links]] in content and upsert `references` relationships.
    * Replaces the full set of `references` edges for this record on every call.
+   *
+   * Safer policy:
+   * - only create a reference when the link title resolves uniquely
+   * - never create a self-reference
+   * - if multiple records share the same title across types, skip linking
    */
   syncBacklinks(record: GardenRecord): void {
     if (!record.content) {
-      // Remove any existing references from this record
       this.db.prepare(
         "DELETE FROM record_relationships WHERE from_id = ? AND type = 'references'"
       ).run(record.id);
@@ -139,18 +143,22 @@ export class RelationshipService {
 
     const titles = parseWikiLinks(record.content);
 
-    // Delete old references edges for this record
     this.db.prepare(
       "DELETE FROM record_relationships WHERE from_id = ? AND type = 'references'"
     ).run(record.id);
 
-    // Insert fresh ones for each resolved title
     for (const title of titles) {
-      const target = this.garden.getByTitle(title);
+      const target = this.resolveUniqueRecordByTitle(title);
       if (target && target.id !== record.id) {
         this.add(record.id, target.id, 'references');
       }
     }
+  }
+
+  private resolveUniqueRecordByTitle(title: string): GardenRecord | null {
+    const matches = this.garden.getAll().filter(record => record.title.localeCompare(title, undefined, { sensitivity: 'accent' }) === 0);
+    if (matches.length !== 1) return null;
+    return matches[0] ?? null;
   }
 }
 

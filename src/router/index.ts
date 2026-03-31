@@ -7,6 +7,19 @@ import { Complexity } from '../services/llm.js';
 import type { RoutingDecision } from '../llm/enhanced-router.js';
 import { debug, info, warn } from '../utils/logger.js';
 
+const INTENT_CLASS_PRECEDENCE: Record<string, number> = {
+  workflow_reply: 100,
+  record_open: 90,
+  workflow_start: 80,
+  mutation_create: 70,
+  mutation_update: 65,
+  mutation_delete: 60,
+  collection_list: 50,
+  system: 40,
+  operator: 35,
+  fallback: 0,
+};
+
 export interface RouterResult {
   /** How the request was handled */
   type: 'routed' | 'llm-simple' | 'llm-complex';
@@ -49,9 +62,10 @@ export class CommandRouter {
    * 
    * Flow:
    * 0. Check pending context states FIRST (note editing, etc.) - bypass all routing
-   * 1. Classify complexity (Router model or heuristics)
-   * 2. If COMPLEX → skip to LLM (Thinking model with agentic loop)
-   * 3. If SIMPLE → try pattern → keyword → semantic → LLM (Fast model)
+   * 1. Try high-confidence pattern routes first (cheap + deterministic)
+   * 2. Classify complexity for non-pattern requests (Router model or heuristics)
+   * 3. If COMPLEX → skip to LLM (Thinking model with agentic loop)
+   * 4. If SIMPLE → try keyword → semantic → LLM (Fast model)
    */
   async route(input: string): Promise<RouterResult> {
     const normalized = input.trim();
@@ -68,7 +82,15 @@ export class CommandRouter {
       return { type: 'routed', route: contextResult, complexity: 'SIMPLE' };
     }
 
-    // === Step 1: Classify complexity ===
+    // === Step 1: High-confidence pattern matching BEFORE complexity ===
+    // Prevents obvious command-like requests from being over-escalated.
+    const patternResult = this.matchPattern(normalized);
+    if (patternResult) {
+      debug('Layer 1 match (pattern) - bypassing complexity check', { tool: patternResult.tool });
+      return { type: 'routed', route: patternResult, complexity: 'SIMPLE' };
+    }
+
+    // === Step 2: Classify complexity ===
     const decision = await this.services!.llm.classifyComplexity(normalized);
     const complexity = decision.complexity;
     debug('Complexity classification', {
@@ -78,20 +100,13 @@ export class CommandRouter {
       input: input.slice(0, 50)
     });
 
-    // === Step 2: Complex requests skip router entirely ===
+    // === Step 3: Complex requests skip router entirely ===
     if (complexity === 'COMPLEX') {
       debug('Complex request - routing to Thinking model agentic loop');
       return { type: 'llm-complex', complexity, decision };
     }
 
-    // === Step 3: Simple requests go through deterministic router ===
-
-    // Layer 1: Pattern matching (regex)
-    const patternResult = this.matchPattern(normalized);
-    if (patternResult) {
-      debug('Layer 1 match (pattern)', { tool: patternResult.tool });
-      return { type: 'routed', route: patternResult, complexity, decision };
-    }
+    // === Step 4: Simple requests go through remaining deterministic router ===
 
     // Layer 2: Keyword matching
     const keywordResult = this.matchKeywords(normalized);
@@ -167,24 +182,33 @@ export class CommandRouter {
 
   // Layer 1: Pattern matching
   private matchPattern(input: string): RouteResult | null {
+    let best: { tool: Tool; match: RegExpMatchArray; precedence: number; priority: number } | null = null;
+
     for (const tool of this.tools) {
       if (!tool.routing?.patterns) continue;
 
       for (const pattern of tool.routing.patterns) {
         const match = input.match(pattern);
-        if (match) {
-          const args = tool.parseArgs ? tool.parseArgs(input, match) : {};
-          return {
-            tool: tool.name,
-            args,
-            match,
-            confidence: 1.0,
-            source: 'pattern',
-          };
+        if (!match) continue;
+
+        const precedence = INTENT_CLASS_PRECEDENCE[tool.routing.intentClass ?? 'fallback'] ?? 0;
+        const priority = tool.routing.priority ?? 0;
+
+        if (!best || precedence > best.precedence || (precedence === best.precedence && priority > best.priority)) {
+          best = { tool, match, precedence, priority };
         }
       }
     }
-    return null;
+
+    if (!best) return null;
+    const args = best.tool.parseArgs ? best.tool.parseArgs(input, best.match) : {};
+    return {
+      tool: best.tool.name,
+      args,
+      match: best.match,
+      confidence: 1.0,
+      source: 'pattern',
+    };
   }
 
   // Layer 2: Keyword matching

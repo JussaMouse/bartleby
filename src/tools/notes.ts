@@ -6,6 +6,7 @@ import type { GardenService } from '../garden/GardenService.js';
 import type { RelationshipService } from '../garden/RelationshipService.js';
 import type { ViewService } from '../garden/ViewService.js';
 import { ReplRenderer } from '../garden/renderers/ReplRenderer.js';
+import { resolveRecordByTypeAndTitle } from './record-resolution.js';
 
 function getServices(context: any) {
   const garden = context.services.garden as GardenService;
@@ -31,6 +32,7 @@ export const createNote: Tool = {
     },
     examples: ['create note Deployment checklist', 'write note Meeting notes for Q1', 'note: interesting observation'],
     priority: 78,
+    intentClass: 'mutation_create',
   },
 
   parseArgs: (input) => {
@@ -53,7 +55,7 @@ export const createNote: Tool = {
     const note = garden.create({ type: 'note', title, content });
 
     if (projectTitle) {
-      const project = garden.getByTitle(projectTitle);
+      const project = resolveRecordByTypeAndTitle(context, 'project', projectTitle);
       if (project) {
         rels.add(note.id, project.id, 'belongs_to');
       }
@@ -80,6 +82,7 @@ export const showNote: Tool = {
     },
     examples: ['show note Deployment checklist', 'open note Meeting notes'],
     priority: 75,
+    intentClass: 'record_open',
   },
 
   parseArgs: (input) => {
@@ -91,7 +94,7 @@ export const showNote: Tool = {
     const { title, id } = args as { title?: string; id?: string };
     const { views } = getServices(context);
 
-    const viewData = id ? views.openRecord(id) : (title ? views.resolve(title) : null);
+    const viewData = id ? views.openRecord(id) : (title ? views.openRecordByTitle(title) : null);
     if (!viewData) return `Note not found: "${title ?? id}"`;
     return renderer.render(viewData);
   },
@@ -108,6 +111,7 @@ export const editNote: Tool = {
     },
     examples: ['edit note Deployment checklist'],
     priority: 60,
+    intentClass: 'mutation_update',
   },
 
   parseArgs: (input) => ({ input }),
@@ -124,9 +128,9 @@ export const editNote: Tool = {
 
     let record;
     if (id) {
-      record = garden.get(id);
+      record = resolveRecordByTypeAndTitle(context, 'note', undefined, id);
     } else if (title) {
-      record = garden.getByTitle(title);
+      record = resolveRecordByTypeAndTitle(context, 'note', title);
     }
     if (!record) return 'Note not found.';
 
@@ -154,6 +158,7 @@ export const deleteNote: Tool = {
     },
     examples: ['delete note Old meeting notes'],
     priority: 60,
+    intentClass: 'mutation_delete',
   },
 
   parseArgs: (input) => {
@@ -167,9 +172,9 @@ export const deleteNote: Tool = {
 
     let record;
     if (id) {
-      record = garden.get(id);
+      record = resolveRecordByTypeAndTitle(context, 'note', undefined, id);
     } else if (title) {
-      record = garden.getByTitle(title);
+      record = resolveRecordByTypeAndTitle(context, 'note', title);
     }
     if (!record) return 'Note not found.';
 
@@ -192,6 +197,7 @@ export const listNotes: Tool = {
     },
     examples: ['list notes', 'show all notes'],
     priority: 77,
+    intentClass: 'collection_list',
   },
 
   parseArgs: () => ({}),
@@ -218,6 +224,7 @@ export const tagNote: Tool = {
     },
     examples: ['tag Deployment checklist with DevOps', 'tag Meeting notes with Work'],
     priority: 76,
+    intentClass: 'mutation_update',
   },
 
   parseArgs: (input) => {
@@ -236,11 +243,11 @@ export const tagNote: Tool = {
 
     const { garden, rels } = getServices(context);
 
-    const note = noteId ? garden.get(noteId) : (noteTitle ? garden.getByTitle(noteTitle) : null);
+    const note = resolveRecordByTypeAndTitle(context, 'note', noteTitle, noteId);
     if (!note) return `Note not found: "${noteTitle ?? noteId}"`;
 
     // Find or create tag
-    let tag = tagId ? garden.get(tagId) : (tagTitle ? garden.getByTitle(tagTitle) : null);
+    let tag = resolveRecordByTypeAndTitle(context, 'tag', tagTitle, tagId);
     if (!tag && tagTitle) {
       tag = garden.create({ type: 'tag', title: tagTitle });
     }

@@ -1,28 +1,33 @@
 // src/tools/index.ts
 import { Tool } from './types.js';
-import { promptHandler }                                                         from './prompt-handler.js';
+import { createNoteWorkflow, editNoteWorkflow }                               from './note-workflow.js';
+import { setupWizardWorkflow, guidedSettingsWorkflow }                         from './setup-workflow.js';
+import { workflowRouter }                                                        from './workflow-router.js';
+import { processInboxStart }                                                    from './inbox-processing.js';
 import { captureItem, showInbox, processItem, addAction,
          completeAction, editAction, listActions }                               from './actions.js';
 import { createProject, showProject, completeProject, listProjects }            from './projects.js';
-import { createNote, showNote, editNote, deleteNote, listNotes, tagNote }        from './notes.js';
+import { showNote, editNote, deleteNote, listNotes, tagNote }                    from './notes.js';
 import { addContact, showContact, editContact, listContacts, findContact }       from './contacts.js';
 import { createEvent, showEvent, editEvent, listEvents, showCalendar }           from './events.js';
 import { importMedia, showMedia }                                                from './media.js';
 import { createTag, listTags, showTag }                                          from './tags.js';
-import { listViews, openView, createView, deleteView }                           from './garden-views.js';
 import { contextTools }                                                          from './context.js';
 import { memoryTools }                                                           from './memory.js';
 import { historyTools }                                                          from './history.js';
 import { weatherTools }                                                          from './weather.js';
+import { shedTools }                                                             from './shed.js';
 import { ocrTools }                                                              from './ocr.js';
 import { dataTools }                                                             from './data.js';
 import { settingsTools }                                                         from './settings.js';
 import { firstRunTools }                                                         from './first-run-wizard.js';
+import { systemTools }                                                           from './system.js';
+import { routerTrainingTools }                                                   from './router-training.js';
 
 // Aggregate all tools.
-// promptHandler MUST be first for Layer 0 contextual routing.
 export const allTools: Tool[] = [
-  promptHandler,
+  workflowRouter,
+  processInboxStart,
 
   // Garden: items and actions
   captureItem,
@@ -40,9 +45,12 @@ export const allTools: Tool[] = [
   listProjects,
 
   // Garden: notes
-  createNote,
+  setupWizardWorkflow,
+  guidedSettingsWorkflow,
+  guidedSettingsWorkflow,
+  createNoteWorkflow,
   showNote,
-  editNote,
+  editNoteWorkflow,
   deleteNote,
   listNotes,
   tagNote,
@@ -70,11 +78,6 @@ export const allTools: Tool[] = [
   listTags,
   showTag,
 
-  // Garden: views
-  listViews,
-  openView,
-  createView,
-  deleteView,
 
   // Context and memory
   ...contextTools,
@@ -86,11 +89,16 @@ export const allTools: Tool[] = [
   // Weather
   ...weatherTools,
 
+  // Shed
+  ...shedTools,
+
   // Utilities
   ...ocrTools,
   ...dataTools,
   ...settingsTools,
+  ...routerTrainingTools,
   ...firstRunTools,
+  ...systemTools,
 ];
 
 export function getToolByName(name: string): Tool | undefined {

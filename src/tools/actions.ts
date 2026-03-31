@@ -7,6 +7,7 @@ import type { GardenService } from '../garden/GardenService.js';
 import type { RelationshipService } from '../garden/RelationshipService.js';
 import type { ViewService } from '../garden/ViewService.js';
 import { ReplRenderer } from '../garden/renderers/ReplRenderer.js';
+import { resolveRecordByTypeAndTitle } from './record-resolution.js';
 
 function getServices(context: any) {
   const garden = context.services.garden as GardenService;
@@ -113,7 +114,7 @@ export const processItem: Tool = {
     const { garden } = getServices(context);
 
     // Find the item
-    const item = garden.getByTitle(title) ?? garden.search(title)[0];
+    const item = resolveRecordByTypeAndTitle(context, 'item', title);
     if (!item || item.type !== 'item') {
       return `No inbox item found matching "${title}".`;
     }
@@ -174,7 +175,7 @@ export const addAction: Tool = {
 
     // Link to project if specified
     if (projectTitle) {
-      const project = garden.getByTitle(projectTitle);
+      const project = resolveRecordByTypeAndTitle(context, 'project', projectTitle);
       if (project) {
         rels.add(record.id, project.id, 'belongs_to');
       }
@@ -217,7 +218,7 @@ export const completeAction: Tool = {
     const { title } = args as { title: string };
     const { garden } = getServices(context);
 
-    const record = garden.getByTitle(title) ?? garden.search(title)[0];
+    const record = resolveRecordByTypeAndTitle(context, 'action', title);
     if (!record || record.type !== 'action') {
       return `No action found matching "${title}".`;
     }
@@ -257,13 +258,7 @@ export const editAction: Tool = {
 
     const { garden } = getServices(context);
 
-    let record;
-    if (id) {
-      record = garden.get(id);
-    } else if (title) {
-      record = garden.getByTitle(title);
-    }
-
+    const record = resolveRecordByTypeAndTitle(context, 'action', title, id);
     if (!record) return 'Action not found.';
 
     const updates: Record<string, unknown> = {};

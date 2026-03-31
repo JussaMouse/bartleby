@@ -184,6 +184,10 @@ export class GardenService extends EventEmitter {
     return this.db.prepare('SELECT * FROM records ORDER BY created_at DESC').all() as GardenRecord[];
   }
 
+  getInboxItemsOldestFirst(): GardenRecord[] {
+    return this.db.prepare("SELECT * FROM records WHERE type = 'item' AND status = 'active' ORDER BY created_at ASC").all() as GardenRecord[];
+  }
+
   getByType(type: RecordType, opts: { status?: RecordStatus } = {}): GardenRecord[] {
     if (opts.status) {
       return this.db.prepare('SELECT * FROM records WHERE type = ? AND status = ? ORDER BY created_at DESC').all(type, opts.status) as GardenRecord[];

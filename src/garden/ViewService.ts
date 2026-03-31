@@ -62,29 +62,31 @@ export class ViewService {
   // ── Resolution ───────────────────────────────────────────────────────────────
 
   /**
-   * Resolve a name to ViewData.
-   * Resolution order:
-   *   1. Exact match in garden_view table (collection/computed views)
-   *   2. Record title match → run record assembler
-   *   3. Not found
+   * Resolve a stored or computed view by exact name only.
    */
   resolve(name: string): ViewData | null {
-    // 1. Named view in garden_view
     const storedView = this.db.prepare(
       'SELECT * FROM garden_view WHERE name = ? COLLATE NOCASE'
     ).get(name) as GardenView | undefined;
 
-    if (storedView) {
-      return this.executeStoredView(storedView);
-    }
+    if (!storedView) return null;
+    return this.executeStoredView(storedView);
+  }
 
-    // 2. Record by title
-    const record = this.garden.getByTitle(name);
-    if (record) {
-      return this.assembleRecord(record);
-    }
+  /**
+   * Open a record by exact title.
+   */
+  openRecordByTitle(title: string): ViewData | null {
+    const record = this.garden.getByTitle(title);
+    if (!record) return null;
+    return this.assembleRecord(record);
+  }
 
-    return null;
+  /**
+   * Legacy mixed resolver retained temporarily during migration.
+   */
+  resolveLegacy(name: string): ViewData | null {
+    return this.resolve(name) ?? this.openRecordByTitle(name);
   }
 
   /**

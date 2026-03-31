@@ -187,21 +187,34 @@ export const setSetting: Tool = {
         return `Error: Unknown setting key "${settingKey}".\n\nAvailable categories: ${SETTINGS_CATEGORIES.join(', ')}`;
       }
 
-      // Parse value (handle boolean, number, string)
+      // Parse value based on setting type so string values like +17702645161
+      // are not coerced into numbers before validation.
       let parsedValue: any = value;
 
-      if (value.toLowerCase() === 'true') {
-        parsedValue = true;
-      } else if (value.toLowerCase() === 'false') {
-        parsedValue = false;
-      } else if (!isNaN(Number(value)) && value.trim() !== '') {
-        parsedValue = Number(value);
-      } else if (value.startsWith('{') || value.startsWith('[')) {
+      if (definition.type === 'boolean') {
+        if (value.toLowerCase() === 'true') {
+          parsedValue = true;
+        } else if (value.toLowerCase() === 'false') {
+          parsedValue = false;
+        }
+      } else if (definition.type === 'number') {
+        if (!isNaN(Number(value)) && value.trim() !== '') {
+          parsedValue = Number(value);
+        }
+      } else if (definition.type !== 'string' && (value.startsWith('{') || value.startsWith('['))) {
         try {
           parsedValue = JSON.parse(value);
         } catch {
           // Keep as string if JSON parse fails
         }
+      }
+
+      if (
+        definition.type === 'string' &&
+        ((value.startsWith('"') && value.endsWith('"')) ||
+          (value.startsWith("'") && value.endsWith("'")))
+      ) {
+        parsedValue = value.slice(1, -1);
       }
 
       // Set the value
@@ -273,6 +286,152 @@ export const showSettingsStats: Tool = {
   },
 };
 
+
+/**
+ * Show router telemetry and diagnostics
+ */
+export const showRoutingStats: Tool = {
+  name: 'showRoutingStats',
+  description: 'Show routing telemetry stats and recent routing events',
+
+  routing: {
+    patterns: [
+      /^routing\s+stats\s*$/i,
+      /^routing\s+recent\s*$/i,
+      /^routing\s+recommendations?\s*$/i,
+      /^show\s+routing\s+(stats|recent|recommendations?)\s*$/i,
+    ],
+    keywords: {
+      verbs: ['show', 'view'],
+      nouns: ['routing', 'router', 'stats', 'recent', 'recommendations', 'telemetry'],
+    },
+    examples: [
+      'routing stats',
+      'routing recent',
+      'show routing stats',
+      'routing recommendations',
+    ],
+    priority: 70,
+  },
+
+  parameters: {
+    type: 'object',
+    properties: {
+      mode: {
+        type: 'string',
+        enum: ['stats', 'recent', 'recommendations'],
+        description: 'Telemetry view mode',
+      },
+    },
+  },
+
+  parseArgs: (input) => {
+    const normalized = input.trim().toLowerCase();
+    const mode = normalized.includes('recommendation')
+      ? 'recommendations'
+      : normalized.includes('recent')
+        ? 'recent'
+        : 'stats';
+    return { mode };
+  },
+
+  execute: async (args, context) => {
+    const { mode = 'stats' } = args as { mode?: 'stats' | 'recent' | 'recommendations' };
+
+    try {
+      const events = context.services.learning.getRecentRoutingEvents(100);
+
+      if (events.length === 0) {
+        return 'No routing telemetry yet. Run a few commands, then try "routing stats" again.';
+      }
+
+      if (mode === 'recommendations') {
+        const recommendations = context.services.llm.getRouterRecommendations();
+        if (recommendations.length === 0) {
+          return 'No routing recommendations right now.';
+        }
+
+        const lines = ['Routing Recommendations:', ''];
+        for (const rec of recommendations.slice(0, 10)) {
+          lines.push(`- ${rec}`);
+        }
+        return lines.join('\n');
+      }
+
+      if (mode === 'recent') {
+        const lines: string[] = ['Routing Recent (latest 12):', ''];
+        for (const event of events.slice(0, 12)) {
+          const status = event.success ? '✓' : '✗';
+          const complexity = event.predictedComplexity || '-';
+          const tool = event.matchedTool || '-';
+          const override = event.overrideApplied ? ' override' : '';
+          lines.push(
+            `${status} ${event.createdAt} | ${event.routeType} | tier:${event.finalTier} | complexity:${complexity} | tool:${tool} | ${event.responseTimeMs}ms${override}`
+          );
+        }
+        lines.push('');
+        lines.push('Tip: use "routing stats" for aggregate metrics.');
+        return lines.join('\n');
+      }
+
+      const total = events.length;
+      const successes = events.filter(e => e.success).length;
+      const failures = total - successes;
+      const successRate = total > 0 ? Math.round((successes / total) * 100) : 0;
+
+      const avgMs = total > 0
+        ? Math.round(events.reduce((sum, e) => sum + e.responseTimeMs, 0) / total)
+        : 0;
+
+      const byRoute: Record<string, number> = {};
+      const byTier: Record<string, number> = {};
+      const byComplexity: Record<string, number> = {};
+
+      for (const event of events) {
+        byRoute[event.routeType] = (byRoute[event.routeType] || 0) + 1;
+        byTier[event.finalTier] = (byTier[event.finalTier] || 0) + 1;
+        const complexityKey = event.predictedComplexity || 'unknown';
+        byComplexity[complexityKey] = (byComplexity[complexityKey] || 0) + 1;
+      }
+
+      const lines: string[] = ['Routing Stats (last 100):', ''];
+      lines.push(`Total events: ${total}`);
+      lines.push(`Success rate: ${successRate}% (${successes} success / ${failures} failed)`);
+      lines.push(`Average latency: ${avgMs}ms`);
+      lines.push('');
+      lines.push('By route type:');
+      for (const [k, v] of Object.entries(byRoute).sort((a, b) => b[1] - a[1])) {
+        lines.push(`  ${k}: ${v}`);
+      }
+      lines.push('');
+      lines.push('By final tier:');
+      for (const [k, v] of Object.entries(byTier).sort((a, b) => b[1] - a[1])) {
+        lines.push(`  ${k}: ${v}`);
+      }
+      lines.push('');
+      lines.push('By predicted complexity:');
+      for (const [k, v] of Object.entries(byComplexity).sort((a, b) => b[1] - a[1])) {
+        lines.push(`  ${k}: ${v}`);
+      }
+
+      const recommendations = context.services.llm.getRouterRecommendations();
+      if (recommendations.length > 0) {
+        lines.push('');
+        lines.push('Recommendations:');
+        for (const rec of recommendations.slice(0, 5)) {
+          lines.push(`  - ${rec}`);
+        }
+      }
+
+      lines.push('');
+      lines.push('Tip: use "routing recent" for latest event log or "routing recommendations" for recommendations only.');
+      return lines.join('\n');
+    } catch (err) {
+      return `Error showing routing telemetry: ${String(err)}`;
+    }
+  },
+};
+
 function formatValue(value: unknown): string {
   if (typeof value === 'string') {
     return value;
@@ -292,4 +451,5 @@ export const settingsTools: Tool[] = [
   showSettings,
   setSetting,
   showSettingsStats,
+  showRoutingStats,
 ];

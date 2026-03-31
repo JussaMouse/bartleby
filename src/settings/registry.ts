@@ -560,6 +560,168 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
     description: 'Weekly check-in hour (0-23)',
   }),
 
+
+  // Router training
+  def({
+    key: 'router_training.enabled',
+    category: 'router_training',
+    type: 'boolean',
+    default: false,
+    description: 'Enable local router personalization/training plugin',
+    requiresRestart: true,
+  }),
+  def({
+    key: 'router_training.capture_mode',
+    category: 'router_training',
+    type: 'enum',
+    default: 'canary',
+    options: ['off', 'canary', 'opt_in', 'all_local'],
+    description: 'Traffic capture policy for router training examples',
+    requiresRestart: true,
+  }),
+  def({
+    key: 'router_training.retention_days',
+    category: 'router_training',
+    type: 'number',
+    default: 30,
+    description: 'Days to retain trainable routing rows before cleanup',
+    requiresRestart: true,
+    validate: (value) => {
+      const n = Number(value);
+      if (!Number.isFinite(n) || n < 1 || n > 365) return 'Must be between 1 and 365';
+      return null;
+    },
+  }),
+  def({
+    key: 'router_training.auto_train_enabled',
+    category: 'router_training',
+    type: 'boolean',
+    default: false,
+    description: 'Automatically schedule periodic adapter training runs',
+    requiresRestart: true,
+  }),
+  def({
+    key: 'router_training.auto_train_interval_hours',
+    category: 'router_training',
+    type: 'number',
+    default: 168,
+    description: 'Hours between auto-training runs when enabled',
+    requiresRestart: true,
+    validate: (value) => {
+      const n = Number(value);
+      if (!Number.isFinite(n) || n < 1 || n > 720) return 'Must be between 1 and 720';
+      return null;
+    },
+  }),
+  def({
+    key: 'router_training.daily_review_queue_limit',
+    category: 'router_training',
+    type: 'number',
+    default: 100,
+    description: 'Maximum uncertain examples queued per day for review',
+    requiresRestart: true,
+    validate: (value) => {
+      const n = Number(value);
+      if (!Number.isFinite(n) || n < 1 || n > 1000) return 'Must be between 1 and 1000';
+      return null;
+    },
+  }),
+  def({
+    key: 'router_training.minimum_examples_to_train',
+    category: 'router_training',
+    type: 'number',
+    default: 200,
+    description: 'Minimum labeled examples required before training can start',
+    requiresRestart: true,
+    validate: (value) => {
+      const n = Number(value);
+      if (!Number.isFinite(n) || n < 20 || n > 100000) return 'Must be between 20 and 100000';
+      return null;
+    },
+  }),
+  def({
+    key: 'router_training.minimum_shadow_observations_to_promote',
+    category: 'router_training',
+    type: 'number',
+    default: 50,
+    description: 'Minimum live shadow observations required before a shadow adapter can advance',
+    requiresRestart: true,
+    validate: (value) => {
+      const n = Number(value);
+      if (!Number.isFinite(n) || n < 0 || n > 100000) return 'Must be between 0 and 100000';
+      return null;
+    },
+  }),
+  def({
+    key: 'router_training.minimum_canary_requests_to_promote',
+    category: 'router_training',
+    type: 'number',
+    default: 100,
+    description: 'Minimum live canary requests required before a canary adapter can advance',
+    requiresRestart: true,
+    validate: (value) => {
+      const n = Number(value);
+      if (!Number.isFinite(n) || n < 0 || n > 100000) return 'Must be between 0 and 100000';
+      return null;
+    },
+  }),
+  def({
+    key: 'router_training.minimum_canary_success_rate_to_promote',
+    category: 'router_training',
+    type: 'number',
+    default: 0.95,
+    description: 'Minimum 24h canary success rate required before a canary adapter can advance',
+    requiresRestart: true,
+    validate: (value) => {
+      const n = Number(value);
+      if (!Number.isFinite(n) || n < 0 || n > 1) return 'Must be between 0 and 1';
+      return null;
+    },
+  }),
+  def({
+    key: 'router_training.max_canary_latency_regression_ms_to_promote',
+    category: 'router_training',
+    type: 'number',
+    default: 250,
+    description: 'Maximum allowed 24h canary latency regression versus base traffic before promotion',
+    requiresRestart: true,
+    validate: (value) => {
+      const n = Number(value);
+      if (!Number.isFinite(n) || n < 0 || n > 60000) return 'Must be between 0 and 60000';
+      return null;
+    },
+  }),
+  def({
+    key: 'router_training.hardware_preset',
+    category: 'router_training',
+    type: 'enum',
+    default: 'gpu_balanced',
+    options: ['cpu_safe', 'gpu_balanced', 'gpu_fast'],
+    description: 'Training hardware/speed preset for background runs',
+    requiresRestart: true,
+  }),
+  def({
+    key: 'router_training.shadow_enabled',
+    category: 'router_training',
+    type: 'boolean',
+    default: true,
+    description: 'Run candidate adapters in shadow mode before canary/active promotion',
+    requiresRestart: true,
+  }),
+  def({
+    key: 'router_training.canary_percent',
+    category: 'router_training',
+    type: 'number',
+    default: 10,
+    description: 'Traffic percentage for adapter canary rollout',
+    requiresRestart: true,
+    validate: (value) => {
+      const n = Number(value);
+      if (!Number.isFinite(n) || n < 0 || n > 100) return 'Must be between 0 and 100';
+      return null;
+    },
+  }),
+
   // Logging
   def({
     key: 'logging.level',

@@ -6,6 +6,7 @@ import type { GardenService } from '../garden/GardenService.js';
 import type { RelationshipService } from '../garden/RelationshipService.js';
 import type { ViewService } from '../garden/ViewService.js';
 import { ReplRenderer } from '../garden/renderers/ReplRenderer.js';
+import { resolveRecordByTypeAndTitle } from './record-resolution.js';
 
 function getServices(context: any) {
   const garden = context.services.garden as GardenService;
@@ -31,6 +32,7 @@ export const createEvent: Tool = {
     },
     examples: ['create event Team Meeting', 'schedule dentist appointment', 'new event Conference 2026'],
     priority: 78,
+    intentClass: 'mutation_create',
   },
 
   parseArgs: (input) => {
@@ -71,6 +73,7 @@ export const showEvent: Tool = {
     },
     examples: ['show event Team Meeting', 'view event Conference 2026'],
     priority: 74,
+    intentClass: 'record_open',
   },
 
   parseArgs: (input) => {
@@ -82,7 +85,7 @@ export const showEvent: Tool = {
     const { title, id } = args as { title?: string; id?: string };
     const { views } = getServices(context);
 
-    const viewData = id ? views.openRecord(id) : (title ? views.resolve(title) : null);
+    const viewData = id ? views.openRecord(id) : (title ? views.openRecordByTitle(title) : null);
     if (!viewData) return `Event not found: "${title ?? id}"`;
     return renderer.render(viewData);
   },
@@ -99,6 +102,7 @@ export const editEvent: Tool = {
     },
     examples: ['edit event Team Meeting', 'reschedule dentist'],
     priority: 60,
+    intentClass: 'mutation_update',
   },
 
   parseArgs: (input) => ({ input }),
@@ -114,7 +118,7 @@ export const editEvent: Tool = {
     };
 
     const { garden } = getServices(context);
-    const record = id ? garden.get(id) : (title ? garden.getByTitle(title) : null);
+    const record = resolveRecordByTypeAndTitle(context, 'event', title, id);
     if (!record) return 'Event not found.';
 
     const updates: Record<string, unknown> = {};
@@ -142,6 +146,7 @@ export const listEvents: Tool = {
     },
     examples: ['list events', 'show upcoming events', 'view all events'],
     priority: 77,
+    intentClass: 'collection_list',
   },
 
   parseArgs: () => ({}),
@@ -169,6 +174,7 @@ export const showCalendar: Tool = {
     },
     examples: ['show calendar', 'open calendar', 'calendar'],
     priority: 80,
+    intentClass: 'collection_list',
   },
 
   parseArgs: () => ({}),

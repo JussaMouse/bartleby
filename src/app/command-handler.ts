@@ -1,3 +1,4 @@
+import { randomUUID } from 'crypto';
 import { CommandRouter, RouterResult } from '../router/index.js';
 import { Agent } from '../agent/index.js';
 import { ServiceContainer } from '../services/index.js';
@@ -7,6 +8,7 @@ export interface CommandHandleOptions {
   allowExit?: boolean;
   stripMarkdown?: boolean;
   onComplex?: () => void;
+  optInTrainingCapture?: boolean;
 }
 
 export interface CommandHandleResult {
@@ -23,84 +25,177 @@ export async function handleCommand(
   options: CommandHandleOptions = {}
 ): Promise<CommandHandleResult> {
   const normalized = input.trim();
+  const traceId = randomUUID();
 
   services.context.recordMessage(normalized, true);
 
-  const routerResult = await router.route(normalized);
+  const routeStart = Date.now();
+  const routerRuntime = services.routerTraining.resolveRequestRouterRuntime(traceId);
+  const routerResult = await services.llm.withTemporaryRouterRuntimeBinding(
+    routerRuntime,
+    () => router.route(normalized)
+  );
   let response: string;
+  let routeSucceeded = false;
+  let routeError: string | undefined;
 
-  switch (routerResult.type) {
-    case 'routed':
-      response = routerResult.route
-        ? await router.execute(routerResult.route, normalized)
-        : "I didn't understand that. Try 'help' for commands.";
-      break;
+  const finalTier = routerResult.type === 'llm-complex'
+    ? 'thinking'
+    : routerResult.type === 'llm-simple'
+      ? 'fast'
+      : 'router';
 
-    case 'llm-simple': {
-      const startTime = Date.now();
-      try {
-        response = await agent.handleSimple(normalized);
-        const responseTime = Date.now() - startTime;
+  const recordRoutingTelemetry = (success: boolean, errorMessage?: string): string => {
+    const decision = routerResult.decision;
 
-        if (routerResult.decision) {
-          services.llm.recordRoutingOutcome({
-            decision: routerResult.decision,
-            success: true,
-            responseTimeMs: responseTime,
-          });
+    return services.learning.recordRoutingEvent({
+      input: normalized,
+      routeType: routerResult.type,
+      predictedComplexity: decision?.complexity,
+      finalTier,
+      matchedTool: routerResult.route?.tool,
+      success,
+      responseTimeMs: Date.now() - routeStart,
+      errorMessage,
+      decisionReason: decision?.reason,
+      decisionSignals: decision?.signals,
+      routerModel: routerRuntime.model,
+      routerModelVersion: routerRuntime.modelVersion,
+      routerSource: routerRuntime.source,
+      routerAdapterId: routerRuntime.activeAdapterId,
+      routerAdapterVersion: routerRuntime.activeAdapterVersion,
+      traceId,
+    });
+  };
+
+  try {
+    switch (routerResult.type) {
+      case 'routed':
+        response = routerResult.route
+          ? await router.execute(routerResult.route, normalized)
+          : "I didn't understand that. Try 'help' for commands.";
+        break;
+
+      case 'llm-simple': {
+        const startTime = Date.now();
+        try {
+          response = await agent.handleSimple(normalized);
+          const responseTime = Date.now() - startTime;
+
+          if (routerResult.decision) {
+            services.llm.recordRoutingOutcome({
+              decision: routerResult.decision,
+              success: true,
+              responseTimeMs: responseTime,
+            });
+          }
+        } catch (err) {
+          const responseTime = Date.now() - startTime;
+
+          if (routerResult.decision) {
+            services.llm.recordRoutingOutcome({
+              decision: routerResult.decision,
+              success: false,
+              responseTimeMs: responseTime,
+              errorMessage: String(err),
+            });
+          }
+          throw err;
         }
-      } catch (err) {
-        const responseTime = Date.now() - startTime;
-
-        if (routerResult.decision) {
-          services.llm.recordRoutingOutcome({
-            decision: routerResult.decision,
-            success: false,
-            responseTimeMs: responseTime,
-            errorMessage: String(err),
-          });
-        }
-        throw err;
+        break;
       }
-      break;
+
+      case 'llm-complex': {
+        if (options.onComplex) {
+          options.onComplex();
+        }
+
+        const startTime = Date.now();
+        try {
+          response = await agent.handleComplex(normalized);
+          const responseTime = Date.now() - startTime;
+
+          if (routerResult.decision) {
+            services.llm.recordRoutingOutcome({
+              decision: routerResult.decision,
+              success: true,
+              responseTimeMs: responseTime,
+            });
+          }
+        } catch (err) {
+          const responseTime = Date.now() - startTime;
+
+          if (routerResult.decision) {
+            services.llm.recordRoutingOutcome({
+              decision: routerResult.decision,
+              success: false,
+              responseTimeMs: responseTime,
+              errorMessage: String(err),
+            });
+          }
+          throw err;
+        }
+        break;
+      }
+
+      default:
+        response = "I'm not sure how to help with that. Try 'help' for commands.";
+        break;
     }
 
-    case 'llm-complex': {
-      if (options.onComplex) {
-        options.onComplex();
-      }
+    routeSucceeded = true;
+  } catch (err) {
+    routeError = String(err);
+    throw err;
+  } finally {
+    try {
+      const routingEventId = recordRoutingTelemetry(routeSucceeded, routeError);
 
-      const startTime = Date.now();
       try {
-        response = await agent.handleComplex(normalized);
-        const responseTime = Date.now() - startTime;
-
-        if (routerResult.decision) {
-          services.llm.recordRoutingOutcome({
-            decision: routerResult.decision,
-            success: true,
-            responseTimeMs: responseTime,
-          });
-        }
-      } catch (err) {
-        const responseTime = Date.now() - startTime;
-
-        if (routerResult.decision) {
-          services.llm.recordRoutingOutcome({
-            decision: routerResult.decision,
-            success: false,
-            responseTimeMs: responseTime,
-            errorMessage: String(err),
-          });
-        }
-        throw err;
+        services.routerTraining.captureFromRoutingEvent({
+          routingEventId,
+          traceId,
+          input: normalized,
+          routeType: routerResult.type,
+          predictedComplexity: routerResult.decision?.complexity,
+          finalTier,
+          matchedTool: routerResult.route?.tool,
+          success: routeSucceeded,
+          responseTimeMs: Date.now() - routeStart,
+          decisionSignals: routerResult.decision?.signals,
+          optInCapture: options.optInTrainingCapture,
+        });
+      } catch (captureErr) {
+        debug('Failed to capture routing training example', {
+          error: String(captureErr),
+          traceId,
+        });
       }
-      break;
-    }
 
-    default:
-      response = "I'm not sure how to help with that. Try 'help' for commands.";
-      break;
+      try {
+        await services.routerTraining.scoreShadowRoutingDecision({
+          traceId,
+          command: normalized,
+          actual: {
+            routeType: routerResult.type,
+            predictedComplexity: routerResult.complexity,
+            matchedTool: routerResult.route?.tool,
+          },
+          servedRuntime: routerRuntime,
+          router,
+        });
+      } catch (shadowErr) {
+        debug('Failed to score shadow routing decision', {
+          error: String(shadowErr),
+          traceId,
+        });
+      }
+    } catch (telemetryErr) {
+      debug('Failed to record routing telemetry', {
+        error: String(telemetryErr),
+        traceId,
+      });
+    }
   }
 
   let reply = response;
@@ -115,7 +210,7 @@ export async function handleCommand(
   }
 
   services.context.recordMessage(reply, false);
-  debug('Command handled', { didExit, replyLength: reply.length });
+  debug('Command handled', { didExit, replyLength: reply.length, traceId });
 
   return { reply, didExit, routerResult };
 }

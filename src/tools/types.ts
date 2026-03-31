@@ -2,6 +2,18 @@
 import { ServiceContainer } from '../services/index.js';
 import type { z } from 'zod';
 
+export type IntentClass =
+  | 'workflow_reply'
+  | 'workflow_start'
+  | 'record_open'
+  | 'collection_list'
+  | 'mutation_create'
+  | 'mutation_update'
+  | 'mutation_delete'
+  | 'system'
+  | 'operator'
+  | 'fallback';
+
 export interface ToolRouting {
   /** Regex patterns for exact matching (Layer 1) */
   patterns?: RegExp[];
@@ -17,6 +29,9 @@ export interface ToolRouting {
 
   /** Priority hint (higher = checked first) */
   priority?: number;
+
+  /** Lightweight routing role for precedence decisions */
+  intentClass?: IntentClass;
 }
 
 export interface Tool {

@@ -102,6 +102,23 @@ const ConfigSchema = z.object({
     weeklyHour: z.number().min(0).max(23),
   }),
 
+  routerTraining: z.object({
+    enabled: z.boolean(),
+    captureMode: z.enum(['off', 'canary', 'opt_in', 'all_local']),
+    retentionDays: z.number().int().min(1).max(365),
+    autoTrainEnabled: z.boolean(),
+    autoTrainIntervalHours: z.number().int().min(1).max(720),
+    dailyReviewQueueLimit: z.number().int().min(1).max(1000),
+    minimumExamplesToTrain: z.number().int().min(20).max(100000),
+    minimumShadowObservationsToPromote: z.number().int().min(0).max(100000),
+    minimumCanaryRequestsToPromote: z.number().int().min(0).max(100000),
+    minimumCanarySuccessRateToPromote: z.number().min(0).max(1),
+    maxCanaryLatencyRegressionMsToPromote: z.number().min(0).max(60000),
+    hardwarePreset: z.enum(['cpu_safe', 'gpu_balanced', 'gpu_fast']),
+    shadowEnabled: z.boolean(),
+    canaryPercent: z.number().min(0).max(100),
+  }),
+
   logging: z.object({
     level: z.enum(['debug', 'info', 'warn', 'error']),
     file: z.string(),
@@ -275,6 +292,38 @@ export function loadConfig(settings?: SettingsProvider): Config {
       eveningHour: resolveSetting(settings, 'presence.evening_hour', 18),
       weeklyDay: resolveSetting(settings, 'presence.weekly_day', 0),
       weeklyHour: resolveSetting(settings, 'presence.weekly_hour', 9),
+    },
+    routerTraining: {
+      enabled: resolveSetting(settings, 'router_training.enabled', false),
+      captureMode: resolveSetting(settings, 'router_training.capture_mode', 'canary'),
+      retentionDays: resolveSetting(settings, 'router_training.retention_days', 30),
+      autoTrainEnabled: resolveSetting(settings, 'router_training.auto_train_enabled', false),
+      autoTrainIntervalHours: resolveSetting(settings, 'router_training.auto_train_interval_hours', 168),
+      dailyReviewQueueLimit: resolveSetting(settings, 'router_training.daily_review_queue_limit', 100),
+      minimumExamplesToTrain: resolveSetting(settings, 'router_training.minimum_examples_to_train', 200),
+      minimumShadowObservationsToPromote: resolveSetting(
+        settings,
+        'router_training.minimum_shadow_observations_to_promote',
+        50
+      ),
+      minimumCanaryRequestsToPromote: resolveSetting(
+        settings,
+        'router_training.minimum_canary_requests_to_promote',
+        100
+      ),
+      minimumCanarySuccessRateToPromote: resolveSetting(
+        settings,
+        'router_training.minimum_canary_success_rate_to_promote',
+        0.95
+      ),
+      maxCanaryLatencyRegressionMsToPromote: resolveSetting(
+        settings,
+        'router_training.max_canary_latency_regression_ms_to_promote',
+        250
+      ),
+      hardwarePreset: resolveSetting(settings, 'router_training.hardware_preset', 'gpu_balanced'),
+      shadowEnabled: resolveSetting(settings, 'router_training.shadow_enabled', true),
+      canaryPercent: resolveSetting(settings, 'router_training.canary_percent', 10),
     },
     logging: {
       level: logLevel,

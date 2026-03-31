@@ -5,6 +5,7 @@ import { Tool } from './types.js';
 import type { GardenService } from '../garden/GardenService.js';
 import type { ViewService } from '../garden/ViewService.js';
 import { ReplRenderer } from '../garden/renderers/ReplRenderer.js';
+import { resolveRecordByTypeAndTitle } from './record-resolution.js';
 
 function getServices(context: any) {
   const garden = context.services.garden as GardenService;
@@ -28,6 +29,7 @@ export const addContact: Tool = {
     },
     examples: ['add contact Alice Chen', 'new contact Bob Smith'],
     priority: 78,
+    intentClass: 'mutation_create',
   },
 
   parseArgs: (input) => {
@@ -67,6 +69,7 @@ export const showContact: Tool = {
     },
     examples: ['show contact Alice Chen', 'view contact Bob Smith'],
     priority: 74,
+    intentClass: 'record_open',
   },
 
   parseArgs: (input) => {
@@ -78,7 +81,7 @@ export const showContact: Tool = {
     const { title, id } = args as { title?: string; id?: string };
     const { views } = getServices(context);
 
-    const viewData = id ? views.openRecord(id) : (title ? views.resolve(title) : null);
+    const viewData = id ? views.openRecord(id) : (title ? views.openRecordByTitle(title) : null);
     if (!viewData) return `Contact not found: "${title ?? id}"`;
     return renderer.render(viewData);
   },
@@ -95,6 +98,7 @@ export const editContact: Tool = {
     },
     examples: ['edit contact Alice Chen'],
     priority: 60,
+    intentClass: 'mutation_update',
   },
 
   parseArgs: (input) => ({ input }),
@@ -112,7 +116,7 @@ export const editContact: Tool = {
     };
 
     const { garden } = getServices(context);
-    const record = id ? garden.get(id) : (title ? garden.getByTitle(title) : null);
+    const record = resolveRecordByTypeAndTitle(context, 'contact', title, id);
     if (!record) return 'Contact not found.';
 
     const updates: Record<string, unknown> = {};
@@ -142,6 +146,7 @@ export const listContacts: Tool = {
     },
     examples: ['list contacts', 'show all contacts'],
     priority: 77,
+    intentClass: 'collection_list',
   },
 
   parseArgs: () => ({}),
@@ -169,6 +174,7 @@ export const findContact: Tool = {
     },
     examples: ['find contact Alice', 'search contacts Bob'],
     priority: 74,
+    intentClass: 'record_open',
   },
 
   parseArgs: (input) => {

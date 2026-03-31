@@ -31,7 +31,16 @@ export function readSettingsFile(filePath: string): Record<string, unknown> {
     return {};
   }
 
-  return parsed as Record<string, unknown>;
+  const normalized = Object.fromEntries(
+    Object.entries(parsed as Record<string, unknown>).map(([key, value]) => {
+      if ((key === 'signal.number' || key === 'signal.recipient') && typeof value === 'string') {
+        return [key, value.replace(/^['"]|['"]$/g, '').trim()];
+      }
+      return [key, value];
+    })
+  );
+
+  return normalized as Record<string, unknown>;
 }
 
 export function writeSettingsFile(

@@ -102,7 +102,7 @@ export const showMedia: Tool = {
     const { title, id } = args as { title?: string; id?: string };
     const { views } = getServices(context);
 
-    const viewData = id ? views.openRecord(id) : (title ? views.resolve(title) : null);
+    const viewData = id ? views.openRecord(id) : (title ? views.openRecordByTitle(title) : null);
     if (!viewData) return `Media not found: "${title ?? id}"`;
     return renderer.render(viewData);
   },

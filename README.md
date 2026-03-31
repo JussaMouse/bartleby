@@ -1,804 +1,592 @@
 # Bartleby
 
-A local-first personal assistant. Runs on your machine with local LLMs, no cloud required.
+Bartleby is a local-first personal assistant for work, life, and knowledge management.
 
-- [Quick Start](#quick-start)
-- [First 10 Minutes](#first-10-minutes)
-- [The Garden](#the-garden)
-- [GTD Workflow](#gtd-workflow)
-- [Events & Calendar](#events--calendar)
-- [The Shed](#the-shed)
-- [Memory & Learning](#memory--learning)
-- [Data Tools](#data-tools)
-- [Dashboard](#dashboard)
-- [Running on a Server](#running-on-a-server)
-- [Configuration](#configuration)
-- [Backups](#backups)
-- [Security](#security)
-- [Troubleshooting](#troubleshooting)
+You can use it to capture ideas, organize actions and projects, track events, manage contacts, build a personal everything-wiki, ingest reference material, and interact through both the CLI and Signal. Over time, Bartleby is designed to learn and adapt to the user.
 
----
+The current first-class interface is the CLI. Signal is already useful today. `<WIP>` Dashboard and app/mobile interfaces are in progress. `</WIP>`
 
-## Quick Start
+## What You Can Do With Bartleby
 
-**1. Install**
+- Capture things quickly before they disappear from your mind
+- Process inbox items into actions, projects, notes, events, or someday items
+- Manage actions and projects from explicit review lists
+- Keep notes, contacts, and events in one connected system
+- Use Bartleby as a personal everything-wiki / data vault for knowledge work
+- Ingest documents into a reference library and ask questions about them
+- Import files and images, with OCR available when configured
+- Interact through the CLI and through Signal
+- Configure Bartleby through guided setup and settings flows
+
+## Interface Status
+
+### CLI
+
+The CLI / REPL is the primary documented interface today.
+
+It is the best-supported path for:
+- setup
+- daily use
+- inbox processing
+- working with actions, projects, notes, contacts, and events
+- configuration
+- document/reference workflows
+
+### Signal
+
+Signal is already useful as a real second interface.
+
+Today, Signal can be used to:
+- send messages to Bartleby and get replies
+- ask Bartleby to send useful things to you in Signal
+- use message-based interaction when you do not want to be in the CLI
+
+For example, a user can tell Bartleby to send something useful to Signal, and Bartleby can do it.
+
+<WIP>
+Signal reminder delivery, scheduled daily/weekly review delivery, and fully autonomous Bartleby-driven reminders are still work in progress.
+</WIP>
+
+### Dashboard
+
+<WIP>
+A dashboard interface belongs here in the future. It exists in the codebase but is not yet the primary documented workflow.
+</WIP>
+
+### App / Mobile
+
+<WIP>
+App/mobile surfaces are in progress and will eventually live alongside the CLI and Signal as first-class conduits into the same Bartleby runtime.
+</WIP>
+
+## Install
+
+### Requirements
+
+- Node.js `22+`
+- `pnpm`
+- At least one OpenAI-compatible inference endpoint for LLM calls
+
+Local inference is the preferred setup.
+
+Bartleby is backend-agnostic as long as the endpoint is OpenAI-compatible. You can use local or remote inference, but local-first is the intended default.
+
+### Install Steps
 
 ```bash
 git clone https://github.com/JussaMouse/bartleby.git
 cd bartleby
-pnpm install && pnpm approve-builds && pnpm build
-```
-
-**2. Configure**
-
-```bash
-cp .env.example .env
-```
-
-Edit `.env` with your LLM endpoint (bootstrap only) — e.g., [MLX](https://github.com/ml-explore/mlx), [Ollama](https://ollama.ai), or [llama.cpp](https://github.com/ggerganov/llama.cpp):
-
-```env
-LLM_URL=http://127.0.0.1:8080/v1
-
-# Optional paths (defaults shown)
-DATABASE_PATH=./database
-LOG_LEVEL=info
-```
-
-All other settings (models, calendar, weather, OCR, dashboard access) live in `settings.yaml` + `secrets.yaml`, generated on first run. Configure via the setup wizard or the `settings` command.
-
-For remote access, set dashboard settings in `settings.yaml` (or with `set` commands), e.g.:
-```yaml
-dashboard.host: 100.x.x.x
-dashboard.api_token: <openssl rand -hex 32>
-dashboard.allowed_ips: [127.0.0.1, 100.x.x.x]
-```
-
-**3. Run**
-
-```bash
-pnpm start
-```
-
-On first run, a setup wizard asks your name, configures defaults, and lets you walk through settings by category (press Enter to keep defaults). After that:
-
-```
-📋 Bartleby is ready. Type "help" for commands, "quit" to exit.
-📊 Dashboard: http://localhost:3333
-```
-
----
-
-## First 10 Minutes
-
-### 1) Capture anything
-
-```
-> capture call insurance about claim
-> capture idea for blog post
-> capture look into that thing Jake mentioned
-```
-
-### 2) Create an action
-
-```
-> new action call mom @phone
-> new action buy batteries @errands
-```
-
-### 3) Make a project and link actions
-
-```
-> new project 2025 taxes
-> new action gather W2 forms +2025-taxes
-> new action call accountant +2025-taxes @phone
-```
-
-### 4) Create a note
-
-```
-> new note house rules
-> new note meeting notes jan 24 +q1-planning
-```
-
-### 5) Add an event
-
-```
-> new event dentist tomorrow 2pm
-> new event team meeting next Tuesday 3pm with sarah
-```
-
-### 6) Import a file
-
-Drag and drop onto the dashboard at http://localhost:3333, or:
-
-```
-> import ~/Desktop/receipt.png
-```
-
-**Tip:** Hit `TAB` to autocomplete commands, record titles, `@contexts`, and `+projects`.
-
----
-
-## The Garden
-
-All garden data lives in `bartleby.db`. Records are typed:
-
-| Type | Purpose |
-|------|---------|
-| `item` | Inbox capture — unprocessed |
-| `action` | A single doable next step |
-| `project` | An outcome requiring multiple actions |
-| `note` | Notes, reference material, wiki pages |
-| `contact` | Person with contact details |
-| `event` | Calendar event with start/end time |
-| `tag` | Label for organizing notes |
-| `media` | Imported image or document |
-
-**System views** (always available):
-
-| View | Shows |
-|------|-------|
-| Inbox | Unprocessed items |
-| Next Actions | All active actions |
-| Waiting For | Delegated actions |
-| Someday Maybe | Future possibilities |
-| All Events | Calendar events |
-| All Notes | All notes |
-| All Projects | All projects |
-| Contacts | People directory |
-
-**Custom views:**
-
-```
-> create view "Phone Calls" showing actions @phone
-> list views
-> open view Phone Calls
-> delete view "Phone Calls"
-```
-
-**Relationship graph:** When you use `[[wiki links]]`, `+projects`, and `with person`, these become typed edges. Opening a record shows related items automatically — a project shows its linked actions and notes; a contact shows linked events and actions.
-
----
-
-## GTD Workflow
-
-Capture everything. Process later. Work from lists.
-
-### Core Types
-
-| Type | What it is | Example |
-|------|------------|---------|
-| **Item** | Raw capture, not yet processed | "look into that thing Jake mentioned" |
-| **Action** | A single, concrete next step | "call Dr. Smith to schedule checkup @phone" |
-| **Project** | An outcome requiring multiple actions | "2025 Taxes" |
-
-The key insight: an **action** is something you can actually *do* right now. "Do taxes" is a project. "Find last year's W2" is an action.
-
-### The GTD Loop
-
-**Capture** — Get it out of your head:
-```
-> capture call insurance about claim
-> capture idea for blog post
-```
-
-**Clarify** — Process your inbox:
-```
-> show inbox
-> new action call insurance claims dept @phone
-> done 2
-```
-
-**Organize** — Add contexts and projects:
-```
-> new action write blog outline @computer +side-projects
-> new project home renovation
-```
-
-**Review** — Weekly:
-```
-> list projects
-> show next actions
-```
-
-**Do** — Filter by context and pick something:
-```
-> show next actions @phone
-> complete call mom
-```
-
-### Contexts
-
-Contexts answer: *where or how can I do this?*
-
-| Context | Use when |
-|---------|----------|
-| `@phone` | Need to make a call |
-| `@computer` | Need your laptop |
-| `@errands` | Out and about |
-| `@home` | Need to be home |
-| `@office` | Need to be at work |
-| `@waiting` | Delegated, waiting for response |
-| `@focus` | Need uninterrupted time |
-
-### Projects
-
-Every project needs at least one next action in your list, or it stalls.
-
-```
-> new project 2025 taxes
-> new action gather W2 forms +2025-taxes
-> new action call accountant +2025-taxes @phone with jamie
-> show project 2025 taxes
-```
-
-### Contacts
-
-```
-> add contact Sarah Chen email sarah@example.com phone 555-1234
-> show contact sarah
-> find contact sarah
-```
-
-Link actions and events to contacts with `with`:
-```
-> new action call accountant @phone with jamie
-> new event coffee friday 10am with sarah
-```
-
-Contact names are fuzzy-matched — "sarah" finds "Sarah Chen". Using an unknown contact name creates it automatically.
-
-### Linking Operators
-
-| Operator | Meaning |
-|----------|---------|
-| `@context` | Where/how to do it |
-| `+project` | Which outcome it belongs to |
-| `with name` | Who's involved |
-
-These can appear anywhere in a command and in any order:
-```
-> new action call accountant @phone +2025-taxes with sarah
-```
-
-Using an unknown `+project` or `with name` creates it automatically.
-
-### Tips
-
-**Tab completion:**
-```
-edit scr[TAB] @ho[TAB] +20[TAB]  →  edit screenshot-notes @home +2025-taxes
-new action call with sar[TAB]    →  new action call with sarah chen
-```
-
-**Command history:** `↑` / `↓` cycle through previous commands (persists across sessions). `Ctrl+R` for reverse search. History is saved to `database/history.txt`.
-
----
-
-## Events & Calendar
-
-Events are garden records with `starts_at` and `ends_at` fields.
-
-### Commands
-
-```
-new event <details>     Create event
-show calendar           Upcoming events and actions with due dates
-list events             All events
-show event <name>       View event details
-edit event <name>       Edit event fields
-```
-
-### Creating Events
-
-Natural language works:
-```
-> new event dentist tomorrow at 2pm
-> new event team meeting next Tuesday 3pm with sarah
-> new event conference March 22 at 10am
-> new event picnic when sunday noon who nicole where lakeside
-```
-
-Omit the time for all-day events:
-```
-> new event company holiday friday
-> new event tax deadline april 15
-```
-
-Date parsing handles: month names, relative dates ("in 3 days", "next Monday"), week references ("this Friday morning"). Past dates automatically advance to next year.
-
-### Editing Events
-
-```
-> reschedule team meeting to tomorrow 3pm
-> edit event team meeting
-```
-
-`reschedule` preserves the event's original duration.
-
----
-
-## The Shed
-
-The Shed is your reference library. Ingest documents and web pages, then query them with natural language.
-
-```
-> ingest ~/Documents/contract.pdf
-> ingest https://example.com/article
-> ask shed what are the contract termination terms?
-> list sources
-```
-
-During first-run, README, COMMANDS, and TECH_SPEC are imported as searchable notes. You can also ingest them manually for natural-language queries:
-
-```
-> ingest README.md
-> ask shed how do I create a contact?
-```
-
-Location: `./shed/`
-
----
-
-## Memory & Learning
-
-Bartleby learns from every conversation and maintains persistent memory across sessions using an Entity-Observation-Relationship (EOR) system.
-
-### What It Learns Automatically
-
-- Your name, preferences, and habits
-- Relationships ("my wife Sarah", "my boss Mike")
-- Goals and working context
-- Patterns from command history
-
-### Soft Preferences
-
-Tell Bartleby things naturally:
-```
-> my name is Lon
-> I prefer short responses
-> my wife is Nicole
-```
-
-These inform responses without enforcing them.
-
-### Standing Instructions
-
-Mandatory rules injected into every system prompt — the model must follow them:
-```
-> always use bullet points (remember this)
-> never use markdown headers (remember this)
-> remember this: keep responses under 100 words
-> rule: respond in plain text only
-```
-
-Accepted patterns: `<text> (remember this)`, `remember this: <text>`, `rule: <text>`, `new rule: <text>`
-
-Manage your rules:
-```
-> /rules              # View all rules numbered
-> delete rule 2       # Remove rule #2
-> delete rule all     # Clear all rules
-```
-
-Rules are stored with `confidence: 1.0` and no expiry. Deleting one supersedes it — history is preserved but it's no longer active.
-
-### Memory Commands
-
-```
-> what do you know about me     # Show learned facts
-> /rules                        # View standing instructions
-> show history                  # Recent command history
-> search history <query>        # Search past commands
-```
-
-Maintenance:
-```
-pnpm monitor                 # Database stats and health
-pnpm optimize                # Clean expired observations and optimize
-pnpm profile export          # Export learning data to JSON
-pnpm profile import <file>   # Restore from export
-```
-
-### Temporary Memory
-
-Observations can have a time-to-live:
-```
-> remember for 7 days that I'm working from home
-> forget that I'm working from home
-```
-
-Updates create a superseding chain — the old value is kept as history, the latest wins.
-
-**Data location:** `database/bartleby.db`
-
----
-
-## Data Tools
-
-Import, query, and analyze CSV data with SQL. Useful for financial data cleanup.
-
-```
-> ingest csv ~/Downloads/data.csv as mytable
-> sql SELECT * FROM mytable LIMIT 10
-> sql SELECT type, COUNT(*), SUM(value) FROM mytable GROUP BY type
-> tables
-> describe mytable
-> export "SELECT * FROM mytable" to output.csv
-```
-
-**Ingest options:** `--replace`, `--append`, `--no-header`, `--skip-lines N`
-
-**Safe mutations — always preview before changing data:**
-```
-> preview UPDATE mytable SET type = 'Buy' WHERE id = '123'
-> snapshot mytable
-> sql UPDATE mytable SET type = 'Buy' WHERE id = '123'
-> snapshots                                    # List saved snapshots
-> restore mytable_snapshot_2026_01_24 to mytable
-```
-
-Data lives in `database/data.sqlite3`, separate from your garden.
-
----
-
-## Dashboard
-
-Web UI at http://localhost:3333. Same data as the CLI, live-updating.
-
-### Panels
-
-Click view buttons in the footer to open panels. Each panel displays a named view. Click × to close. Layout persists across reloads.
-
-Available views: Inbox, Next Actions, All Projects, All Notes, All Events, Contacts, REPL
-
-### Using the Dashboard
-
-- **Click any item** → opens its detail view as a new panel
-- **✎ button** → edit modal (title, status, other fields)
-- **✓ button** → complete an action
-- **Footer input** → capture to inbox (press Enter)
-- **Drag and drop** → import a file as a media record
-- **REPL panel** → full command line, same as CLI
-
-### Authentication
-
-When `dashboard.host` is not `localhost`, you'll be prompted for your `dashboard.api_token` on first use. The token is cached in browser localStorage.
-
----
-
-## Running on a Server
-
-### Setup
-
-```bash
-git clone https://github.com/JussaMouse/bartleby.git
-cd bartleby
-pnpm install && pnpm approve-builds && pnpm build
-cp .env.example .env
-# Set LLM_URL in .env
-pnpm start
-```
-
-Run in the background with tmux: `tmux new -s bartleby`, detach with `Ctrl+B D`.
-
-### Remote Access Options
-
-**SSH tunnel (simplest)**
-
-```bash
-ssh -L 3333:localhost:3333 user@your-server
-```
-
-Open http://localhost:3333 locally. Add to `~/.ssh/config` for convenience:
-
-```
-Host bartleby
-    HostName your-server-ip
-    User your-user
-    LocalForward 3333 localhost:3333
-```
-
-**Tailscale VPN (recommended for mobile)**
-
-```bash
-brew install tailscale
-sudo tailscaled &
-sudo tailscale up
-```
-
-Set in `settings.yaml` (or via `set` commands):
-```yaml
-dashboard.host: 100.x.x.x      # Your Tailscale IP: tailscale ip -4
-dashboard.api_token: <token>  # Required: openssl rand -hex 32
-```
-
-Install Tailscale on iPhone → sign in with the same account → open `http://<tailscale-ip>:3333`.
-
-**Multi-device access with IP whitelisting:**
-```yaml
-dashboard.host: 0.0.0.0
-dashboard.allowed_ips: [127.0.0.1, 100.x.x.x]    # Localhost + device Tailscale IPs
-dashboard.api_token: <token>
-```
-
-### Siri Shortcuts
-
-Voice capture via iOS Shortcuts. Speech recognition happens on-device.
-
-**Quick Capture:**
-
-1. Shortcuts app → **+**
-2. **Dictate Text**
-3. **Get Contents of URL**
-   - URL: `http://<tailscale-ip>:3333/api/capture`
-   - Method: POST
-   - Headers: `Content-Type: application/json`, `Authorization: Bearer <token>`
-   - Body (JSON): `text` → Dictated Text variable
-4. **Get Dictionary Value** → key: `reply`
-5. **Speak Text**
-
-Say "Hey Siri, Capture" → speak → hear confirmation.
-
-**Long Note** (unlimited dictation length):
-
-1. **Dictate Text** (stop: After Pause) → Set Variable `Title`
-2. **Dictate Text** (stop: **On Tap**) → Set Variable `Content`
-3. **Get Contents of URL**: `POST /api/note`, JSON body `{title, content}`
-4. **Speak Text** → "Saved [Title]"
-
-**Any command:** Use `POST /api/chat?voice=true`. The `voice=true` parameter strips markdown from responses for cleaner text-to-speech.
-
-**OCR a photo:**
-
-1. **Select Photos**
-2. **Get Contents of URL**: `POST /api/ocr`, form body with field `file`
-3. **Get Dictionary Value** → key: `text`
-4. **Copy to Clipboard**
-
-### Tunnel to Remote MLX Server
-
-To use models running on a more powerful remote machine:
-
-```bash
-ssh -p <port> \
-    -L 8080:127.0.0.1:8080 \
-    -L 8081:127.0.0.1:8081 \
-    user@<tailscale-ip>
-```
-
-Keep the tunnel open while Bartleby is running. Local `.env` stays unchanged.
-
----
-
-## Configuration
-
-Bartleby uses a two-tier system: `.env` for bootstrap settings, `settings.yaml` + `secrets.yaml` for everything else.
-
-### settings.yaml + secrets.yaml
-
-Non-sensitive settings live in `settings.yaml`. Secrets (API keys, phone numbers) live in `secrets.yaml`.
-Both files use flat keys, for example:
-
-```yaml
-llm.router.url: http://127.0.0.1:8080/v1
-weather.city: Austin
-dashboard.api_token: <secret>
-```
-
-Generated on first run (you can re-run defaults with `setup wizard`).
-
-### .env (Bootstrap)
-
-Only what's needed to start. Everything else lives in `settings.yaml`.
-
-```env
-# LLM (required)
-LLM_URL=http://127.0.0.1:8080/v1
-EMBEDDINGS_URL=http://127.0.0.1:8081/v1    # Optional separate endpoint
-
-# Storage
-DATABASE_PATH=./database
-SHED_PATH=./shed
-LOG_DIR=./logs
-
-# Logging
-LOG_LEVEL=info
-LOG_LLM_VERBOSE=false
-```
-
-### Runtime Settings
-
-Changes take effect immediately without restarting:
-
-```
-> settings                   # Show all settings
-> settings llm               # Show one category
-> set llm.fast.model to mlx-community/Qwen3.5-35B-A3B-4bit
-> set calendar.timezone to America/New_York
-> set weather.api_key to <key>
-> setup wizard               # Re-run first-launch wizard
-```
-
-### LLM Models
-
-Bartleby uses three model tiers:
-
-| Tier | Size | Purpose | Typical latency |
-|------|------|---------|-----------------|
-| Router | 0.5–1B | Classify request complexity | ~50ms |
-| Fast | 7–30B | Simple queries, single tool calls | ~500ms |
-| Thinking | 30B+ | Multi-step reasoning | 2–10s |
-
-```
-> set llm.router.model to mlx-community/Qwen3-0.6B-4bit
-> set llm.fast.model to mlx-community/Qwen3.5-35B-A3B-4bit
-> set llm.thinking.model to mlx-community/Qwen3.5-122B-A10B-4bit
-```
-
-### OCR
-
-```
-> set ocr.enabled to true
-> set ocr.url to http://127.0.0.1:8085/v1
-> set ocr.model to olmocr
-```
-
-Recommended model: `olmOCR-2-7B-1025-MLX-8bit` (Apple Silicon).
-
-### Calendar
-
-```
-> set calendar.timezone to America/Los_Angeles
-> set calendar.default_duration_minutes to 60   # Event duration in minutes
-> set calendar.week_start to sunday             # or monday
-> set calendar.date_format to mdy               # or dmy
-```
-
-### Weather
-
-```
-> set weather.city to London
-> set weather.api_key to <key>
-```
-
-Free API key at [openweathermap.org](https://openweathermap.org/api).
-
-### Signal Notifications
-
-```
-> set signal.enabled to true
-> set signal.cli_path to /usr/local/bin/signal-cli
-> set signal.number to +1234567890
-> set signal.recipient to +0987654321
-> set signal.receive_enabled to true
-> set signal.allowed_senders to +1234567890
-```
-
-Requires [signal-cli](https://github.com/AsamK/signal-cli) installed and registered.
-
-**Inbound commands (optional):** configure in settings to let Bartleby respond to Signal messages as if they were REPL commands.
-
-```
-> set signal.receive_enabled to true
-> set signal.allowed_senders to +1234567890
-```
-
-Only allow numbers you trust. Group messages are ignored by default.
-
----
-
-## Backups
-
-All garden data lives in one file:
-
-| Path | Priority | Contents |
-|------|----------|----------|
-| `database/bartleby.db` | **Critical** | All records, notes, contacts, events, learning |
-| `settings.yaml` | **Critical** | Runtime settings |
-| `secrets.yaml` | **Critical** | API keys + secret settings |
-| `.env` | Important | Bootstrap settings |
-| `shed/` | Optional | Reference documents (expensive to re-ingest) |
-
-```bash
-# Quick backup
-cp database/bartleby.db backups/bartleby-$(date +%Y%m%d).db
-
-# Full backup
-tar -czvf bartleby-$(date +%Y%m%d).tar.gz database/bartleby.db shed/ .env settings.yaml secrets.yaml
-
-# Export just the learning/memory system
-pnpm profile export
-```
-
----
-
-## Security
-
-Bartleby stores personal notes, contacts, calendar, and financial data. Take a few minutes to harden your setup.
-
-### Quick Checklist
-
-- [ ] Full-disk encryption enabled (FileVault on macOS, LUKS on Linux)
-- [ ] `.env`, `settings.yaml`, and `secrets.yaml` permissions are `600`: `chmod 600 .env settings.yaml secrets.yaml`
-- [ ] `dashboard.host` is `localhost` or a Tailscale IP — never `0.0.0.0` without `dashboard.allowed_ips`
-- [ ] `LOG_LEVEL=info` (debug logs full conversations)
-- [ ] `LOG_LLM_VERBOSE=false`
-- [ ] All LLM endpoints point to `127.0.0.1` (not a remote service)
-- [ ] `.env`, `settings.yaml`, and `secrets.yaml` are not tracked by git
-- [ ] Backups exist
-
-Run the automated audit:
-```bash
-./scripts/security-audit.sh
-```
-
-### Authentication
-
-| `dashboard.host` | Who can access | Safe? |
-|------------------|----------------|-------|
-| `localhost` | Local machine only | ✓ Default |
-| `100.x.x.x` (Tailscale) | VPN devices only | ✓ |
-| `0.0.0.0` + `dashboard.allowed_ips` | Whitelisted IPs only | ✓ |
-| `0.0.0.0` without whitelist | Everyone | ✗ Blocked at startup |
-
-All non-localhost API requests require `Authorization: Bearer <token>`. Browser sessions cache the token in localStorage after first entry.
-
----
-
-## Troubleshooting
-
-### "Cannot find module" errors
-
-```bash
+pnpm install
+pnpm approve-builds
 pnpm build
 ```
 
-### Native module errors (hnswlib-node)
+## First Run
+
+Start Bartleby:
 
 ```bash
-pnpm rebuild hnswlib-node
-# or full reinstall:
-rm -rf node_modules && pnpm install && pnpm approve-builds && pnpm build
+pnpm start
 ```
 
-### NODE_MODULE_VERSION errors after updating Node.js
+On first launch, Bartleby runs a guided setup flow.
 
-```bash
-pnpm rebuild better-sqlite3
+That flow helps you:
+- set up basic runtime defaults
+- name yourself and the assistant
+- choose between recommended or guided settings
+- walk through settings categories if you want more control
+
+You can also re-run setup later:
+
+```text
+setup wizard
 ```
 
-### LLM not responding
+Useful first commands after startup:
 
-```bash
-curl http://127.0.0.1:8080/v1/models    # Check model is running
+```text
+help
+status
+settings
+show inbox
+show next actions
+calendar
 ```
 
-Then check `.env` URLs and run `status` inside Bartleby.
+## How To Use Bartleby Well
 
-### Signal not working
+Bartleby works best when you use a few simple ideas consistently.
 
-```bash
-which signal-cli
-signal-cli -u +YOUR_NUMBER receive
+### Capture first, decide later
+
+If something should not stay in your head, capture it.
+
+Do not worry about organizing it perfectly at capture time.
+
+### An action is something you can actually do
+
+An action is a concrete next step.
+
+Examples:
+- `call insurance`
+- `email Sarah`
+- `draft outline`
+
+### A project is an outcome that needs multiple steps
+
+If something cannot be done in one step, it is usually a project.
+
+Examples:
+- `finish taxes`
+- `move apartments`
+- `launch website`
+
+Bartleby should help you keep the difference clear while you work:
+- **action** = doable now
+- **project** = outcome requiring multiple actions
+
+### Notes, contacts, and events are part of the same system
+
+Bartleby is not just tasks.
+
+Your notes, contacts, events, captured items, imported media, and reference material all belong to one connected personal system.
+
+## Capture And Process
+
+### Capture
+
+Use capture for anything that should be remembered, reviewed, or turned into something more structured later.
+
+```text
+capture call insurance about claim
+capture ask Jake about invoice
+capture idea for article
 ```
 
-### Logs
+Likely result:
+- Bartleby stores the item in your inbox for later processing
 
-```bash
-tail -f logs/bartleby.log
+### Review the inbox
+
+```text
+show inbox
 ```
 
-Set `LOG_LEVEL=debug` in `.env` for verbose output.
+Likely result:
+- Bartleby shows your unprocessed captured items
 
----
+### Process the inbox
 
-## More
+```text
+process inbox
+```
 
-- [COMMANDS.md](COMMANDS.md) — Full command reference
-- [TECH_SPEC.md](TECH_SPEC.md) — Architecture, database schemas, developer docs
+Likely result:
+- Bartleby starts a guided workflow
+- each inbox item can become:
+  - an action
+  - a project
+  - a note
+  - an event
+  - an appended note entry
+  - a someday / idea item
+  - or be skipped
 
----
+This is one of the most important Bartleby workflows because it turns raw capture into a trustworthy working system.
 
-MIT — see [LICENSE](LICENSE)
+### Example
+
+```text
+> capture call accountant about tax deadline
+Captured: call accountant about tax deadline
+
+> process inbox
+Starts guided inbox processing.
+
+> action
+Creates an action from that inbox item.
+```
+
+## Actions And Projects
+
+### Create actions
+
+Use actions for concrete next steps.
+
+```text
+new action call accountant @phone
+new action draft proposal @computer
+new action buy batteries @errands
+```
+
+Likely result:
+- Bartleby creates active next actions you can review later
+
+### Review next actions
+
+```text
+show next actions
+```
+
+Likely result:
+- Bartleby shows your current actionable work list
+
+### Complete actions
+
+```text
+complete call accountant
+```
+
+Likely result:
+- Bartleby marks the action complete
+
+### Create projects
+
+Use projects for outcomes that need more than one step.
+
+```text
+new project 2026 taxes
+new project kitchen repairs
+list projects
+```
+
+Likely result:
+- Bartleby creates project records and lets you review them separately from actions
+
+### Open a project
+
+```text
+show project 2026 taxes
+```
+
+Likely result:
+- Bartleby shows the project and its related work
+
+### A practical rule
+
+- `call accountant` is an action
+- `finish taxes` is a project
+
+That distinction matters because Bartleby is more useful when your list of actions contains only things you can really do.
+
+## Notes, Contacts, And Events
+
+### Notes
+
+Use notes for:
+- reference material
+- working documents
+- meeting notes
+- personal wiki pages
+- long-lived knowledge
+
+```text
+create note meeting notes march 31
+list notes
+show note meeting notes march 31
+```
+
+Likely result:
+- Bartleby creates and opens notes as part of your knowledge system
+
+Notes are not a side feature. They are part of how Bartleby becomes a personal everything-wiki.
+
+### Contacts
+
+Use contacts to maintain your people directory.
+
+```text
+new contact Jane Smith
+list contacts
+show contact Jane Smith
+find contact Jane
+```
+
+Likely result:
+- Bartleby stores and retrieves contact records you can connect to work and events
+
+### Events and calendar
+
+Events are a core part of Bartleby.
+
+Use them for:
+- appointments
+- meetings
+- deadlines with time
+- calendar commitments
+
+```text
+new event dentist friday 2pm
+new event team meeting next Tuesday 3pm
+calendar
+list events
+```
+
+Likely result:
+- Bartleby stores the event and lets you review upcoming commitments
+
+## The Garden
+
+The Garden is Bartleby’s personal everything-wiki / data vault for knowledge work.
+
+This is where Bartleby keeps your durable personal system:
+- captured items
+- actions
+- projects
+- notes
+- contacts
+- events
+- tags
+- imported media
+
+The Garden is not just a place for notes.
+
+It is the connected personal record space that powers:
+- your work lists
+- your calendar
+- your knowledge base
+- your reference material
+- your personal operational context
+
+As you use Bartleby, the Garden becomes the place where your life and work information actually lives in usable form.
+
+## Shed: Your Reference Library
+
+Shed is Bartleby’s reference-library capability.
+
+It lets you ingest documents and ask questions about them.
+
+### Ingest a document
+
+```text
+ingest ./reference.md
+ingest ./notes.txt
+ingest ./paper.pdf
+```
+
+Likely result:
+- Bartleby ingests the source
+- stores it in the reference system
+- makes it available for retrieval and question-answering
+
+### List sources
+
+```text
+list sources
+```
+
+Likely result:
+- Bartleby shows what has been ingested
+
+### Ask Shed
+
+```text
+ask shed what does this document say about refunds
+```
+
+Likely result:
+- Bartleby answers based on ingested material and cites the source in its response
+
+Shed is important because it extends Bartleby from personal organization into personal reference work.
+
+<WIP>
+Shed is usable and worth documenting, but it should still be described conservatively. It is not yet a claim of perfect or universal document intelligence.
+</WIP>
+
+## Importing Files, Media, And OCR
+
+Bartleby can import files and media directly.
+
+This is useful for:
+- personal archives
+- image/document reference
+- extracting text from images when OCR is enabled
+- building up knowledge material you want Bartleby to work with
+
+Examples:
+
+```text
+import ./receipt.png
+import ./contract.pdf
+show media contract.pdf
+```
+
+Likely result:
+- Bartleby creates media records
+- imported material becomes part of your broader working system
+
+OCR is available when configured.
+
+That means Bartleby can extract text from supported images and similar media where OCR is enabled.
+
+<WIP>
+OCR is an optional integration and depends on your local configuration.
+</WIP>
+
+## Signal
+
+Signal is already a useful way to interact with Bartleby.
+
+### What works today
+
+You can use Signal to:
+- message Bartleby and receive replies
+- ask Bartleby to send useful information back to your Signal thread
+- use Bartleby when you are away from the CLI
+
+Examples of the kind of use that already works:
+
+- tell Bartleby to send you something in Signal
+- message Bartleby directly and get a reply in Signal
+
+### Signal as a practical second interface
+
+CLI remains the primary documented path, but Signal is not just a stub. It is already useful enough to treat as a real second interface.
+
+<WIP>
+The following Signal-related behaviors should be documented as still evolving:
+- scheduled reminder delivery
+- daily/weekly review delivery via Signal
+- autonomous Bartleby-driven reminders
+</WIP>
+
+## Weather
+
+Weather is directly usable when configured.
+
+That makes Bartleby more useful for daily planning and review.
+
+```text
+weather
+```
+
+Likely result:
+- Bartleby returns weather information using your configured settings
+
+<WIP>
+Weather is also a natural fit for future daily review flows and message-based summaries.
+</WIP>
+
+## Configuration
+
+Configuration belongs in Bartleby, but the README should stay brief here because the guided flows are already fairly self-explanatory.
+
+Useful commands:
+
+```text
+settings
+settings <category>
+set <key> to <value>
+settings wizard
+setup wizard
+```
+
+Likely result:
+- Bartleby shows or updates settings directly
+- guided workflows help with category-by-category configuration
+
+For exhaustive command coverage, see `COMMANDS.md`.
+
+## Worked Example Workflows
+
+### Example 1: Personal admin
+
+```text
+capture call insurance about claim
+capture find tax documents
+process inbox
+new project 2026 taxes
+show next actions
+calendar
+```
+
+What Bartleby is doing:
+- capturing loose obligations
+- turning them into structured work
+- keeping projects and time commitments visible together
+
+### Example 2: Knowledge work
+
+```text
+create note product ideas
+ingest ./market-research.md
+ask shed what this document says about pricing
+show note product ideas
+```
+
+What Bartleby is doing:
+- combining personal notes with external reference material
+- letting your knowledge work live in one system
+
+### Example 3: People, work, and commitments
+
+```text
+new contact Jane Smith
+new event planning meeting friday 2pm
+create note planning notes
+show contact Jane Smith
+calendar
+```
+
+What Bartleby is doing:
+- letting people, events, and knowledge live in the same working environment
+
+### Example 4: Signal-assisted use
+
+- message Bartleby through Signal
+- ask it to send you something useful
+- keep using CLI when you want the full documented interface
+- use Signal when you want message-based interaction
+
+## Advanced Notes
+
+Bartleby also has deeper runtime and routing capabilities beyond what this README tries to teach directly.
+
+For:
+- exhaustive commands
+- advanced runtime behavior
+- routing/training internals
+- deeper technical details
+
+see:
+- `COMMANDS.md`
+- `TECH_SPEC.md`
+
+## Current Reality
+
+Bartleby is real and usable now, but some parts of the product are still evolving.
+
+<WIP>
+Areas that should be described honestly as still in progress:
+- dashboard as a first-class workflow surface
+- app/mobile as a first-class workflow surface
+- Signal-based scheduled reviews and reminders
+- Bartleby-driven autonomous reminder behavior
+- some advanced reference/system polish around newer features
+</WIP>
+
+The documented core path remains:
+- CLI first
+- Signal as a useful second interface
+- direct, explicit workflows over vague automation claims
+
+## Getting Started
+
+If you are new, start here:
+
+```text
+help
+settings
+capture something small
+show inbox
+process inbox
+show next actions
+calendar
+create note daily notes
+```
+
+That is enough to start feeling how Bartleby works:
+- capture first
+- structure later
+- keep work, commitments, people, and knowledge in one connected system

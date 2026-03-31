@@ -1,12 +1,11 @@
 // src/index.ts
 import { loadConfig, Config } from './config.js';
-import { configureLogger, LogLevel, info, error } from './utils/logger.js';
+import { configureLogger, LogLevel, info, error, warn } from './utils/logger.js';
 import { initServices, closeServices, ServiceContainer } from './services/index.js';
 import { SettingsService } from './services/settings.js';
 import { CommandRouter } from './router/index.js';
 import { Agent } from './agent/index.js';
 import { startRepl } from './repl.js';
-import { DashboardServer } from './server/index.js';
 import { SignalReceiver } from './transports/signal-receiver.js';
 
 function checkBootstrapConfig(config: Config): void {
@@ -122,6 +121,16 @@ function validateSecurityPosture(config: Config): void {
   }
 }
 
+async function sendStartupPresence(services: ServiceContainer): Promise<void> {
+  if (!services.config.presence.startup) return;
+  if (!services.signal.isEnabled()) return;
+
+  const sent = await services.signal.send('Bartleby is up and listening.');
+  if (!sent) {
+    warn('Startup Signal presence failed to send');
+  }
+}
+
 async function main(): Promise<void> {
   // 0. Load settings (for config)
   const settings = new SettingsService();
@@ -167,25 +176,23 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
+  await sendStartupPresence(services);
+
   // 4. Create router and agent
   const router = new CommandRouter();
   await router.initialize(services);
 
   const agent = new Agent(services);
 
-  // 5. Start dashboard server
-  const dashboardHost = config.dashboard.host || 'localhost';
-  const dashboardPort = config.dashboard.port || 3333;
-  const dashboardServer = new DashboardServer(services, router, agent);
-  dashboardServer.start(dashboardPort);
-  info(`Dashboard server started at http://${dashboardHost}:${dashboardPort}`);
+  // 5. Legacy dashboard removed; future rewrite will attach via shared runtime connectors
+  info('Legacy dashboard implementation removed; future dashboard rewrite pending');
 
   // 6. Start Signal receiver (optional inbound commands)
   const signalReceiver = new SignalReceiver(services, router, agent);
   signalReceiver.start();
 
   // 7. Start REPL (handles its own shutdown via quit command and SIGINT/SIGTERM)
-  await startRepl(router, agent, services, dashboardServer, signalReceiver);
+  await startRepl(router, agent, services, signalReceiver);
 }
 
 main().catch((err) => {

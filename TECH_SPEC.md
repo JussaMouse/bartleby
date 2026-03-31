@@ -1,509 +1,607 @@
 # Bartleby Technical Specification
 
-Developer documentation for extending and understanding Bartleby internals.
+Purpose: describe Bartleby’s current technical architecture, subsystem boundaries, and runtime design using the architecture reference as the source of truth while staying aligned with the current codebase.
 
-- [Garden Specification](#garden-specification)
-- [Architecture](#architecture)
-- [Extending Bartleby](#extending-bartleby)
-- [Database Schemas](#database-schemas)
+This document is a replacement for the older `TECH_SPEC.md`. It is meant to be:
+- architecture-first
+- implementation-aware
+- truthful about current convergence state
+- useful for feature work, refactors, and future interface expansion
 
----
-
-## Garden Specification
-
-The complete specification for Garden records — types, fields, statuses, and relationships.
-
-### Record Types
-
-Every Garden record has a `type`:
-
-| Type | Purpose |
-|------|---------|
-| `item` | Unprocessed inbox capture (from quick capture) |
-| `action` | GTD next action with optional context and due date |
-| `project` | A multi-step outcome with associated actions and notes |
-| `note` | Free-form text note |
-| `event` | Calendar event with start/end time |
-| `contact` | Person with contact details |
-| `tag` | Label for organizing notes |
-| `media` | Imported file (image, document, etc.) |
-
-### Record Fields
-
-Every Garden record has these fields:
-
-```typescript
-interface GardenRecord {
-  id: string;
-  type: RecordType;
-  title: string;
-  status: RecordStatus;
-  content: string | null;
-  created_at: string;     // ISO 8601
-  updated_at: string;
-
-  // Action fields
-  context: string | null;         // @phone, @computer, etc.
-  energy: string | null;          // low, medium, high
-  time_estimate: string | null;   // "30 min", "2 hours"
-  due_date: string | null;        // ISO date
-
-  // Event fields
-  starts_at: string | null;       // ISO datetime
-  ends_at: string | null;
-  all_day: number | null;         // 1 = true
-  location: string | null;
-
-  // Contact fields
-  email: string | null;
-  phone: string | null;
-  company: string | null;
-  address: string | null;
-  birthday: string | null;
-
-  // Media fields
-  file_path: string | null;
-  mime_type: string | null;
-  file_size: number | null;
-
-  // Metadata
-  source: string | null;          // 'typed', 'imported', etc.
-  metadata: string | null;        // JSON blob for extras
-}
-```
-
-### Status Values
-
-| Status | Meaning |
-|--------|---------|
-| `active` | Current, in progress |
-| `completed` | Done |
-| `waiting` | Delegated or blocked |
-| `someday` | Someday/maybe |
-| `archived` | Hidden but kept |
-| `processed` | Inbox item has been processed |
-
-### Relationship Types
-
-Records connect via typed directed edges:
-
-| Type | Meaning | Direction |
-|------|---------|-----------|
-| `belongs_to` | Child belongs to parent | action/note → project |
-| `involves` | Record involves a contact | project/event → contact |
-| `references` | Wiki-link backlink (`[[Title]]`) | note → note/any |
-| `tagged_with` | Note has tag | note → tag |
-| `attends` | Contact attends event | contact → event |
-| `waiting_on` | Action is waiting on contact | action → contact |
+It is not a promise that every subsystem described here is equally polished.
 
 ---
 
-## Architecture
+## 1. System Overview
 
-### Overview
+Bartleby is a local-first personal assistant runtime centered on durable personal data, guided workflows, retrieval, and multi-interface access over shared core logic.
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                  REPL / Dashboard (UI)                       │
-└─────────────────────────┬───────────────────────────────────┘
-                          │
-┌─────────────────────────┴───────────────────────────────────┐
-│                    Command Router                            │
-│     Pattern → Keyword → Semantic → LLM Fallback             │
-└─────────────────────────┬───────────────────────────────────┘
-                          │
-┌─────────────────────────┴───────────────────────────────────┐
-│                        Tools                                 │
-│   Actions │ Projects │ Notes │ Contacts │ Events │ Views    │
-└─────────────────────────┬───────────────────────────────────┘
-                          │
-┌─────────────────────────┴───────────────────────────────────┐
-│                       Services                               │
-│   Garden (4-layer) │ Learning │ LLM │ Embeddings │ Vectors  │
-│   Shed │ Context │ Settings │ OCR │ Weather │ Signal        │
-└─────────────────────────┬───────────────────────────────────┘
-                          │
-┌─────────────────────────┴───────────────────────────────────┐
-│                       Storage                                │
-│           bartleby.db (SQLite, WAL mode)                     │
-└─────────────────────────────────────────────────────────────┘
-```
+Bartleby is not just a chat shell. The core product is a runtime plus a durable personal data model.
 
-### Garden: 4-Layer Architecture
+At a high level, Bartleby combines:
+- a canonical personal record system (`Garden`)
+- guided multi-step behavior (`Workflows`)
+- an external reference corpus (`Shed`)
+- learning/context systems (`Learning`, `Context`, `Reflection`)
+- multiple conduits over the same runtime (`CLI`, `Signal`, app/mobile, future dashboard)
 
-The garden uses a clean 4-layer architecture with hard boundaries:
-
-```
-Layer 1: GardenService       — Record CRUD (knows nothing about relationships or views)
-Layer 2: RelationshipService — Directed edge CRUD + backlink sync
-Layer 3: ViewService         — View resolution, QueryService execution, Assemblers
-Layer 4: Renderers           — ViewData → output (ReplRenderer, DashboardRenderer)
-```
-
-**ViewData** is the intermediate representation output by Layer 3 and consumed by Layer 4:
-
-```typescript
-interface ViewData {
-  id: string;
-  title: string;
-  type?: RecordType;
-  sections: Section[];
-}
-
-type Section =
-  | { kind: 'content';  title: string; markdown: string }
-  | { kind: 'list';     title: string; items: RecordSummary[]; count: number }
-  | { kind: 'metadata'; title: string; fields: MetadataField[] }
-  | { kind: 'graph';    title: string; nodes: string[]; edges: string[] };
-```
-
-**Assemblers** implement one per record type: given a record and services, produce a `ViewData` with appropriate sections. Each assembler traverses the relationship graph to collect related records.
-
-**QueryService** executes a `QuerySpec` (filter AST + sort + limit) against records:
-
-```typescript
-interface QuerySpec {
-  filter?: FilterExpr;   // eq / neq / contains / and / or / not / traverse
-  sort?: SortSpec[];
-  limit?: number;
-}
-```
-
-### How Routing Works
-
-95% of requests are handled without calling an LLM:
-
-**Layer 1: Pattern Matching**
-```
-/^show next actions$/i → listActions
-/^capture (.+)$/i → captureItem
-```
-
-**Layer 2: Keyword Matching**
-```
-verbs: [add, create] + nouns: [action, task] → addAction (score 0.9)
-noun only: [action] → score 0.7 (below threshold, no match)
-```
-
-**Layer 3: Semantic Matching**
-Embed the input, compare to tool example embeddings, pick highest match above threshold.
-
-**Layer 4: LLM Fallback**
-If nothing matches, ask the Fast model to pick a tool. If complex, use Thinking model for multi-step reasoning.
-
-### Services
-
-| Service | Purpose |
-|---------|---------|
-| `GardenService` | Layer 1: Record CRUD, emits `change` events (EventEmitter) |
-| `RelationshipService` | Layer 2: Edge CRUD, `syncBacklinks()` for `[[wiki links]]` |
-| `ViewService` | Layer 3: View resolution, catalogue, user views |
-| `ContextService` | User facts, conversation history, session management |
-| `LearningService` | Entity-Observation-Relationship memory system |
-| `ReflectionService` | Continuous learning from interactions |
-| `SettingsService` | Runtime configuration, file-backed (settings.yaml) |
-| `ShedService` | Document ingestion, RAG (reference library) |
-| `LLMService` | Model tiers, chat completions, routing decisions |
-| `EmbeddingService` | Text to vectors |
-| `VectorService` | HNSW index for similarity search |
-| `OCRService` | Image text extraction |
-| `WeatherService` | Weather API integration |
-| `SignalService` | Mobile notifications + send replies |
-| `DataService` | CSV ingestion and SQL queries |
-
-### Transports
-
-Bartleby keeps the command pipeline transport-agnostic. Each adapter forwards plain-text input into the same router/agent flow.
-
-- **REPL**: local terminal input (`src/repl.ts`)
-- **HTTP API**: `/api/chat` for dashboard/mobile integrations (`src/server/index.ts`)
-- **Dashboard WS**: realtime view updates (`src/server/index.ts`)
-- **Signal (optional)**: inbound SMS-style commands via `signal-cli` with an allowlist (`src/transports/signal-receiver.ts`, `signal.receive_enabled`, `signal.allowed_senders`)
-
-### WebSocket / Real-time Dashboard
-
-`GardenService` emits a `change` event on every write:
-
-```typescript
-garden.on('change', (event: { op: 'create' | 'update' | 'delete', record: GardenRecord }) => {
-  // server pushes updated ViewData to subscribed clients
-});
-```
-
-The server maintains a `TYPE_VIEW_MAP` to know which view names are affected by each record type, and pushes `{ type: 'data', view: name, viewData: {...} }` to all subscribed WebSocket clients.
-
-### Tool Interface
-
-Tools are the interface between user intent and services:
-
-```typescript
-export const addAction: Tool = {
-  name: 'addAction',
-  description: 'Add a new action',
-  routing: {
-    patterns: [/^(?:add|new) action (.+)$/i],
-    keywords: { verbs: ['add', 'create'], nouns: ['action', 'task'] },
-    examples: ['add action buy groceries @errands'],
-    priority: 70,
-  },
-  parameters: {
-    type: 'object',
-    properties: {
-      title:   { type: 'string' },
-      context: { type: 'string' },
-      due:     { type: 'string' },
-    },
-    required: ['title'],
-  },
-  parseArgs: (input) => { /* extract from natural language */ },
-  execute: async (args, ctx) => {
-    const garden = (ctx.services as any).garden as GardenService;
-    const record = garden.create({ type: 'action', title: args.title, ... });
-    const views  = (ctx.services as any).views as ViewService;
-    const vd     = views.resolve('Next Actions')!;
-    return new ReplRenderer().render(vd);
-  },
-};
-```
+Current strengths are concentrated in the CLI, but the architecture intentionally avoids making CLI-specific behavior the product’s long-term center of gravity.
 
 ---
 
-## Extending Bartleby
+## 2. Core Principles
 
-### Adding a Tool
+### 2.1 Local-first by default
+Bartleby should prefer local storage and local inference where possible.
 
-1. Create or edit a file in `src/tools/`
-2. Define the tool following the `Tool` interface
-3. Import and add to the `allTools` array in `src/tools/index.ts`
+Remote inference may be supported, but it is a tradeoff rather than the defining model.
 
-```typescript
-// src/tools/example.ts
-import { Tool } from './types.js';
-import type { GardenService } from '../garden/GardenService.js';
+### 2.2 Garden is canonical
+If something matters to the user’s ongoing system, it should ultimately live in the Garden as a record, relationship, or view-derived presentation of records.
 
-export const greet: Tool = {
-  name: 'greet',
-  description: 'Greet the user',
-  routing: {
-    patterns: [/^(hello|hi|hey)$/i],
-    keywords: { verbs: ['say'], nouns: ['hello', 'hi'] },
-    examples: ['hello', 'hi bartleby'],
-    priority: 50,
-  },
-  execute: async (args, context) => {
-    const learning = context.services.learning;
-    const obs = learning.searchObservations('preferred_name', 1);
-    const name = obs[0]?.value;
-    return name ? `Hello, ${name}!` : 'Hello!';
-  },
-};
-```
+### 2.3 Workflows over parser tricks
+When a behavior is naturally multi-step, Bartleby should model it as an explicit workflow rather than depending on increasingly clever one-shot parsing or hidden pending state.
 
-### Adding a Service
+### 2.4 Shared runtime across conduits
+Core behavior should live in shared runtime logic, not inside one interface implementation.
 
-1. Create `src/services/myservice.ts`
-2. Export a class with optional `initialize()` and `close()` methods
-3. Add to `ServiceContainer` interface in `src/services/index.ts`
-4. Initialize in `initServices()`, close in `closeServices()` if it owns a DB connection
+### 2.5 Thin interface adapters
+Conduits should mainly:
+- render state in interface-appropriate form
+- translate user input
+- hand off to shared runtime behavior
+
+### 2.6 Observability and recoverability
+Features should be understandable, auditable, and safe to recover from.
+
+### 2.7 Truthfulness over aspiration
+User-facing documentation and ordinary product claims should stay aligned with verified behavior.
+
+### 2.8 Intent Resolution and Dispatch matter
+Bartleby needs a stronger intent-resolution layer so that specific record-targeting, workflow, and mutation intents beat broader collection or fallback interpretations reliably.
 
 ---
 
-## Database Schemas
+## 3. Main Domains
 
-### Main Database (`bartleby.db`)
+### 3.1 Garden
+The canonical durable personal record system.
 
-All garden data and learning share one SQLite file. WAL mode enabled, foreign keys ON.
-Settings live in `settings.yaml` + `secrets.yaml` (project root).
+### 3.2 Workflows
+Guided multi-step transformations and management flows over Garden state.
 
-**Garden records:**
-```sql
-CREATE TABLE records (
-  id           TEXT PRIMARY KEY,
-  type         TEXT NOT NULL,
-  title        TEXT NOT NULL,
-  status       TEXT NOT NULL DEFAULT 'active',
-  content      TEXT,
-  created_at   TEXT NOT NULL,
-  updated_at   TEXT NOT NULL,
-  context      TEXT,
-  energy       TEXT,
-  time_estimate TEXT,
-  due_date     TEXT,
-  starts_at    TEXT,
-  ends_at      TEXT,
-  all_day      INTEGER,
-  location     TEXT,
-  email        TEXT,
-  phone        TEXT,
-  company      TEXT,
-  address      TEXT,
-  birthday     TEXT,
-  file_path    TEXT,
-  mime_type    TEXT,
-  file_size    INTEGER,
-  source       TEXT,
-  metadata     TEXT
-);
+### 3.3 Shed
+The external reference corpus, distinct from canonical Garden state.
 
-CREATE INDEX idx_records_type       ON records(type);
-CREATE INDEX idx_records_status     ON records(status);
-CREATE INDEX idx_records_type_status ON records(type, status);
-CREATE INDEX idx_records_due_date   ON records(due_date);
-CREATE INDEX idx_records_updated_at ON records(updated_at DESC);
-CREATE INDEX idx_records_title      ON records(title COLLATE NOCASE);
-```
+### 3.4 Learning / Context
+Memory-like and profile/context systems, separate from both Garden canonical data and raw Shed content.
 
-**Relationships:**
-```sql
-CREATE TABLE record_relationships (
-  id        TEXT PRIMARY KEY,
-  from_id   TEXT NOT NULL REFERENCES records(id) ON DELETE CASCADE,
-  to_id     TEXT NOT NULL REFERENCES records(id) ON DELETE CASCADE,
-  type      TEXT NOT NULL,
-  created_at TEXT NOT NULL,
-  metadata  TEXT,
-  UNIQUE(from_id, to_id, type)
-);
-
-CREATE INDEX idx_rels_from      ON record_relationships(from_id, type);
-CREATE INDEX idx_rels_to        ON record_relationships(to_id, type);
-CREATE INDEX idx_rels_from_to   ON record_relationships(from_id, to_id);
-```
-
-**Views:**
-```sql
-CREATE TABLE garden_view (
-  id          TEXT PRIMARY KEY,
-  name        TEXT NOT NULL UNIQUE,
-  kind        TEXT NOT NULL DEFAULT 'collection',
-  system      INTEGER NOT NULL DEFAULT 0,
-  query_spec  TEXT,
-  renderer    TEXT,
-  description TEXT,
-  created_at  TEXT NOT NULL,
-  updated_at  TEXT NOT NULL
-);
-```
-
-**System views (seeded on init):** Inbox, Next Actions, Waiting For, Someday Maybe, All Events, All Notes, All Projects, Contacts.
-
-### Settings Files
-
-Settings are stored as flat key/value YAML files:
-
-- `settings.yaml` — non-secret values
-- `secrets.yaml` — API keys, tokens, phone numbers
-
-Keys are defined in `src/settings/registry.ts`.
-
-Example:
-
-```yaml
-llm.router.url: http://127.0.0.1:8080/v1
-weather.city: Austin
-dashboard.api_token: <secret>
-```
-
-### Learning System (`bartleby.db`)
-
-**Entity-Observation-Relationship (EOR) pattern:**
-
-```sql
-CREATE TABLE entities (
-  id         TEXT PRIMARY KEY,
-  type       TEXT NOT NULL,
-  created_at TEXT NOT NULL DEFAULT (datetime('now')),
-  data       TEXT
-);
-
-CREATE TABLE observations (
-  id           TEXT PRIMARY KEY,
-  entity_id    TEXT NOT NULL,
-  key          TEXT NOT NULL,
-  value        TEXT NOT NULL,
-  value_type   TEXT NOT NULL DEFAULT 'string',
-  source_type  TEXT NOT NULL,
-  source_id    TEXT,
-  confidence   REAL NOT NULL,
-  observed_at  TEXT NOT NULL DEFAULT (datetime('now')),
-  expires_at   TEXT,
-  supersedes   TEXT,
-  search_text  TEXT,
-  last_accessed_at TEXT,
-  access_count     INTEGER DEFAULT 0,
-  activation_score REAL DEFAULT 0.5
-);
-
-CREATE TABLE relationships (
-  id            TEXT PRIMARY KEY,
-  from_entity   TEXT NOT NULL,
-  to_entity     TEXT NOT NULL,
-  relation_type TEXT NOT NULL,
-  strength      REAL,
-  context       TEXT,
-  observed_at   TEXT NOT NULL DEFAULT (datetime('now')),
-  source_id     TEXT
-);
-
-CREATE VIRTUAL TABLE observations_fts USING fts5(
-  key, value, search_text,
-  content='observations', content_rowid='rowid'
-);
-```
-
-**Observation key namespace conventions:**
-
-| Key prefix | What it stores | Loaded in prompt? |
-|------------|---------------|-------------------|
-| `preference.*` | Soft user preferences | Hot tier |
-| `pattern.*` | Behavioral patterns | Hot tier |
-| `context.*` | Current working state | Hot tier |
-| `goal.*` | Tracked objectives | Hot tier |
-| `instruction.*` | Standing instructions (mandatory) | Always (all) |
-
-**Standing instructions (`instruction.*`):**
-- Confidence: `1.0`, no expiry (permanent until explicitly deleted)
-- Loaded unconditionally in `buildRichContext()` (bypasses hot-tier filter)
-- Injected into every system prompt as `## Standing Instructions (MANDATORY)` section
-- Deletion: supersedes with `confidence: 0, value: '[DELETED]'`
-
-**Phase 5 Activation (2026-02):**
-```
-activation = (0.4 × recency) + (0.3 × frequency) + (0.3 × confidence)
-```
-- 90% reduction in context tokens via hot-tier loading
-- Automatic daily consolidation and decay
-- Relationship-aware search (max 2 hops)
-
-### Shed Database (`shed.sqlite3`)
-
-Separate file for the document library (reference material):
-
-```sql
-CREATE TABLE sources (
-  id          TEXT PRIMARY KEY,
-  filename    TEXT NOT NULL,
-  filepath    TEXT NOT NULL,
-  title       TEXT,
-  author      TEXT,
-  source_type TEXT,
-  source_url  TEXT,
-  ingested_at TEXT DEFAULT (datetime('now')),
-  metadata    TEXT
-);
-
-CREATE TABLE chunks (
-  id           TEXT PRIMARY KEY,
-  source_id    TEXT NOT NULL REFERENCES sources(id) ON DELETE CASCADE,
-  chunk_index  INTEGER NOT NULL,
-  content      TEXT NOT NULL,
-  token_count  INTEGER,
-  embedding_id TEXT,
-  metadata     TEXT,
-  UNIQUE(source_id, chunk_index)
-);
-```
+### 3.5 Runtime / Conduits
+CLI, Signal, app/mobile, and future dashboard/PWA as access surfaces over shared runtime behavior.
 
 ---
 
-*See [README.md](README.md) for user documentation.*
+## 4. Layered Garden Architecture
+
+Bartleby’s Garden is a layered system with explicit responsibilities.
+
+### Layer 1: Records
+Records are durable entities stored in the canonical record store.
+
+Current record types:
+- `item`
+- `action`
+- `project`
+- `note`
+- `tag`
+- `contact`
+- `event`
+- `media`
+
+Shared record fields include:
+- `id`
+- `type`
+- `title`
+- `status`
+- `content`
+- `created_at`
+- `updated_at`
+
+Specialized fields exist for actions, events, contacts, media, and items.
+
+Design rules:
+- stable queryable semantics should become real columns
+- `metadata` is for extensibility, not a dumping ground for core behavior
+- records are the base layer; they should not absorb relationship or view responsibilities
+
+### Layer 2: Relationships
+Relationships are typed durable edges between records.
+
+Current relationship types:
+- `belongs_to`
+- `tagged_with`
+- `involves`
+- `waiting_on`
+- `attends`
+- `references`
+- `related_to`
+
+Relationships should be preferred when meaning is relational rather than intrinsic to a single record.
+
+Examples:
+- actions belonging to projects
+- notes tagged with tags
+- records referencing other records
+- provenance from inbox processing
+
+### Layer 3: Views
+Views define what records should appear in a given presentation or retrieval context.
+
+Views are reusable abstractions for:
+- collection displays
+- record displays
+- dynamic grouped or filtered outputs
+- named perspectives over Garden data
+
+Views are not just UI screens. They sit between data and rendering.
+
+This is why they remain useful for:
+- CLI list output
+- Signal summaries
+- dashboard panels
+- mobile collections
+- record display surfaces
+
+### Layer 4: Rendering
+Rendering transforms a resolved view into interface-specific output.
+
+Examples:
+- CLI text rendering
+- future Signal-optimized summaries
+- mobile cards
+- future dashboard panels
+
+Rendering should not decide what belongs in the view; it should only present resolved state.
+
+---
+
+## 5. Record Roles
+
+### 5.1 Item
+Raw capture awaiting stronger organization.
+
+Items are transitional records and generally should not be long-term attachable targets.
+
+### 5.2 Action
+A concrete next step.
+
+### 5.3 Project
+An outcome requiring multiple actions.
+
+### 5.4 Note
+A durable user-authored text record.
+
+A generic wiki page in Bartleby is best understood as a note used in a richer relational/view context, not as a separate record type.
+
+### 5.5 Tag
+A first-class classification record.
+
+### 5.6 Contact
+A person record.
+
+### 5.7 Event
+A time-bounded occurrence.
+
+### 5.8 Media
+An imported file or attachment record.
+
+---
+
+## 6. Tags
+
+Tags are first-class records rather than note-only inline labels.
+
+Current design decision:
+- tags may apply to any record type except tags themselves
+
+Implications:
+- tags are not note-only
+- tags should be represented through relationships, not inline arrays
+- tags should help classify, not replace stronger native organization primitives
+
+---
+
+## 7. Workflow Architecture
+
+### 7.1 One active workflow at a time
+Bartleby currently uses a single active workflow model for user-facing guided flows.
+
+This is the simplest robust model for:
+- routing
+- cleanup
+- recoverability
+- observability
+- future multi-interface reuse
+
+### 7.2 Dedicated workflow service
+Workflow state is managed through a dedicated in-memory `WorkflowService` rather than generic memory/fact storage.
+
+### 7.3 In-memory first
+The current workflow model is intentionally in-memory first.
+
+Explicit persistence across restarts should be a later design step, not an accidental side effect of unrelated state systems.
+
+### 7.4 Central validation
+Active workflow validity should be checked centrally before contextual routing is allowed to claim input.
+
+### 7.5 Central workflow router
+There should be one workflow router that dispatches to workflow-type-specific handlers.
+
+### 7.6 Explicit lifecycle
+Workflow lifecycle currently supports:
+- `start`
+- `advance`
+- `complete`
+- `cancel`
+- `fail`
+- `clear`
+- stale-clear through validation failure handling
+
+### 7.7 Start policy
+If a workflow is active, starting another workflow should not happen silently.
+
+Current policy:
+- reject competing workflow starts
+- instruct the user to finish or cancel the active workflow first
+
+### 7.8 Intent Resolution → Routing → Dispatch enforcement
+Bartleby increasingly enforces an explicit Intent Resolution → Routing → Dispatch model rather than relying only on broad command priority ordering.
+
+Important enforcement rules:
+- active workflow replies outrank every other command surface
+- exact record-open intents outrank broader collection-list interpretations
+- explicit workflow starts outrank generic mutations when the input clearly begins a guided flow
+- malformed workflow state must be validated and stale-cleared before it can hijack routing
+
+### 7.9 WorkflowService as control authority
+The in-memory `WorkflowService` should be treated as the control authority for active workflow state.
+
+It owns:
+- workflow registration by type
+- central workflow validation
+- lifecycle transitions
+- stale-clear behavior for broken or outdated workflow state
+- lifecycle event recording for audit/debug visibility
+
+### 7.10 Workflow router validation gate
+`workflowRouter` is the first dispatch gate for active workflows.
+
+Before an active workflow claims user input, the active workflow is validated centrally. If validation fails, Bartleby clears the stale workflow and returns a truthful message rather than letting invalid state continue intercepting future requests.
+
+### 7.11 Workflow implementation rules
+Workflow implementations such as inbox processing, note workflows, setup, and guided settings should:
+- register their workflow type and validator
+- persist step transitions through shared workflow lifecycle helpers
+- use `complete`, `cancel`, and `fail` rather than ad hoc state clearing for meaningful lifecycle transitions
+- keep workflow targets aligned with underlying record targets where relevant
+
+### 7.12 Legacy pending-prompt state should be removed
+Hidden pending-prompt state outside the workflow substrate should not remain part of Bartleby’s control model.
+
+If a behavior requires follow-up input, it should either:
+- remain a truthful one-shot mutation with no hidden continuation, or
+- be implemented as an explicit workflow with lifecycle, validation, and cancellation semantics
+
+---
+
+## 8. Current Workflow Types
+
+Current shared workflow-backed behaviors include:
+- `inbox_process`
+- `note_create`
+- `note_edit`
+- `setup_wizard`
+
+### 8.1 Inbox processing
+`process inbox` is a guided workflow that can transform inbox items into:
+- actions
+- projects
+- notes
+- note appends
+- events
+- someday items
+
+### 8.2 Note workflows
+Notes are records, but note creation/editing are implemented as workflows because they are naturally multi-step.
+
+Current note workflow behaviors include:
+- content collection
+- attachment selection
+- typed attachment resolution
+- completion/cancellation handling
+
+### 8.3 Setup and guided settings
+Setup is now workflow-driven rather than owned by a bespoke CLI-only readline loop.
+
+The same shared runtime workflow can drive:
+- first-launch setup
+- explicit `setup wizard`
+- guided settings review/edit flows
+
+This is a deliberate convergence step so future non-CLI conduits can drive the same logic.
+
+---
+
+## 9. Intent Resolution, Routing, and Dispatch
+
+### 9.1 Overview
+The router is responsible for deciding how user input should be handled.
+
+Current routing layers are:
+- contextual workflow matching
+- pattern matching
+- complexity classification
+- keyword matching
+- semantic matching
+- LLM fallback
+
+### 9.2 Intent classes
+Current tool routing uses lightweight intent classes:
+- `workflow_reply`
+- `workflow_start`
+- `record_open`
+- `collection_list`
+- `mutation_create`
+- `mutation_update`
+- `mutation_delete`
+- `system`
+- `operator`
+- `fallback`
+
+### 9.3 Precedence
+Current precedence favors more specific intents over broader ones.
+
+Current precedence order is effectively:
+1. workflow reply
+2. record open
+3. workflow start
+4. create mutation
+5. update mutation
+6. delete mutation
+7. collection list
+8. system / operator / fallback
+
+### 9.4 Why this matters
+This is the main architectural area that prevents recurring bugs such as:
+- `show note X` being interpreted like `show notes`
+- record-targeting commands losing to broad list commands
+- workflow interactions colliding with top-level command interpretation
+
+### 9.5 Typed resolution
+Bartleby increasingly prefers typed record resolution instead of:
+- broad title-only lookup
+- search-first fallback mutation
+- ambiguous mixed collection/record resolution
+
+### 9.6 Search should stay separate
+Search-style behaviors may remain useful, but they should stay separate from exact-open and exact-mutation flows.
+
+---
+
+## 10. Conduits and Interface Model
+
+Bartleby should support multiple conduits over shared runtime behavior.
+
+Current or intended conduits:
+- CLI / REPL
+- Signal
+- app / mobile
+- dashboard / PWA
+
+### 10.1 CLI
+The CLI is currently the strongest conduit and the primary documented path.
+
+### 10.2 Signal
+Signal is an optional but already useful second conduit.
+
+Current reality:
+- useful for message-based interaction
+- good for direct messaging and send-message behavior
+- reminder/review autonomy remains under active evolution
+
+### 10.3 App / mobile
+App/mobile code exists and is evolving toward shared-runtime participation.
+
+### 10.4 Dashboard
+The dashboard remains a future-facing conduit target rather than the current first-class documented interface.
+
+---
+
+## 11. Shed
+
+The Shed is Bartleby’s external reference subsystem.
+
+It remains distinct from canonical Garden state.
+
+If Shed-derived information needs to persist operationally, it should eventually be promoted into Garden records rather than treated as automatic personal truth.
+
+### 11.1 Current supported path
+The current narrow supported path is:
+- ingest local markdown/text/PDF documents
+- list ingested sources
+- ask questions against ingested sources
+
+### 11.2 Internal flow
+Current Shed ingestion flow:
+1. load or fetch source content
+2. extract or normalize text
+3. chunk the document
+4. embed chunks
+5. store chunk vectors
+6. answer queries with retrieved chunk context and source-aware synthesis
+
+### 11.3 Truthfulness rule
+Shed should be documented conservatively. It is meaningful and usable, but should not be described as a fully polished universal document intelligence layer.
+
+---
+
+## 12. Learning, Context, and Reflection
+
+Bartleby includes learning/context systems that are distinct from both Garden canonical data and Shed raw source content.
+
+Important boundary:
+- Garden = canonical structured personal state
+- Shed = external reference corpus
+- learning/context = memory-like profile/context systems
+- workflow state = active control state, not just another remembered fact
+
+This distinction matters for correctness, provenance, and user trust.
+
+---
+
+## 13. Services
+
+Current service container includes the following major services.
+
+### 13.1 Garden services
+- `GardenService` — Layer 1 record CRUD
+- `RelationshipService` — Layer 2 typed edge CRUD and backlink sync
+- `ViewService` — Layer 3 view resolution / record opening / user views
+
+### 13.2 Workflow and runtime services
+- `WorkflowService` — active workflow control state
+- `RuntimeActivityService` — runtime activity tracking
+
+### 13.3 Learning and context services
+- `ContextService`
+- `LearningService`
+- `ReflectionService`
+- `SettingsService`
+- `RouterTrainingService`
+
+### 13.4 Reference / retrieval services
+- `ShedService`
+- `EmbeddingService`
+- `VectorService`
+
+### 13.5 Infrastructure and integrations
+- `LLMService`
+- `SignalService`
+- `WeatherService`
+- `OCRService`
+- `DataService`
+- `AuditService`
+
+---
+
+## 14. Tool Surface
+
+The tool layer is the interface between user intent and services.
+
+Current active surface includes tools for:
+- workflow routing
+- setup/settings flows
+- inbox processing
+- actions
+- projects
+- notes
+- contacts
+- events
+- tags
+- media import/display
+- weather
+- shed ingestion/querying
+- system/help/status
+- routing stats and training controls
+- data tools
+- OCR tools
+
+The important architectural principle is that tools should be thin adapters over shared runtime behavior.
+
+---
+
+## 15. Setup and Configuration
+
+### 15.1 First launch
+First launch now routes through the shared setup workflow rather than relying on a bespoke CLI-owned control loop for the setup progression itself.
+
+### 15.2 Guided settings
+Multi-step settings guidance is now workflow-native.
+
+### 15.3 One-shot settings commands
+Direct settings commands remain simple one-shot behaviors:
+- show settings
+- show a settings category
+- set a setting directly
+
+This split is intentional:
+- use one-shot commands for direct exact operations
+- use workflows for guided multi-step review/edit
+
+---
+
+## 16. Current Strengths and Active Convergence Areas
+
+### 16.1 Stronger today
+Bartleby is currently strongest in:
+- capture
+- explicit create/list/review flows
+- Garden-based operations
+- guided inbox processing
+- note workflows
+- first-launch and settings workflow foundations
+- narrow Shed retrieval path
+
+### 16.2 Still actively converging
+Areas still under active convergence include:
+- richer cross-interface parity
+- workflow expansion and refinement
+- Signal review/reminder behavior
+- dashboard/app maturity
+- some older/internal memory surfaces
+- stricter remaining resolution cleanup
+
+---
+
+## 17. Migration / Cleanup Guidance
+
+When improving Bartleby, prefer the following sequence:
+
+1. remove dead or hidden legacy control state
+2. replace broad/ambiguous resolution with typed or explicit resolution
+3. move genuine multi-step behavior onto the shared workflow substrate
+4. keep interfaces thin and shared-runtime-first
+5. only then expand the user-facing promise surface
+
+Use commit-sized milestones for each cleanup pass so changes remain cherry-pick friendly and easy to validate.
+
+---
+
+## 18. Recommendations for Future Work
+
+### 18.1 Do now
+- continue replacing remaining ambiguous title-based mutation/linking paths
+- keep strengthening workflow-native interactive behavior
+- preserve truthfulness in docs as behavior evolves
+
+### 18.2 Next phase
+- introduce more structured workflow result payloads so non-CLI interfaces can render workflows more richly
+- continue shrinking CLI-specific assumptions in guided flows
+- improve explicit ambiguity handling in record resolution helpers
+- continue hardening Shed and Signal review/reminder behavior
+
+### 18.3 Later
+- explicit workflow persistence/resume semantics if real demand justifies it
+- deeper app/dashboard convergence on shared runtime behavior
+
+---
+
+## 19. Summary
+
+Bartleby should be understood technically as:
+- a local-first assistant runtime
+- centered on the Garden as canonical structured personal state
+- powered by workflows for multi-step user behaviors
+- exposed through multiple conduits over shared runtime logic
+- complemented by the Shed as an external reference corpus
+- guided by truthfulness, observability, recoverability, and increasingly explicit intent resolution and dispatch

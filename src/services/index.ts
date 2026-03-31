@@ -16,6 +16,10 @@ import { AuditService }        from './audit.js';
 import { LearningService }     from './learning.js';
 import { ReflectionService }   from './reflection.js';
 import { SettingsService }     from './settings.js';
+import { RouterTrainingService } from './router-training.js';
+import { RuntimeActivityService } from './runtime-activity.js';
+import { WorkflowService } from './workflow.js';
+import { initMobileServices, type MobileServices } from '../mobile/index.js';
 import { info } from '../utils/logger.js';
 
 export interface ServiceContainer {
@@ -31,6 +35,7 @@ export interface ServiceContainer {
   learning:   LearningService;
   reflection: ReflectionService;
   settings:   SettingsService;
+  routerTraining: RouterTrainingService;
 
   // Reference library
   shed: ShedService;
@@ -46,6 +51,9 @@ export interface ServiceContainer {
   signal:  SignalService;
   ocr:     OCRService;
   data:    DataService;
+  runtimeActivity: RuntimeActivityService;
+  workflow: WorkflowService;
+  mobile: MobileServices;
 }
 
 export async function initServices(
@@ -89,6 +97,8 @@ export async function initServices(
 
   const learning = new LearningService(garden.getDB());
 
+  const routerTraining = new RouterTrainingService(config, learning);
+
   // ── Reference library (Shed) ─────────────────────────────────────────────────
 
   const shed = new ShedService(config, embeddings, vectors, llm);
@@ -105,10 +115,11 @@ export async function initServices(
   // ── Data (separate DB for CSV/SQL work) ─────────────────────────────────────
 
   const data = new DataService(config);
+  const runtimeActivity = new RuntimeActivityService();
+  const workflow = new WorkflowService();
+  const mobile = initMobileServices(garden.getDB(), runtimeActivity);
 
-  info('All services initialized');
-
-  return {
+  const services: ServiceContainer = {
     config,
     garden,
     rels,
@@ -117,6 +128,7 @@ export async function initServices(
     learning,
     reflection,
     settings,
+    routerTraining,
     shed,
     llm,
     embeddings,
@@ -126,7 +138,18 @@ export async function initServices(
     signal,
     ocr,
     data,
+    runtimeActivity,
+    workflow,
+    mobile,
   };
+
+  routerTraining.attachServices(services);
+  llm.setRouterRuntimeResolver(() => routerTraining.getRouterRuntimeBinding());
+  await routerTraining.initialize();
+
+  info('All services initialized');
+
+  return services;
 }
 
 export function closeServices(services: ServiceContainer): void {
@@ -135,6 +158,7 @@ export function closeServices(services: ServiceContainer): void {
   services.vectors.close();
   // learning.close() is a no-op (db managed by garden)
   services.learning.close();
+  services.routerTraining.close();
   services.garden.close();  // closes the shared DB connection
   services.context.close();
   services.data.close();
@@ -146,12 +170,14 @@ export function closeServices(services: ServiceContainer): void {
 
 // Re-export services
 export { GardenService }      from '../garden/GardenService.js';
+export { RuntimeActivityService } from './runtime-activity.js';
 export { RelationshipService } from '../garden/RelationshipService.js';
 export { ViewService }         from '../garden/ViewService.js';
 export { ContextService }      from './context.js';
 export { LearningService }     from './learning.js';
 export { ReflectionService }   from './reflection.js';
 export { SettingsService }     from './settings.js';
+export { RouterTrainingService } from './router-training.js';
 export { ShedService }         from './shed.js';
 export { LLMService }          from './llm.js';
 export { EmbeddingService }    from './embeddings.js';

@@ -10,11 +10,17 @@ import { cleanLLMOutput } from '../utils/llm.js';
 export class Agent {
   private services: ServiceContainer;
   private toolSchemas: OpenAI.ChatCompletionTool[];
+  private toolSchemaByName: Map<string, OpenAI.ChatCompletionTool>;
+  private toolStats: Map<string, { attempts: number; successes: number; failures: number; lastUsedAt: number }>;
   private llmVerbose: boolean;
 
   constructor(services: ServiceContainer) {
     this.services = services;
     this.toolSchemas = this.buildToolSchemas();
+    this.toolSchemaByName = new Map(this.toolSchemas.map(schema => [schema.function.name, schema]));
+    this.toolStats = new Map(
+      allTools.map(tool => [tool.name, { attempts: 0, successes: 0, failures: 0, lastUsedAt: 0 }])
+    );
     this.llmVerbose = services.config.logging.llmVerbose;
   }
 
@@ -313,32 +319,87 @@ export class Agent {
       { role: 'user', content: input },
     ];
 
-    info('Starting agentic loop', { input: input.slice(0, 50), maxIterations });
+    let activeTools = this.selectInitialToolShortlist(input, 10);
+    let fallbackExpansions = 0;
+    const maxFallbackExpansions = 2;
+    let lastToolCallSignature: string | null = null;
+    let consecutiveDuplicateToolCalls = 0;
+    let duplicateCircuitTrips = 0;
+    const maxConsecutiveDuplicateToolCalls = 2;
+    const maxDuplicateCircuitTrips = 2;
+
+    info('Starting agentic loop', {
+      input: input.slice(0, 50),
+      maxIterations,
+      activeToolCount: activeTools.length,
+      totalToolCount: this.toolSchemas.length,
+    });
 
     let finalResponse: string;
     let success = true;
 
     try {
       for (let iteration = 0; iteration < maxIterations; iteration++) {
-        debug('Agentic loop iteration', { iteration: iteration + 1 });
+        debug('Agentic loop iteration', { iteration: iteration + 1, activeToolCount: activeTools.length });
 
-        // Call Thinking model with function calling
         const response = await this.services.llm.chatWithTools(
           messages,
-          this.toolSchemas,
+          activeTools,
           'thinking'
         );
 
-        // Check if model wants to call tools
         if (response.tool_calls && response.tool_calls.length > 0) {
-          // Add assistant message with tool calls
           messages.push({
             role: 'assistant',
             content: response.content || '',
             tool_calls: response.tool_calls,
           });
 
-          // Execute each tool call
+          const toolCallSignature = this.buildToolCallSignature(response.tool_calls);
+          if (toolCallSignature === lastToolCallSignature) {
+            consecutiveDuplicateToolCalls++;
+            warn('Detected repeated identical tool-call batch', {
+              iteration: iteration + 1,
+              consecutiveDuplicateToolCalls,
+            });
+          } else {
+            lastToolCallSignature = toolCallSignature;
+            consecutiveDuplicateToolCalls = 0;
+          }
+
+          if (consecutiveDuplicateToolCalls >= maxConsecutiveDuplicateToolCalls) {
+            duplicateCircuitTrips++;
+            consecutiveDuplicateToolCalls = 0;
+
+            const breakerMessage = duplicateCircuitTrips >= maxDuplicateCircuitTrips
+              ? 'Circuit breaker: repeated identical tool calls were detected multiple times. Stop calling tools and provide the best possible final answer from available context.'
+              : 'Circuit breaker: repeated identical tool calls were detected. Do not repeat the same call. Use a different tool or provide a final answer.';
+
+            warn('Tool-call duplicate circuit breaker tripped', {
+              duplicateCircuitTrips,
+              iteration: iteration + 1,
+            });
+
+            for (const toolCall of response.tool_calls) {
+              messages.push({
+                role: 'tool',
+                tool_call_id: toolCall.id,
+                content: breakerMessage,
+              });
+            }
+
+            if (duplicateCircuitTrips >= maxDuplicateCircuitTrips) {
+              success = false;
+              finalResponse = "I got stuck repeating the same tool calls and stopped to avoid an infinite loop. Please rephrase the request or split it into smaller steps.";
+              this.triggerReflection(input, finalResponse, success);
+              return finalResponse;
+            }
+
+            continue;
+          }
+
+          let failedToolForExpansion: string | undefined;
+
           for (const toolCall of response.tool_calls) {
             const toolName = toolCall.function.name;
             const tool = getToolByName(toolName);
@@ -351,34 +412,64 @@ export class Agent {
 
                 debug('Agentic tool call', { tool: toolName, args, iteration });
                 result = await tool.execute(args, context) ?? '';
+                this.recordToolOutcome(toolName, true);
               } catch (err) {
                 error('Tool execution failed', { tool: toolName, error: String(err) });
+                this.recordToolOutcome(toolName, false);
+                failedToolForExpansion = failedToolForExpansion ?? toolName;
                 result = `Error executing ${toolName}: ${err}`;
               }
             } else {
               result = `Unknown tool: ${toolName}`;
               warn('Agentic loop referenced unknown tool', { tool: toolName });
+              this.recordToolOutcome(toolName, false);
+              failedToolForExpansion = failedToolForExpansion ?? toolName;
             }
 
-            // Add tool result to messages
             messages.push({
               role: 'tool',
               tool_call_id: toolCall.id,
               content: result,
             });
           }
+
+          if (failedToolForExpansion && fallbackExpansions < maxFallbackExpansions) {
+            const expanded = this.expandToolShortlist(activeTools, input, failedToolForExpansion, 6);
+            if (expanded.length > activeTools.length) {
+              activeTools = expanded;
+              fallbackExpansions++;
+              info('Expanded tool shortlist after tool failure', {
+                triggerTool: failedToolForExpansion,
+                activeToolCount: activeTools.length,
+                fallbackExpansions,
+              });
+            }
+          }
         } else {
-          // No tool calls - model is done
-          finalResponse = cleanLLMOutput(response.content || "I've completed the task.", this.llmVerbose);
+          const responseContent = response.content || '';
+
+          if (fallbackExpansions < maxFallbackExpansions && this.shouldExpandToolShortlist(responseContent, iteration)) {
+            const expanded = this.expandToolShortlist(activeTools, input, undefined, 6);
+            if (expanded.length > activeTools.length) {
+              activeTools = expanded;
+              fallbackExpansions++;
+              info('Expanded tool shortlist on uncertain no-tool response', {
+                activeToolCount: activeTools.length,
+                fallbackExpansions,
+                iteration: iteration + 1,
+              });
+              continue;
+            }
+          }
+
+          finalResponse = cleanLLMOutput(responseContent || "I've completed the task.", this.llmVerbose);
           info('Agentic loop complete', { iterations: iteration + 1 });
 
-          // Trigger reflection before returning
           this.triggerReflection(input, finalResponse, success);
           return finalResponse;
         }
       }
 
-      // Max iterations reached
       warn('Agentic loop hit max iterations', { maxIterations });
       success = false;
       finalResponse = "I wasn't able to complete that task within the allowed steps. Please try breaking it down into smaller requests.";
@@ -389,9 +480,231 @@ export class Agent {
       finalResponse = "I encountered an error while working on your request. Please try again or simplify the request.";
     }
 
-    // Trigger reflection before returning
     this.triggerReflection(input, finalResponse, success);
     return finalResponse;
+  }
+
+  /**
+   * Select a compact, reliability-aware shortlist of tools for a complex request.
+   */
+  private selectInitialToolShortlist(input: string, limit: number): OpenAI.ChatCompletionTool[] {
+    if (this.toolSchemas.length <= limit) {
+      return this.toolSchemas;
+    }
+
+    const inputTokens = this.tokenize(input);
+    const inputLower = input.toLowerCase();
+
+    const ranked = allTools
+      .map(tool => {
+        const reliability = this.getReliabilityScore(tool.name);
+        const priority = (tool.routing?.priority ?? 0) / 100;
+
+        let lexicalScore = 0;
+        const nouns = tool.routing?.keywords?.nouns ?? [];
+        const verbs = tool.routing?.keywords?.verbs ?? [];
+
+        for (const noun of nouns) {
+          if (inputLower.includes(noun.toLowerCase())) lexicalScore += 1.2;
+          for (const token of this.tokenize(noun)) {
+            if (inputTokens.has(token)) lexicalScore += 0.5;
+          }
+        }
+
+        for (const verb of verbs) {
+          if (inputLower.includes(verb.toLowerCase())) lexicalScore += 0.8;
+          for (const token of this.tokenize(verb)) {
+            if (inputTokens.has(token)) lexicalScore += 0.35;
+          }
+        }
+
+        const score = lexicalScore * 1.7 + reliability + priority * 0.4;
+        return { name: tool.name, score };
+      })
+      .sort((a, b) => b.score - a.score)
+      .slice(0, limit);
+
+    const selected: OpenAI.ChatCompletionTool[] = [];
+    for (const item of ranked) {
+      const schema = this.toolSchemaByName.get(item.name);
+      if (schema) selected.push(schema);
+    }
+
+    if (selected.length === 0) {
+      return this.toolSchemas.slice(0, limit);
+    }
+
+    debug('Selected reliability-aware tool shortlist', {
+      shortlistSize: selected.length,
+      totalTools: this.toolSchemas.length,
+      tools: selected.map(t => t.function.name),
+    });
+
+    return selected;
+  }
+
+  private shouldExpandToolShortlist(responseContent: string, iteration: number): boolean {
+    const content = responseContent.trim();
+    if (iteration === 0 && content.length < 80) {
+      return true;
+    }
+
+    const uncertaintyPattern = /\b(cannot|can't|unable|unsure|not sure|don't have|do not have|need more|insufficient)\b/i;
+    return uncertaintyPattern.test(content);
+  }
+
+  private expandToolShortlist(
+    activeTools: OpenAI.ChatCompletionTool[],
+    input: string,
+    triggerToolName?: string,
+    addCount: number = 6
+  ): OpenAI.ChatCompletionTool[] {
+    const activeNames = new Set(activeTools.map(tool => tool.function.name));
+    const inputTokens = this.tokenize(input);
+
+    const triggerTool = triggerToolName ? getToolByName(triggerToolName) : undefined;
+    const focusTokens = new Set<string>(inputTokens);
+    if (triggerTool) {
+      for (const token of this.getToolCapabilityTokens(triggerTool)) {
+        focusTokens.add(token);
+      }
+    }
+
+    const candidates = allTools
+      .filter(tool => !activeNames.has(tool.name))
+      .map(tool => {
+        const capabilityTokens = this.getToolCapabilityTokens(tool);
+        const overlap = this.countTokenOverlap(focusTokens, capabilityTokens);
+
+        let lexical = 0;
+        for (const token of capabilityTokens) {
+          if (inputTokens.has(token)) lexical += 0.6;
+        }
+
+        const reliability = this.getReliabilityScore(tool.name);
+        const priority = (tool.routing?.priority ?? 0) / 100;
+        const score = overlap * 1.4 + lexical + reliability * 0.8 + priority * 0.3;
+
+        return { name: tool.name, score };
+      })
+      .sort((a, b) => b.score - a.score)
+      .slice(0, addCount);
+
+    if (candidates.length === 0) {
+      return activeTools;
+    }
+
+    const expanded = [...activeTools];
+    for (const candidate of candidates) {
+      const schema = this.toolSchemaByName.get(candidate.name);
+      if (schema) expanded.push(schema);
+    }
+
+    debug('Capability-cluster fallback expansion', {
+      triggerToolName,
+      before: activeTools.length,
+      after: expanded.length,
+      addedTools: candidates.map(candidate => candidate.name),
+    });
+
+    return expanded;
+  }
+
+  private getToolCapabilityTokens(tool: Tool): Set<string> {
+    const tokens = new Set<string>(this.tokenize(tool.name));
+    const nouns = tool.routing?.keywords?.nouns ?? [];
+    const verbs = tool.routing?.keywords?.verbs ?? [];
+
+    for (const noun of nouns) {
+      for (const token of this.tokenize(noun)) tokens.add(token);
+    }
+
+    for (const verb of verbs) {
+      for (const token of this.tokenize(verb)) tokens.add(token);
+    }
+
+    return tokens;
+  }
+
+  private countTokenOverlap(left: Set<string>, right: Set<string>): number {
+    let overlap = 0;
+    for (const token of right) {
+      if (left.has(token)) overlap += 1;
+    }
+    return overlap;
+  }
+
+  private buildToolCallSignature(
+    toolCalls: NonNullable<OpenAI.ChatCompletionMessage['tool_calls']>
+  ): string {
+    return toolCalls
+      .map(toolCall => {
+        const normalizedArgs = this.normalizeToolArguments(toolCall.function.arguments || '{}');
+        return `${toolCall.function.name}:${normalizedArgs}`;
+      })
+      .join('|');
+  }
+
+  private normalizeToolArguments(rawArgs: string): string {
+    try {
+      const parsed = JSON.parse(rawArgs);
+      const normalized = this.sortObjectKeys(parsed);
+      return JSON.stringify(normalized);
+    } catch {
+      return rawArgs.replace(/\s+/g, ' ').trim();
+    }
+  }
+
+  private sortObjectKeys(value: unknown): unknown {
+    if (Array.isArray(value)) {
+      return value.map(item => this.sortObjectKeys(item));
+    }
+
+    if (value && typeof value === 'object') {
+      const entries = Object.entries(value as Record<string, unknown>)
+        .sort(([left], [right]) => left.localeCompare(right))
+        .map(([key, entryValue]) => [key, this.sortObjectKeys(entryValue)]);
+      return Object.fromEntries(entries);
+    }
+
+    return value;
+  }
+
+  private recordToolOutcome(toolName: string, success: boolean): void {
+    const current = this.toolStats.get(toolName) ?? {
+      attempts: 0,
+      successes: 0,
+      failures: 0,
+      lastUsedAt: 0,
+    };
+
+    current.attempts += 1;
+    if (success) {
+      current.successes += 1;
+    } else {
+      current.failures += 1;
+    }
+    current.lastUsedAt = Date.now();
+    this.toolStats.set(toolName, current);
+  }
+
+  private getReliabilityScore(toolName: string): number {
+    const stats = this.toolStats.get(toolName);
+    if (!stats || stats.attempts === 0) {
+      return 0.65;
+    }
+
+    return (stats.successes + 1) / (stats.attempts + 2);
+  }
+
+  private tokenize(value: string): Set<string> {
+    return new Set(
+      value
+        .replace(/([a-z])([A-Z])/g, '$1 $2')
+        .toLowerCase()
+        .split(/[^a-z0-9]+/)
+        .filter(token => token.length >= 3)
+    );
   }
 
   /**

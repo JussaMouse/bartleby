@@ -86,9 +86,9 @@ export class SignalReceiver {
 
   private spawnReceiver(): void {
     const { config } = this.services;
-    const args = ['-u', config.signal.number || '', '-o', 'json', 'receive'];
+    const args = ['-u', config.signal.number || '', '-o', 'json', 'receive', '--timeout', '5'];
 
-    info('Starting Signal receiver', { allowlist: Array.from(this.allowedSenders) });
+    debug('Starting Signal receiver', { allowlist: Array.from(this.allowedSenders) });
 
     this.proc = spawn(config.signal.cliPath, args);
 
@@ -106,7 +106,11 @@ export class SignalReceiver {
     this.proc.on('close', (code) => {
       this.proc = null;
       if (!this.running) return;
-      warn('Signal receiver exited', { code });
+      if (code === 0) {
+        debug('Signal receiver cycle complete');
+      } else {
+        warn('Signal receiver exited', { code });
+      }
       this.scheduleRestart();
     });
 
@@ -177,6 +181,7 @@ export class SignalReceiver {
       return;
     }
 
+    this.services.runtimeActivity.record({ channel: 'signal', direction: 'inbound', text: message, counterpart: source });
     this.enqueueMessage(source, message);
   }
 
@@ -195,13 +200,16 @@ export class SignalReceiver {
         stripMarkdown: true,
       });
 
+      this.services.runtimeActivity.record({ channel: 'signal', direction: 'outbound', text: result.reply, counterpart: source });
       const sent = await this.services.signal.send(result.reply, source);
       if (!sent) {
         warn('Signal reply failed to send', { source });
       }
     } catch (err) {
       error('Signal message handling error', { error: String(err) });
-      await this.services.signal.send('Sorry, something went wrong processing that.', source);
+      const fallback = 'Sorry, something went wrong processing that.';
+      this.services.runtimeActivity.record({ channel: 'signal', direction: 'outbound', text: fallback, counterpart: source });
+      await this.services.signal.send(fallback, source);
     }
   }
 

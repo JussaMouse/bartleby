@@ -5,6 +5,7 @@ import { Tool } from './types.js';
 import type { GardenService } from '../garden/GardenService.js';
 import type { ViewService } from '../garden/ViewService.js';
 import { ReplRenderer } from '../garden/renderers/ReplRenderer.js';
+import { resolveRecordByTypeAndTitle } from './record-resolution.js';
 
 function getServices(context: any) {
   const garden = context.services.garden as GardenService;
@@ -42,7 +43,7 @@ export const createTag: Tool = {
     const { garden } = getServices(context);
 
     // Don't create duplicates
-    const existing = garden.getByTitle(title);
+    const existing = resolveRecordByTypeAndTitle(context, 'tag', title);
     if (existing && existing.type === 'tag') {
       return `Tag already exists: **${existing.title}**`;
     }
@@ -109,7 +110,7 @@ export const showTag: Tool = {
     const { title, id } = args as { title?: string; id?: string };
     const { views } = getServices(context);
 
-    const viewData = id ? views.openRecord(id) : (title ? views.resolve(title) : null);
+    const viewData = id ? views.openRecord(id) : (title ? views.openRecordByTitle(title) : null);
     if (!viewData) return `Tag not found: "${title ?? id}"`;
     return renderer.render(viewData);
   },
